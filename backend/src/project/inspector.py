@@ -315,7 +315,6 @@ class ProjectInspector:
         return {
             "nodes": nodes, "edges": edges, "autotracking_on_ai_message": automaton.autotracking_on_ai_message,
             "revision": revision,
-            "build_warnings": automaton.build_warnings,
         }
 
     def list_projects(self, username: str | None = None) -> dict:

@@ -40,21 +40,6 @@ class AvailabilityChanged:
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectPublishedHealthChanged:
-    """The published revision's own build outcome flipped broken<->healthy
-    — never fired for the draft, and never repeated while it stays the
-    same (see ProjectHealthChecker.check/ProjectManager.recompute_availability).
-    Kept separate from AvailabilityChanged: that one already covers manual
-    pause and automaton.* dependencies too, and this one exists only to
-    drive the admin-facing broken-project notification."""
-    project_id: str
-    revision: int
-    error: str | None
-    file: str | None = None
-    line: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class ProjectRevisionBuildFailed:
     """A stored revision just failed to build (see AutomatonLoader.
     load_at_revision) — published only when `revision` is the project's

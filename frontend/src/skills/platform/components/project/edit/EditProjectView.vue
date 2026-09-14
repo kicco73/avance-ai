@@ -169,7 +169,7 @@ const selectedStateData = computed(() => {
 const runCurrentSession = computed(() => runSessions.value.find((s) => s.id === currentSessionId.value) ?? null)
 
 const {
-  validStateKeys, availableStates, buildWarnings, buildProblems, stateLabelFor, actionLabelFor, refreshCatalog,
+  validStateKeys, availableStates, buildProblems, stateLabelFor, actionLabelFor, refreshCatalog,
 } = useProjectCatalog(props.projectId)
 
 const {
@@ -423,11 +423,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize)
 })
 
-async function showWarning(warning) {
-  if (warning.line == null) return
+async function showProblem(problem) {
+  if (problem.line == null) return
   modeId.value = DESIGN_MODE.id
   await nextTick()
-  indexYmlEditorRef.value?.showBuildError(warning.line)
+  indexYmlEditorRef.value?.showBuildError(problem.line)
 }
 
 async function handleSetSessionTitle(sessionId, title) {
@@ -475,21 +475,8 @@ async function handleSetSessionComment(sessionId, comment) {
         :class="{ 'build-warnings-banner-line-locatable': problem.line != null }"
         :disabled="problem.line == null"
         :title="problem.line == null ? '' : `Go to ${problem.section ?? 'index.yml'}`"
-        @click="showWarning(problem)"
+        @click="showProblem(problem)"
       >{{ problem.message }}</button>
-    </div>
-
-    <div v-if="buildWarnings.length" class="build-warnings-banner">
-      <button
-        v-for="(warning, index) in buildWarnings"
-        :key="index"
-        type="button"
-        class="build-warnings-banner-line"
-        :class="{ 'build-warnings-banner-line-locatable': warning.line != null }"
-        :disabled="warning.line == null"
-        :title="warning.line == null ? '' : `Go to ${warning.section ?? 'index.yml'}`"
-        @click="showWarning(warning)"
-      >{{ warning.message }}</button>
     </div>
 
     <div class="edit-project-body">

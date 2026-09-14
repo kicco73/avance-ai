@@ -29,6 +29,12 @@ class ObservabilityMixin:
             (SystemWarning.project_id == project_id) & (SystemWarning.kind == kind)
         ).execute()
 
+    def delete_system_warnings_of_kind(self, kind: str) -> int:
+        """Every project's, for a kind nothing raises any more. A warning
+        outlives the run that raised it, so a kind that is withdrawn has
+        to be swept once or it stays on somebody's screen forever."""
+        return SystemWarning.delete().where(SystemWarning.kind == kind).execute()
+
     def get_system_warnings(self, username: str, project_id: str) -> list[dict]:
         rows = (
             SystemWarning.select()

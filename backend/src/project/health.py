@@ -12,7 +12,6 @@ from .archive.automaton_loader import AutomatonLoader
 class BuildOutcome:
     revision: int
     error: str | None
-    warnings: list[str] = field(default_factory=list)
     problems: list[dict] = field(default_factory=list)
     file: str | None = None
     line: int | None = None
@@ -74,4 +73,4 @@ class ProjectHealthChecker:
             )
         except (ValueError, FileNotFoundError) as exc:
             return BuildOutcome(revision=revision, error=str(exc))
-        return BuildOutcome(revision=revision, error=None, warnings=automaton.build_warnings)
+        return BuildOutcome(revision=revision, error=None)

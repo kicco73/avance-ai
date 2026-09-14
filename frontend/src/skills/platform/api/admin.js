@@ -7,14 +7,6 @@ export function getProjectsRuntimeStatus() {
   return apiFetch(`${API_URL}/skills/platform/settings/projects/runtime-status`)
 }
 
-export function getProjectBrokenWarnings() {
-  return apiFetch(`${API_URL}/skills/platform/settings/warnings?kind=project_broken`)
-}
-
-export function deleteProjectBrokenWarning(warningId) {
-  return apiFetch(`${API_URL}/skills/platform/settings/warnings/${encodeURIComponent(warningId)}`, { method: 'DELETE' })
-}
-
 
 export function putUserRole(userId, role) {
   return apiFetch(`${API_URL}/skills/platform/users/${encodeURIComponent(userId)}/role`, {

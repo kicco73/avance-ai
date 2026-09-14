@@ -458,5 +458,4 @@ class AutomatonBuilder(object):
             project_ui_description=metadata.ui_description,
             project_services=metadata.services.as_raw(),
             new_session_strategy=metadata.new_session_strategy,
-            build_warnings=self._cursor.warnings,
         )

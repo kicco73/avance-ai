@@ -104,7 +104,6 @@ class CoreAutomaton(object):
         project_ui_description: str | None = None,
         project_services: dict[str, str] | None = None,
         new_session_strategy: str = "resume",
-        build_warnings: "list[dict] | list[str] | None" = None,
     ):
         self.init_action = init_action
         self.states = states
@@ -122,10 +121,6 @@ class CoreAutomaton(object):
         self.autotracking_on_ai_message = autotracking_on_ai_message
         self.services = ProjectServices(project_services)
         self.new_session_strategy = new_session_strategy
-        self.build_warnings = [
-            warning if isinstance(warning, dict) else {"message": warning, "line": None, "section": None}
-            for warning in (build_warnings or [])
-        ]
         self.revision: int | None = None
         self.archives_dir: "Path | None" = None
         self._declared_env_key_names: set[str] | None = None

@@ -9,7 +9,6 @@ export function useProjectCatalog(projectId) {
   const validStateKeys = ref(new Set())
   const availableStates = ref([])
   const projectBroken = ref(false)
-  const buildWarnings = ref([])
   const buildProblems = ref([])
   const actionLabelsByState = ref(new Map())
 
@@ -23,11 +22,10 @@ export function useProjectCatalog(projectId) {
 
   async function refreshCatalog() {
     try {
-      const { nodes, edges, build_warnings } = await getProjectGraph(projectId)
+      const { nodes, edges } = await getProjectGraph(projectId)
       validStateKeys.value = new Set(nodes.map((n) => n.state.key))
       availableStates.value = nodes.map((n) => ({ key: n.state.key, uiLabel: n.state.ui_label }))
       actionLabelsByState.value = new Map(edges.map((e) => [`${e.source}::${e.action.name}`, e.action.ui_label]))
-      buildWarnings.value = build_warnings || []
       buildProblems.value = []
       if (projectBroken.value) {
         projectBroken.value = false
@@ -36,7 +34,6 @@ export function useProjectCatalog(projectId) {
     } catch (err) {
       if (err?.code === 'project_broken') {
         projectBroken.value = true
-        buildWarnings.value = []
         buildProblems.value = err.fields?.problems ?? [{ message: err.message, line: err.fields?.line ?? null, section: null }]
       }
     }
@@ -49,7 +46,7 @@ export function useProjectCatalog(projectId) {
   }))
 
   return {
-    validStateKeys, availableStates, projectBroken, buildWarnings, buildProblems,
+    validStateKeys, availableStates, projectBroken, buildProblems,
     stateLabelFor, actionLabelFor, refreshCatalog,
   }
 }

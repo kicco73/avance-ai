@@ -2,10 +2,8 @@
 build anymore" story: the published revision's own health drives
 is_paused (never the draft alone), the draft's own health only gates the
 design-view's automaton-derived endpoints (ensure_project_not_broken), and
-a real broken<->healthy transition of the published revision fires
-exactly one ProjectPublishedHealthChanged event, which
-ProjectHealthNotifications turns into a SystemWarning per admin plus a
-best-effort ws push.
+and a project's state is read off its health every time it is asked for
+— there is no notification standing between the two to go stale.
 """
 from __future__ import annotations
 
@@ -16,13 +14,10 @@ import pytest
 
 from avance_platform.platform_service import PlatformService
 
-from system import bus
-from system.bus import UI_SYSTEM_WARNING
 from automaton.automaton_builder import AutomatonBuilder
-from events import ProjectPublishedHealthChanged, publish, subscribe
-from project.health_notifications import ProjectHealthNotificationJob, ProjectHealthNotifications
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
+from project.health import ProjectHealthChecker
 from project.project_service import ProjectService
 from system.service_error import ServiceError
 from conftest import rewrite_archive_content
@@ -79,19 +74,6 @@ def _corrupt_published_revision(db, project_service: ProjectService, project_id:
 @pytest.fixture
 def project_service(db) -> ProjectService:
     return ProjectService(db, AutomatonLoader(db), SessionManager(db))
-
-
-class RecordedWarnings:
-    """Whatever an interface would have shown, taken off the Bus instead
-    of off a socket: health notifications publish bus.UI_SYSTEM_WARNING
-    and never learn who — if anyone — was listening."""
-
-    def __init__(self) -> None:
-        self.pushed: list[tuple[str, dict]] = []
-        bus.subscribe(UI_SYSTEM_WARNING, self._record)
-
-    async def _record(self, message) -> None:
-        self.pushed.append((message.username, message.body))
 
 
 def _make_admin(db, user_id: str) -> None:
@@ -178,58 +160,19 @@ def test_get_runtime_status_reports_broken_published_and_draft_separately(db, pr
     assert rows["broken_draft"]["broken"]["draft"] is not None
 
 
-def test_get_runtime_status_reports_no_build_warnings_for_a_clean_project(db, project_service):
-    _publish(db, project_service, "clean", VALID_YML)
-
-    rows = {row["id"]: row for row in PlatformService(project_service).get_runtime_status()}
-
-    assert rows["clean"]["build_warnings"] == []
-
-
-def test_get_runtime_status_never_eats_a_real_transition(db, project_service):
-    """A read-only runtime-status poll must never interfere with the
-    transition detection recompute_availability relies on for its own
-    one-notification-per-transition guarantee (see ProjectHealthChecker's
-    own check() vs current() split)."""
+def test_a_read_only_poll_never_changes_what_a_recompute_then_finds(db, project_service):
+    """Asking for the runtime status is a read: whatever it caches for
+    itself, the recompute after it still sees the project as it is (see
+    ProjectHealthChecker's own check() vs current() split)."""
     _publish(db, project_service, "flaky", VALID_YML)
-    received = []
-    subscribe(ProjectPublishedHealthChanged, received.append)
 
     _corrupt_published_revision(db, project_service, "flaky")
     PlatformService(project_service).get_runtime_status()
     PlatformService(project_service).get_runtime_status()
     project_service.recompute_availability("flaky")
 
-    assert len(received) == 1
-    assert received[0].project_id == "flaky" and received[0].error is not None
+    assert db.get_project_availability("flaky")[0] is True
 
-
-
-def test_recompute_fires_published_health_changed_exactly_once_per_transition(db, project_service):
-    _publish(db, project_service, "flaky", VALID_YML)
-    received = []
-    subscribe(ProjectPublishedHealthChanged, received.append)
-
-    _corrupt_published_revision(db, project_service, "flaky")
-    project_service.recompute_availability("flaky")
-    project_service.recompute_availability("flaky")
-    project_service.recompute_availability("flaky")
-
-    assert len(received) == 1
-    assert received[0].error is not None
-
-
-def test_recompute_fires_a_recovery_event_with_no_error(db, project_service):
-    _publish(db, project_service, "flaky", VALID_YML)
-    _corrupt_published_revision(db, project_service, "flaky")
-    project_service.recompute_availability("flaky")
-    received = []
-    subscribe(ProjectPublishedHealthChanged, received.append)
-
-    _publish(db, project_service, "flaky", VALID_YML)
-
-    assert len(received) == 1
-    assert received[0].error is None
 
 
 def test_recompute_all_availability_pauses_only_the_broken_project(db, project_service):
@@ -244,83 +187,15 @@ def test_recompute_all_availability_pauses_only_the_broken_project(db, project_s
 
 
 
-def test_broken_notification_job_warns_every_admin_and_pushes_to_connected_ones(db):
-    _make_admin(db, "admin1")
-    _make_admin(db, "admin2")
-    bus_channel = RecordedWarnings()
-
-    job = ProjectHealthNotificationJob(
-        db, "broken", 3, "index.yml no longer builds — nope", file="index.yml", line=7,
-    )
-    job.prepare()
-    asyncio.run(job.run_next_step())
-
-    warnings_admin1 = db.get_system_warnings("admin1", "broken")
-    warnings_admin2 = db.get_system_warnings("admin2", "broken")
-    warnings_user = db.get_system_warnings("user", "broken")
-    assert len(warnings_admin1) == 1 and warnings_admin1[0]["kind"] == "project_broken"
-    assert len(warnings_admin2) == 1
-    assert warnings_user == []
-    listed = db.list_system_warnings_for_user("admin1", kind="project_broken")
-    assert len(listed) == 1 and listed[0]["file"] == "index.yml" and listed[0]["line"] == 7
-    pushed_usernames = {username for username, _ in bus_channel.pushed}
-    assert pushed_usernames == {"admin1", "admin2"}
-    assert all(payload["file"] == "index.yml" and payload["line"] == 7 for _, payload in bus_channel.pushed)
-
-
-def test_recovery_notification_job_clears_the_projects_own_warnings_and_tells_every_admin(db):
-    _make_admin(db, "admin1")
-    _make_admin(db, "admin2")
-    db.save_system_warning("admin1", "flaky", "project_broken", "nope")
-    db.save_system_warning("admin2", "flaky", "project_broken", "nope")
-    db.save_system_warning("admin1", "other", "project_broken", "still broken")
-    bus_channel = RecordedWarnings()
-
-    job = ProjectHealthNotificationJob(db, "flaky", 4, None)
-    job.prepare()
-    asyncio.run(job.run_next_step())
-
-    assert db.get_system_warnings("admin1", "flaky") == []
-    assert db.get_system_warnings("admin2", "flaky") == []
-    assert len(db.get_system_warnings("admin1", "other")) == 1
-    assert {username for username, _ in bus_channel.pushed} == {"admin1", "admin2"}
-    assert all(
-        payload == {"kind": "project_fixed", "project_id": "flaky"}
-        for _, payload in bus_channel.pushed
-    )
-
-
 def test_a_broken_published_revision_reports_where_it_broke(db, project_service):
     _publish(db, project_service, "broken", VALID_YML)
     _corrupt_published_revision(db, project_service, "broken")
-    received = []
-    subscribe(ProjectPublishedHealthChanged, received.append)
 
-    project_service.recompute_availability("broken")
+    published = ProjectHealthChecker(db, project_service.automaton_loader).current("broken").published
 
-    assert len(received) == 1
-    assert received[0].error is not None
-    assert received[0].file == "index.yml"
-    assert received[0].line == 0
-
-
-def test_project_health_notifications_submits_a_job_on_the_event(db):
-    submitted = []
-
-    class FakeSchedulerService:
-        def submit(self, job) -> None:
-            submitted.append(job)
-
-    RecordedWarnings()
-    notifications = ProjectHealthNotifications(db, FakeSchedulerService())
-    notifications.register()
-
-    publish(ProjectPublishedHealthChanged(project_id="broken", revision=1, error="nope", file="index.yml", line=3))
-
-    assert len(submitted) == 1
-    assert isinstance(submitted[0], ProjectHealthNotificationJob)
-    assert submitted[0]._file == "index.yml" and submitted[0]._line == 3
-
+    assert published.error is not None
+    assert published.file == "index.yml"
+    assert published.line == 0
 
 
 DEP_YML = """
@@ -441,10 +316,6 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     project_service.automaton_loader.invalidate_cache("old_format")
     before = db.get_archive("old_format", "index.yml", revision=revision)
 
-    _make_admin(db, "admin1")
-    bus_channel = RecordedWarnings()
-    notifications = ProjectHealthNotifications(db, _SyncSchedulerService())
-    notifications.register()
     project_service.register_availability_cascade()
 
     project_service.recompute_all_availability()
@@ -455,18 +326,3 @@ def test_boot_sweep_never_rewrites_an_archived_revision_using_the_old_tools_fiel
     is_paused, reason = db.get_project_availability("old_format")
     assert is_paused is True
     assert "'tools' is no longer a valid field" in reason and "ai-may-read-sources" in reason
-
-    warnings = db.get_system_warnings("admin1", "old_format")
-    assert len(warnings) == 1
-    assert warnings[0]["kind"] == "project_broken"
-    assert "'tools' is no longer a valid field" in warnings[0]["message"]
-    assert len(bus_channel.pushed) == 1
-
-
-class _SyncSchedulerService:
-    """submit() runs the job's single step inline — the boot sweep above
-    has no running SchedulerService/event loop to hand it to."""
-
-    def submit(self, job) -> None:
-        job.prepare()
-        asyncio.run(job.run_next_step())

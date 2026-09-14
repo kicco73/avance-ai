@@ -23,11 +23,6 @@ const emit = defineEmits(['icon-error'])
         <span class="project-card-title">{{ title }}</span>
         <span v-if="row.broken?.published" class="project-card-broken" :title="row.broken.published">broken</span>
         <span v-if="row.broken?.draft" class="project-card-draft-broken" :title="row.broken.draft">draft broken</span>
-        <span
-          v-if="row.build_warnings?.length"
-          class="project-card-build-warnings"
-          :title="row.build_warnings.join('\n')"
-        >{{ row.build_warnings.length }} warning{{ row.build_warnings.length === 1 ? '' : 's' }}</span>
       </span>
       <span v-if="description" class="project-card-desc">{{ description }}</span>
     </div>

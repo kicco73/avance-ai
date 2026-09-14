@@ -5,11 +5,11 @@ from http import HTTPStatus
 from automaton.automaton import Automaton
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from db import Db
-from events import AvailabilityChanged, ProjectPublishedHealthChanged, ProjectRevisionBuildFailed, publish, subscribe
+from events import AvailabilityChanged, ProjectRevisionBuildFailed, publish, subscribe
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
 
-from ..health import BuildOutcome, ProjectHealth, ProjectHealthChecker, broken_fields
+from ..health import BuildOutcome, ProjectHealthChecker, broken_fields
 from ..archive.automaton_loader import AutomatonLoader
 
 logger = LoggerFactory.get_logger(__name__)
@@ -59,9 +59,7 @@ class ProjectAvailability:
     def recompute(self, project_id: str) -> None:
         self._recomputing.add(project_id)
         try:
-            previous_health = self._health_checker.last_checked(project_id)
             health = self._health_checker.check(project_id)
-            self._notify_published_health_change(project_id, previous_health, health)
 
             if self._db.get_manually_paused(project_id):
                 available, reason = False, "Manually paused."
@@ -85,25 +83,6 @@ class ProjectAvailability:
             publish(AvailabilityChanged(project_id=project_id, available=available))
         finally:
             self._recomputing.discard(project_id)
-
-    def _notify_published_health_change(
-        self, project_id: str, previous: ProjectHealth | None, current: ProjectHealth,
-    ) -> None:
-        was_broken = previous is not None and previous.published is not None and previous.published.error is not None
-        is_broken = current.published is not None and current.published.error is not None
-        if is_broken == was_broken:
-            return
-        if current.published is not None:
-            outcome = current.published
-            event = ProjectPublishedHealthChanged(
-                project_id=project_id, revision=outcome.revision, error=outcome.error,
-                file=outcome.file, line=outcome.line,
-            )
-        else:
-            event = ProjectPublishedHealthChanged(
-                project_id=project_id, revision=self._db.get_project_revision(project_id), error=None,
-            )
-        publish(event)
 
     def recompute_all(self) -> None:
         for project_id in self._db.list_projects():
@@ -197,7 +176,7 @@ class ProjectAvailability:
         replacing a single row (what pause/resume answer with) can never
         drop a badge the list had drawn."""
         health = self._health_checker.current(project_id)
-        return {"broken": broken_fields(health), "build_warnings": health.draft.warnings}
+        return {"broken": broken_fields(health)}
 
     def _current_status(self, project_id: str) -> str:
         if not self._db.project_exists(project_id):

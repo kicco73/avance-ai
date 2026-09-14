@@ -198,7 +198,6 @@ AUTOMATON = {class_name}(
     project_ui_description={ui_description!r},
     project_services={project_services!r},
     new_session_strategy={new_session_strategy!r},
-    build_warnings={build_warnings!r},
 )
 
 AUTOMATON.archives_dir = _DATA_DIR
@@ -278,7 +277,6 @@ def _compiled(table, text, kind):
             ui_description=self.automaton.project_ui_description,
             project_services=self.automaton.services.as_raw(),
             new_session_strategy=self.automaton.new_session_strategy,
-            build_warnings=self.automaton.build_warnings,
         ))
         return "\n\n".join(parts) + "\n", self.prompts.render()
 
@@ -602,7 +600,6 @@ def verify_package(project_path: Path, module_name: str) -> None:
     for attribute in (
         "project_id", "family", "project_revision", "project_ui_label", "project_ui_description",
         "services", "autotracking_on_ai_message", "new_session_strategy", "general_prompt",
-        "build_warnings",
     ):
         problems += _compare(attribute, getattr(compiled, attribute), getattr(interpreted, attribute))
     problems += _compare("init_action", compiled.init_action, interpreted.init_action)

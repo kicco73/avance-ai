@@ -29,7 +29,6 @@ from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
 from project.archive.loader_choice import AutomatonLoaderChoice
-from project.health_notifications import ProjectHealthNotifications
 from project.project_service import ProjectService
 from system.project_locks import ProjectLocks
 from ai import AiService
@@ -38,7 +37,7 @@ from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 
-__version__ = "2.0.2"
+__version__ = "2.0.3"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -138,7 +137,7 @@ def create_app() -> FastAPI:
             "version": __version__,
         }))
         project_service.register_availability_cascade()
-        ProjectHealthNotifications(db, scheduler_service).register()
+        db.delete_system_warnings_of_kind("project_broken")
         project_service.recompute_all_availability()
 
         controller = AvanceController(

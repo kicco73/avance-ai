@@ -10,7 +10,6 @@ export const SUPERSEDED_CLOSE_CODE = 4410
 export const SERVER_EVENTS = [
   'ui.notification',
   'session.taken_over',
-  'ui.system_warning',
   'ui.progress',
   'human_prompt'
 ]

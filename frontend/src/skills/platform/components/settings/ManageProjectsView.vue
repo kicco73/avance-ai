@@ -15,7 +15,6 @@ import AppHeader from '../../../../components/AppHeader.vue'
 import ProjectDetailPanel from './ProjectDetailPanel.vue'
 import ShareProjectDialog from './ShareProjectDialog.vue'
 import AddProjectMenu from './AddProjectMenu.vue'
-import BrokenProjectWarningsMenu from './BrokenProjectWarningsMenu.vue'
 import ProjectRowCard from './ProjectRowCard.vue'
 import UploadPlaceholderCard from './UploadPlaceholderCard.vue'
 import avanceLogoLargeUrl from '../../../../assets/avance-logo-large.png'
@@ -174,10 +173,6 @@ function selectEdit(id) {
   emit('edit', id)
 }
 
-function openWarning(warning) {
-  emit('edit', warning.project_id, { file: warning.file, line: warning.line })
-}
-
 function selectLabelSessions(id) {
   emit('label', id)
 }
@@ -232,7 +227,6 @@ onBeforeUnmount(() => {
             @app-store="emit('app-store')"
           />
           <AddProjectMenu @new-project="emit('new-project')" @upload="emit('upload')" />
-          <BrokenProjectWarningsMenu :metadata-by-id="metadataById" @open="openWarning" />
           <span class="manage-projects-env-tag" :class="envTag.className">{{ envTag.label }}</span>
         </div>
       </template>
