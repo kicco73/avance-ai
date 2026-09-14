@@ -23,12 +23,13 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import datetime, timedelta
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from system.bus import UI_NOTIFICATION
+from system.bus import TASK_ENDED, TASK_STARTED, UI_NOTIFICATION
 from conftest import RecordedMessages, FakeAiService, make_test_namespace_factory, make_test_scheduler_service
 from db import Db
 from db.models import Task as TaskRow, User
@@ -37,12 +38,14 @@ from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
 from scheduler import SchedulerService
-from tracking.actuators.action_task import TASK_NAMESPACE_LIVE, ActionTask, ScopeHydrator
+from tracking.actuators.action_task import TASK_NAMESPACE_FAKE, TASK_NAMESPACE_LIVE, ActionTask, ScopeHydrator
 from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
+from system.try_again_error import TryAgainError
+from system.web_session import WebSession
 from tracking.user_facts import UserFacts
 
 pytestmark = pytest.mark.contract
@@ -367,7 +370,8 @@ def test_deleting_the_project_takes_its_pending_tasks_with_it(file_db):
 def test_a_task_never_sees_a_session(file_db):
     """Belt and braces on top of the build-time check: even a payload
     hand-written to reference session.* fails at run time with an
-    unknown name, never with a stale session's data."""
+    unknown name, never with a stale session's data — and the row says
+    so, naming the statement that raised."""
     _, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'x')"))
     _fire_go(file_db, factory, project_service, {})
@@ -377,5 +381,239 @@ def test_a_task_never_sees_a_session(file_db):
     notified = RecordedMessages(UI_NOTIFICATION)
 
     _process(file_db, start=True)
-    assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "done"), file_db.get_task(row["key"])
+    assert _wait_until(lambda: file_db.get_task(row["key"])["status"] == "failed"), file_db.get_task(row["key"])
+    assert "session" in file_db.get_task(row["key"])["error"]
     assert notified.messages == []
+
+
+class _AwayAiService(FakeAiService):
+
+    def __init__(self, away_for: int = 99) -> None:
+        super().__init__()
+        self.attempts = 0
+        self._away_for = away_for
+
+    async def prompt(self, prompt: str, channels=None):
+        self.attempts += 1
+        if self.attempts <= self._away_for:
+            raise TryAgainError("the provider is busy")
+        return await super().prompt(prompt, channels)
+
+
+def _hibernated(
+    db: Db, project_service: ProjectService, factory, *,
+    session_id: int | None = None, ai_service=None, fake: bool = True, running_script: str | None = None,
+):
+    _fire_go(db, factory, project_service, {"distress": 10}, session_id=session_id, ai_service=ai_service, fake=fake)
+    (row,) = db.list_tasks()
+    payload = {**row["payload"], **({"script": running_script} if running_script else {})}
+    return _rehydrated(db, project_service, factory, row["key"], payload, ai_service=ai_service)
+
+
+def _rehydrated(db: Db, project_service: ProjectService, factory, key: str, payload: dict, *, ai_service=None):
+    task = ScopeHydrator(db, project_service, factory, ai_service).hydrate(key, USERNAME, payload)
+    task.prepare()
+    return task
+
+
+def _session_of(db: Db) -> int:
+    db.create_chat_session(username=USERNAME, project_id=PROJECT, revision=db.get_project_published_revision(PROJECT))
+    return db.get_latest_chat_session(USERNAME, PROJECT)["id"]
+
+
+def _drive(task) -> None:
+    asyncio.run(task.run_next_step())
+
+
+def test_a_task_announces_its_start_and_its_end_with_what_the_script_produced(file_db):
+    _, project_service, factory = _process(file_db)
+    _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
+    recorded = RecordedMessages(TASK_STARTED, TASK_ENDED, UI_NOTIFICATION)
+    task = _hibernated(file_db, project_service, factory)
+
+    _drive(task)
+
+    started, notified, ended = recorded.for_user(USERNAME)
+    assert started.type == TASK_STARTED and started.body == {"key": task.key}
+    assert notified.type == UI_NOTIFICATION
+    assert ended.type == TASK_ENDED
+    assert ended.body["key"] == task.key
+    assert ended.body["result"] == notified.body["task"]
+    assert ended.body["error"] is None
+
+
+def test_a_failing_statement_is_announced_while_the_others_still_reach_the_browser(file_db):
+    _, project_service, factory = _process(file_db)
+    _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
+    recorded = RecordedMessages(TASK_STARTED, TASK_ENDED, UI_NOTIFICATION)
+    task = _hibernated(
+        file_db, project_service, factory,
+        running_script="task.send_mail(session.number_of_user_sessions(), 'x')\ntask.send_mail(user.name, 'welcome')",
+    )
+
+    with pytest.raises(Exception) as raised:
+        _drive(task)
+
+    (notified,) = recorded.of_type(UI_NOTIFICATION)
+    assert "send_mail(to='Ada')" in notified.body["task"]
+    (ended,) = recorded.of_type(TASK_ENDED)
+    assert ended.body["result"] == notified.body["task"]
+    assert "session.number_of_user_sessions()" in ended.body["error"]
+    assert str(raised.value) == ended.body["error"]
+
+
+def test_a_script_that_never_ran_is_announced_as_ended_with_no_result(file_db):
+    _, project_service, factory = _process(file_db)
+    _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
+    recorded = RecordedMessages(TASK_STARTED, TASK_ENDED, UI_NOTIFICATION)
+    broken = _hibernated(file_db, project_service, factory, running_script="task.send_mail('unclosed")
+
+    with pytest.raises(SyntaxError):
+        _drive(broken)
+
+    assert recorded.of_type(UI_NOTIFICATION) == []
+    (ended,) = recorded.of_type(TASK_ENDED)
+    assert ended.body["result"] is None
+    assert ended.body["error"]
+
+
+def test_a_deferred_task_announces_itself_with_no_session_on_the_envelope(file_db):
+    _, project_service, factory = _process(file_db)
+    _publish(file_db, project_service, _yml(DEFER_LINE))
+    session_id = _session_of(file_db)
+    outer = _hibernated(file_db, project_service, factory, session_id=session_id, fake=False)
+    _drive(outer)
+    inner = next(r for r in file_db.list_tasks() if r["payload"]["session_id"] is None)
+    task = _rehydrated(file_db, project_service, factory, inner["key"], inner["payload"])
+    recorded = RecordedMessages(TASK_STARTED, TASK_ENDED)
+
+    _drive(task)
+
+    for message in recorded.for_user(USERNAME):
+        assert message.session_id is None
+        assert message.project_id == PROJECT
+
+
+def test_a_notification_says_which_conversation_its_script_is_about(file_db):
+    _, project_service, factory = _process(file_db)
+    _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
+    session_id = _session_of(file_db)
+    recorded = RecordedMessages(UI_NOTIFICATION)
+    task = _hibernated(file_db, project_service, factory, session_id=session_id)
+
+    _drive(task)
+
+    (notified,) = recorded.of_type(UI_NOTIFICATION)
+    assert notified.project_id == PROJECT
+    assert notified.session_id == session_id
+
+
+def test_a_provider_that_says_not_now_reschedules_the_whole_script_instead_of_ending(file_db):
+    recorded = RecordedMessages(TASK_STARTED, TASK_ENDED)
+    ai_service = _AwayAiService()
+    _, project_service, factory = _process(file_db, ai_service=ai_service)
+    _publish(file_db, project_service, _yml("task.send_mail(task.prompt('hi'), 'note')"))
+    _fire_go(file_db, factory, project_service, {"distress": 10}, ai_service=ai_service)
+    (row,) = file_db.list_tasks()
+    task = _rehydrated(file_db, project_service, factory, row["key"], row["payload"], ai_service=ai_service)
+
+    _drive(task)
+
+    assert recorded.of_type(TASK_ENDED) == []
+    retry = next(r for r in file_db.list_tasks() if r["key"] != row["key"])
+    assert retry["payload"]["attempt"] == 1
+    assert retry["payload"]["origin_key"] == row["key"]
+    assert retry["payload"]["script"] == row["payload"]["script"]
+    expected = datetime.now(timezone.utc) + timedelta(seconds=ActionTask.RETRY_BASE_SECONDS)
+    assert abs((retry["run_at"] - expected).total_seconds()) < 2
+
+
+def test_the_last_attempt_ends_the_task_under_the_key_the_chain_started_with(file_db):
+    recorded = RecordedMessages(TASK_STARTED, TASK_ENDED)
+    ai_service = _AwayAiService()
+    _, project_service, factory = _process(file_db, ai_service=ai_service)
+    _publish(file_db, project_service, _yml("task.send_mail(task.prompt('hi'), 'note')"))
+    _fire_go(file_db, factory, project_service, {"distress": 10}, ai_service=ai_service)
+    (row,) = file_db.list_tasks()
+    payload = {**row["payload"], "attempt": ActionTask.MAX_ATTEMPTS, "origin_key": "task:origin"}
+    task = _rehydrated(file_db, project_service, factory, "task:last", payload, ai_service=ai_service)
+
+    with pytest.raises(Exception):
+        _drive(task)
+
+    assert [r["key"] for r in file_db.list_tasks()] == [row["key"]]
+    assert recorded.of_type(TASK_STARTED) == []
+    (ended,) = recorded.of_type(TASK_ENDED)
+    assert ended.body["key"] == "task:origin"
+    assert "TryAgainError" in ended.body["error"]
+
+
+class _RecordingAiService(FakeAiService):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen_as: list[str | None] = []
+
+    async def prompt(self, prompt: str, channels=None):
+        self.seen_as.append(WebSession().user)
+        return await super().prompt(prompt, channels)
+
+
+def test_a_task_prompt_runs_as_the_user_the_task_belongs_to(file_db):
+    ai_service = _RecordingAiService()
+    _, project_service, factory = _process(file_db, ai_service=ai_service)
+    _publish(file_db, project_service, _yml("task.send_mail(task.prompt('hi'), 'note')"))
+    _fire_go(file_db, factory, project_service, {"distress": 10}, ai_service=ai_service)
+    (row,) = file_db.list_tasks()
+    task = _rehydrated(file_db, project_service, factory, row["key"], row["payload"], ai_service=ai_service)
+
+    _drive(task)
+
+    assert ai_service.seen_as == [USERNAME]
+
+
+@contextmanager
+def _task_scope(db: Db, project_service: ProjectService, factory):
+    _publish(db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
+    payload = {
+        "project_id": PROJECT,
+        "project_revision": db.get_project_published_revision(PROJECT),
+        "state_key": "a",
+        "action_name": "go",
+        "snapshot": {"user": {"name": "Ada"}},
+        "namespace_kind": TASK_NAMESPACE_FAKE,
+    }
+    hydrator = ScopeHydrator(db, project_service, factory, None)
+    with WebSession().impersonate(USERNAME):
+        yield hydrator.build_scope(USERNAME, payload)
+
+
+def test_a_script_whose_statements_all_succeed_reports_no_failure(file_db):
+    _, project_service, factory = _process(file_db)
+    with _task_scope(file_db, project_service, factory) as scope:
+        outcome = scope.automaton.render_task_script(
+            "greeting = 'hi ' + user.name\ntask.send_mail(greeting, 'x')", scope,
+        )
+
+    assert outcome.failures == ()
+    assert "send_mail(to='hi Ada')" in outcome.snippets
+
+
+def test_a_statement_that_raises_is_collected_and_the_ones_after_it_still_run(file_db):
+    _, project_service, factory = _process(file_db)
+    script = "task.send_mail(missing.who, 'x')\ntask.send_mail(user.name, 'welcome')"
+    with _task_scope(file_db, project_service, factory) as scope:
+        outcome = scope.automaton.render_task_script(script, scope)
+
+    ((statement, exc),) = outcome.failures
+    assert statement == "task.send_mail(missing.who, 'x')"
+    assert isinstance(exc, Exception)
+    assert "send_mail(to='Ada')" in outcome.snippets
+    assert "missing" not in outcome.snippets
+
+
+def test_a_script_that_does_not_parse_raises_rather_than_reporting_a_partial_run(file_db):
+    _, project_service, factory = _process(file_db)
+    with _task_scope(file_db, project_service, factory) as scope:
+        with pytest.raises(SyntaxError):
+            scope.automaton.render_task_script("task.send_mail('unclosed", scope)

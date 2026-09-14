@@ -42,6 +42,7 @@ vi.mock('../src/chatStore.js', () => ({
   handleStateChange: vi.fn(),
   loadMessages: vi.fn(),
   observeLiveChat: vi.fn(),
+  liveStore: {},
 }))
 
 import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout, getPendingStatus } from '../src/api.js'

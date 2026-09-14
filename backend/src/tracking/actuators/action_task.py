@@ -48,23 +48,25 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, TYPE_CHECKING
 
 from system import bus
-from automaton.automaton import Action, DeferredExpression
-from system.bus import UI_NOTIFICATION, Message
+from automaton.automaton import Action, DeferredExpression, TaskOutcome
+from system.bus import TASK_ENDED, TASK_STARTED, UI_NOTIFICATION, Message
 from automaton.scope import EvaluationScope
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from jobs import CancelableJob
 from system.logging_factory import LoggerFactory
 from scheduler import Task
+from system.try_again_error import TryAgainError
 from system.web_session import WebSession
 
 if TYPE_CHECKING:
     from ai import AiService
     from db import Db
     from project.project_service import ProjectService
+    from scheduler import SchedulerService
     from tracking.actuators.factory import TaskNamespaceFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -81,6 +83,8 @@ class ActionTask(Task):
     holds and why."""
 
     TYPE = "task"
+    RETRY_BASE_SECONDS = 1
+    MAX_ATTEMPTS = 5
 
     def __init__(self, key: str, username: str, payload: dict[str, Any], hydrator: "ScopeHydrator") -> None:
         super().__init__(key=key, username=username)
@@ -190,10 +194,74 @@ class ActionTask(Task):
     def result(self) -> str | None:
         return None
 
+    @property
+    def announced_key(self) -> str:
+        return self._payload.get("origin_key") or self.key
+
+    @property
+    def attempt(self) -> int:
+        return self._payload.get("attempt", 0)
+
     async def _run_next_step(self) -> None:
-        task = self._hydrator.run(self.username, self._payload)
-        if task:
-            await bus.publish(Message(type=UI_NOTIFICATION, body={"task": task}, username=self.username))
+        if self._payload.get("origin_key") is None:
+            await self._announce(TASK_STARTED, {"key": self.announced_key})
+        try:
+            outcome = self._hydrator.run(self.username, self._payload)
+        except Exception as exc:
+            await self._announce(TASK_ENDED, {"key": self.announced_key, "result": None, "error": str(exc)})
+            raise
+        if outcome.snippets is not None:
+            await self._notify_ui(outcome.snippets)
+        if self._retryable(outcome):
+            self._schedule_retry()
+            return
+        error = self._error_text(outcome)
+        await self._announce(TASK_ENDED, {"key": self.announced_key, "result": outcome.snippets, "error": error})
+        if error is not None:
+            raise RuntimeError(error)
+
+    async def _notify_ui(self, snippets: str) -> None:
+        await bus.publish(Message(
+            type=UI_NOTIFICATION, body={"task": snippets}, username=self.username,
+            project_id=self.project_id, session_id=self._payload.get("session_id"),
+        ))
+
+    async def _announce(self, message_type: str, body: dict[str, Any]) -> None:
+        try:
+            await bus.publish(Message(
+                type=message_type, body=body, username=self.username,
+                project_id=self.project_id, session_id=self._payload.get("session_id"),
+            ))
+        except Exception:
+            logger.exception("Announcing %s for task %s failed.", message_type, self.announced_key)
+
+    def _retryable(self, outcome: TaskOutcome) -> bool:
+        return (
+            self.attempt < self.MAX_ATTEMPTS
+            and any(isinstance(exc, TryAgainError) for _statement, exc in outcome.failures)
+        )
+
+    def _schedule_retry(self) -> None:
+        when = datetime.now(timezone.utc) + timedelta(
+            seconds=self.RETRY_BASE_SECONDS * 2 ** self.attempt
+        )
+        payload = {
+            **self._payload,
+            "attempt": self.attempt + 1,
+            "origin_key": self.announced_key,
+            "when": when.isoformat(),
+        }
+        self._hydrator.scheduler_service.schedule(
+            ActionTask(f"{self.TYPE}:{uuid.uuid4()}", self.username, payload, self._hydrator), when,
+        )
+
+    @staticmethod
+    def _error_text(outcome: TaskOutcome) -> str | None:
+        if not outcome.failures:
+            return None
+        return "\n".join(
+            f"{statement}: {type(exc).__name__}: {exc}" for statement, exc in outcome.failures
+        )
 
 
 class ScopeHydrator(object):
@@ -211,6 +279,10 @@ class ScopeHydrator(object):
         self._project_service = project_service
         self._namespace_factory = namespace_factory
         self._ai_service = ai_service
+
+    @property
+    def scheduler_service(self) -> "SchedulerService":
+        return self._namespace_factory.scheduler_service
 
     def hydrate(self, key: str, username: str, payload: dict[str, Any]) -> ActionTask:
         """SchedulerService's hydrator for ActionTask.TYPE. Cheap and
@@ -261,7 +333,7 @@ class ScopeHydrator(object):
         scope.update(snapshot.get("extra", {}))
         return scope.for_task(action_name=payload.get("action_name"))
 
-    def run(self, username: str, payload: dict[str, Any]) -> str | None:
+    def run(self, username: str, payload: dict[str, Any]) -> TaskOutcome:
         with WebSession().impersonate(username):
             scope = self.build_scope(username, payload)
             return scope.automaton.render_task_script(payload["script"], scope)

@@ -13,9 +13,8 @@ It claims no loader at `automaton.loader`: the Db/Archive-backed one the
 core builds by default *is* the authoring surface's, so there is nothing
 to replace.
 
-It publishes `ui.system_warning` indirectly, through the core's own
-project-health notifications, and reads sessions over HTTP rather than
-over the Bus: a listing across many sessions has no `session_id` and no
+It reads sessions over HTTP rather than over the Bus: a listing across
+many sessions has no `session_id` and no
 `project_id` of one conversation, so a route is the honest shape for it
 (`docs/API.md`).
 

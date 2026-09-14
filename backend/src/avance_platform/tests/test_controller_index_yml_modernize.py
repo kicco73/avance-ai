@@ -41,26 +41,24 @@ def _index_yml(client, project_id: str) -> str:
     return client.get(f"/api/skills/platform/projects/{project_id}/files/index.yml").json()["content"]
 
 
-def _warnings(client, project_id: str) -> list[str]:
-    return [
-        warning["message"]
-        for warning in client.get(f"/api/skills/platform/projects/{project_id}/graph").json()["build_warnings"]
-    ]
-
-
-def test_a_deprecated_spelling_is_rewritten_saved_and_reported(client):
+def test_a_legacy_file_is_rewritten_on_the_way_in_and_builds(client):
+    """An import is a file entering the system, and a build refuses every
+    spelling the format moved past — so the repair happens there too, or
+    no project written before today could be imported at all."""
     project_id = _upload(client, LEGACY_YML)
-    assert _warnings(client, project_id) == [
-        "project.talk-enabled is deprecated — write 'services: {talk: required}' instead."
-    ]
+
+    assert "talk-enabled" not in _index_yml(client, project_id)
+    assert "talk: required" in _index_yml(client, project_id)
+    assert client.get(f"/api/skills/platform/projects/{project_id}/graph").status_code == 200
+
+
+def test_opening_a_project_that_is_already_current_reports_nothing(client):
+    project_id = _upload(client, LEGACY_YML)
 
     response = client.post(f"/api/skills/platform/projects/{project_id}/index-yml/modernize")
 
     assert response.status_code == 200, response.text
-    assert response.json()["fixed"] == ["project.talk-enabled → services: {talk: required}"]
-    assert "talk-enabled" not in _index_yml(client, project_id)
-    assert "talk: required" in _index_yml(client, project_id)
-    assert _warnings(client, project_id) == []
+    assert response.json()["fixed"] == []
 
 
 def test_opening_a_project_with_nothing_to_fix_changes_nothing(client, hello_project):
@@ -75,8 +73,6 @@ def test_opening_a_project_with_nothing_to_fix_changes_nothing(client, hello_pro
 
 def test_the_project_keeps_saying_what_it_said(client):
     project_id = _upload(client, LEGACY_YML)
-
-    client.post(f"/api/skills/platform/projects/{project_id}/index-yml/modernize")
 
     assert client.get(f"/api/skills/platform/projects/{project_id}/project").json()["project"]["services"] == {
         "talk": "required",

@@ -12,17 +12,20 @@ vi.mock('../src/api.js', () => ({
   deleteSession: vi.fn(),
 }))
 
-describe('the notification bus runs a pushed task script once, globally', () => {
+describe('the notification bus runs a pushed task script once, for the chat it is about', () => {
   let taskActions
   let busChannel
+  let chat
 
   beforeEach(async () => {
     vi.resetModules()
     vi.doMock('../src/busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => () => {}), onConnectionState: vi.fn(() => () => {}), send: vi.fn(() => true), connectionState: 'open' } }))
     taskActions = await import('../src/taskActions.js')
     ;({ busChannel } = await import('../src/busChannel.js'))
+    const { ref } = await import('vue')
+    chat = { currentSessionId: ref(7), currentProjectId: ref('proj') }
     const bus = await import('../src/notificationBus.js')
-    bus.watchPushedTasks()
+    bus.watchPushedTasks(chat)
   })
 
   afterEach(() => {
@@ -36,26 +39,42 @@ describe('the notification bus runs a pushed task script once, globally', () => 
     return call[1]
   }
 
-  it('runs the script of a frame carrying only "task" (an ActionTask that ran server-side)', async () => {
-    pushedFrame()({ project_name: undefined, state: undefined, 'task': "notify('Nice!', 'You reached **state B**.')" })
+  it('runs the script of a frame carrying only "task" (an ActionTask that ran server-side)', () => {
+    pushedFrame()({ session_id: 7, project_id: 'proj', task: "notify('Nice!', 'You reached **state B**.')" })
 
     expect(taskActions.runTaskScript).toHaveBeenCalledTimes(1)
     expect(taskActions.runTaskScript).toHaveBeenCalledWith("notify('Nice!', 'You reached **state B**.')")
   })
 
+  it('says nothing for a script about a conversation that is not the one on screen', () => {
+    pushedFrame()({ session_id: 8, project_id: 'proj', task: 'celebrate()' })
+
+    expect(taskActions.runTaskScript).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the project when the script belongs to no conversation (a deferred call)', () => {
+    const push = pushedFrame()
+
+    push({ project_id: 'other', task: 'celebrate()' })
+    expect(taskActions.runTaskScript).not.toHaveBeenCalled()
+
+    push({ project_id: 'proj', task: 'celebrate()' })
+    expect(taskActions.runTaskScript).toHaveBeenCalledWith('celebrate()')
+  })
+
   it('subscribes once however many times the boot asks for it', async () => {
     const bus = await import('../src/notificationBus.js')
-    bus.watchPushedTasks()
-    bus.watchPushedTasks()
+    bus.watchPushedTasks(chat)
+    bus.watchPushedTasks(chat)
 
-    pushedFrame()({ 'task': 'celebrate()' })
+    pushedFrame()({ session_id: 7, project_id: 'proj', task: 'celebrate()' })
 
     expect(busChannel.subscribe.mock.calls.filter(([type]) => type === 'ui.notification')).toHaveLength(1)
     expect(taskActions.runTaskScript).toHaveBeenCalledTimes(1)
   })
 
-  it('has nothing to say about a frame carrying no task', async () => {
-    pushedFrame()({ project_name: 'proj', state: { key: 'x' } })
+  it('has nothing to say about a frame carrying no task', () => {
+    pushedFrame()({ session_id: 7, project_id: 'proj', state: { key: 'x' } })
 
     expect(taskActions.runTaskScript).not.toHaveBeenCalled()
   })

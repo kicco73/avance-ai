@@ -11,7 +11,7 @@ from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from system import bus
 
 from system.bus import (
-    CLIENT_INJECTABLE, SESSION_EXIT, SESSION_TAKEN_OVER, UI_NOTIFICATION, UI_SYSTEM_WARNING,
+    CLIENT_INJECTABLE, SESSION_EXIT, SESSION_TAKEN_OVER, UI_NOTIFICATION,
     UI_PROGRESS, Message,
 )
 from auth.roles import role_satisfies
@@ -23,7 +23,7 @@ SUPERSEDED_CLOSE_CODE = 4410
 MAX_CONNECTIONS_PER_USER = 1
 MAX_CONNECTIONS_PER_ADMIN = 2
 HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
-WEB_FORWARDED = (UI_NOTIFICATION, SESSION_TAKEN_OVER, UI_SYSTEM_WARNING, UI_PROGRESS)
+WEB_FORWARDED = (UI_NOTIFICATION, SESSION_TAKEN_OVER, UI_PROGRESS)
 HUMAN_PROMPT = "human_prompt"
 _ENVELOPE = frozenset({"type", "session_id", "project_id"})
 CLIENT_REGISTRABLE = WEB_FORWARDED + (HUMAN_PROMPT,)
@@ -438,6 +438,8 @@ class BusChannel(object):
             frame = {"type": message.type, **(message.body or {})}
             for session_id in filter(None, [message.session_id]):
                 frame["session_id"] = session_id
+            for project_id in filter(None, [message.project_id]):
+                frame["project_id"] = project_id
             await self.push_event(username, message.type, frame)
 
     async def push_event(self, username: str, event_type: str, payload: dict) -> bool:

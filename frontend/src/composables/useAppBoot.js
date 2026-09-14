@@ -10,7 +10,7 @@ import { chatChannel, liveChatObservers, messageListeners, modelSelectors, state
 import { observeMessages } from '../messageNotifier.js'
 import { installModelSelector, modelSelector } from '../modelSelector.js'
 import { installChatChannel } from '../liveChatChannel.js'
-import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, observeLiveChat } from '../chatStore.js'
+import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, liveStore, observeLiveChat } from '../chatStore.js'
 import { watchPushedTasks } from '../notificationBus.js'
 
 export function useAppBoot(
@@ -42,7 +42,7 @@ export function useAppBoot(
       observeMessages(messageListeners.value)
       installModelSelector(modelSelectors.value)
       installChatChannel(chatChannel.value)
-      watchPushedTasks()
+      watchPushedTasks(liveStore)
       observeLiveChat(liveChatObservers.value)
       publishState(newState)
       return 'ready'

@@ -59,25 +59,25 @@ def test_a_manually_paused_project_blocks_chat_the_same_as_an_automatic_pause(cl
 
 
 @pytest.mark.regression
-def test_one_row_carries_the_same_badge_the_whole_listing_draws(client):
+def test_one_row_carries_the_same_badge_the_whole_listing_draws(client, app, app_db):
     """"Manage projects" replaces a single row with whatever pause/resume
-    answered, and draws its warning/broken badge off that row. A row
-    shape missing the two fields would silently erase the badge the
-    listing had just drawn, until someone reloaded the page."""
-    legacy = (
-        "project:\n  id: legacy_row\n  talk-enabled: true\n"
-        "init-action:\n  target: a\n"
-        "states:\n  a:\n    contextual-prompt: hi\n"
-    )
+    answered, and draws its badge off that row. A row shape missing
+    `broken` would silently erase the badge the listing had just drawn,
+    until someone reloaded the page."""
+    from conftest import rewrite_archive_content
+
     response = client.post(
-        "/api/skills/platform/projects/upload", content=legacy.encode(),
+        "/api/skills/platform/projects/upload",
+        content=b"project:\n  id: stale_row\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n",
         headers={"Content-Type": "application/x-yaml"},
     )
     assert response.status_code == 200, response.text
+    revision = app_db.get_project_published_revision("stale_row")
+    rewrite_archive_content("stale_row", "index.yml", revision, b"not: [valid, yaml: at all")
+    app.state.project_service.automaton_loader.invalidate_cache("stale_row")
 
     listed = _status(client)
-    paused = client.post("/api/skills/platform/projects/legacy_row/pause").json()
+    paused = client.post("/api/skills/platform/projects/stale_row/pause").json()
 
-    assert listed["build_warnings"]
-    assert paused["build_warnings"] == listed["build_warnings"]
+    assert listed["broken"]["published"]
     assert paused["broken"] == listed["broken"]

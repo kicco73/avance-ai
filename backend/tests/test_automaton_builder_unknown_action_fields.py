@@ -36,8 +36,6 @@ states:
     return AutomatonBuilder().build({"index.yml": content})
 
 
-def _warnings(action_yaml: str) -> list[dict]:
-    return _build(action_yaml).build_warnings
 
 
 def test_a_field_an_action_does_not_have_is_rejected_rather_than_ignored():
@@ -68,13 +66,11 @@ def test_a_field_the_format_renamed_is_refused_the_same_way():
 
 
 def test_every_field_an_action_really_has_passes_without_a_word():
-    warnings = _warnings(
+    assert _build(
         "        ui-label: Go\n"
         "        ui-button: Go\n"
         "        ui-description: goes\n"
         "        trigger: 'True'\n"
         "        task: |\n          task.prompt('x')\n"
         "        on-exit: |\n          chat.celebrate()\n"
-    )
-
-    assert warnings == []
+    ) is not None

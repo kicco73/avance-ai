@@ -15,11 +15,11 @@ automaton is.
 
 Everything the rest of the codebase already imports from this module —
 Action, State, Signal, Reaction, EnvKey, Source, MemoryArchive, every
-Payload type, JsSnippet, DeferredExpression, pressable_actions — is
+Payload type, JsSnippet, TaskOutcome, DeferredExpression, pressable_actions — is
 re-exported here unchanged, so no import anywhere had to move."""
 from __future__ import annotations
 
-from .core import CoreAutomaton, DeferredExpression, JsSnippet, _TaskEval
+from .core import CoreAutomaton, DeferredExpression, JsSnippet, TaskOutcome, _TaskEval
 from .introspection import IntrospectionMixin
 from .model import (
     Action,
@@ -44,7 +44,7 @@ __all__ = [
     "Action", "ActionPayload", "Automaton", "CompiledAutomaton", "CoreAutomaton", "DeferredExpression",
     "EnvKey", "EnvKeyPayload", "IntrospectionMixin", "JsSnippet", "MemoryArchive", "PayloadsMixin",
     "ProjectPayload", "Reaction", "ReactionOptionPayload", "Signal", "SignalPayload", "Source",
-    "SourceDict", "SourcePayload", "State", "StatePayload", "pressable_actions",
+    "SourceDict", "SourcePayload", "State", "StatePayload", "TaskOutcome", "pressable_actions",
 ]
 
 

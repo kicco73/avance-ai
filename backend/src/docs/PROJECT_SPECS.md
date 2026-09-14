@@ -382,17 +382,13 @@ actions:
 An action has no `attachments:` of its own — list attachments on the
 destination state's or the top-level `attachments:` instead (§6).
 
-Any other field is a build error (§8). Some of them were
-renamed rather than invented, so the build names the replacement instead
-and the file is rewritten to use it: `actuator` and then `on-enter`
-are both `task`; `action-prompt` is a `task.prompt(...)` call inside
-`task`; and the `actuator.*` namespace all three used to call split in
-two — `task.*` for what reaches a service, `chat.*` in `on-exit` for
-what reaches the conversation, which is also what decides which of the
-two fields each line ends up in. A line that called both at once
-(`actuator.notify(..., actuator.prompt(...))`) has no single spelling
-today: there is a choice to make, so that whole action is left as
-written and keeps its warning until a person makes it.
+Any other field is a build error (§8.1). Several of them were renamed
+rather than invented — `actuator` and then `on-enter` are both `task`,
+`action-prompt` is a `task.prompt(...)` call inside `task`, and the
+`actuator.*` namespace all three used to call split into `task.*` for
+what reaches a service and `chat.*` in `on-exit` for what reaches the
+conversation. A build knows none of that; what rewrites them before it
+ever sees the file is §8.2.
 
 **5.1 Manual vs. triggered.** Any action can be fired manually, by name —
 its trigger (if any) is never evaluated for a manual firing. Actions
@@ -788,10 +784,23 @@ hibernated in the database as a task due immediately and executed by a
 background worker — a `task.*` call is a model call or a network call,
 and neither belongs in a chat turn's own response time. Whatever the script tunnels reaches the
 browser over the websocket as a `ui.notification` frame, a moment after
-the turn's own response, never inside it; a script that fails to
-evaluate is logged and its task settles with nothing to push, exactly
-as the in-turn evaluation used to skip a failing line. `task.defer`
-(below) is the same task with a later due time.
+the turn's own response, never inside it. `task.defer` (below) is the
+same task with a later due time.
+
+**A statement that fails does not stop the ones after it.** Each is
+logged and skipped, the rest of the script runs, and whatever the
+successful ones tunnelled is pushed as usual — but the task itself ends
+up *failed*, listing every statement that raised (Settings › Manage
+services › Scheduler). What a failing statement leaves behind is what it
+always left behind: an assignment that raised leaves its name unset, so a
+later line reading it fails too.
+
+**A service that is only temporarily away is retried.** When a statement
+fails because whatever it called says "not now" rather than "no", the
+*whole script* is re-run from the top a little later — after 1s, then 2,
+4, 8, 16 — up to 5 attempts, after which it is a failure like any other.
+The script is re-run entire, so one written to be re-runnable is one that
+survives a provider being briefly down.
 
 `name` can't shadow a reserved namespace or a core metric name (§2) —
 rejected at build time. `name` is visible inside
@@ -919,63 +928,62 @@ of how you're likely to hit them:
 - Every `attachments:` entry (global/signal/state — actions have none) names a file actually present alongside `index.yml`.
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance:<path>`) its path names a file actually present alongside `index.yml`.
 - Every name in a state's own `input`/`output` (§4.3) names a key actually declared in `env:`, and that env key declares its own `ai-definition`.
-- Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements the method the field exposes (`select_rows_containing`/`update`), and no name appears in both read fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement.
+- Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements the method the field exposes (`select_rows_containing`/`update`), and no name appears in both read fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement — the one place a build does say what a name used to be, because there is nothing that can settle it on the author's behalf (§8.2).
 
 ### 8.1 A field nobody reads
 
 Every section takes the fields it reads and no others — `project`,
 `signals`, `reactions`, `env`, `sources`, `states`, an action,
 `init-action`, and the top level itself. A name outside its section's own
-set is a build error, not a silent omission: `chat: false` sat on 83
-states of one real installation, every one of them answering the user it
-was written to silence, and nothing said a word. Three verdicts, and
-`automaton/deprecations.py` is the list of which name earns which:
+set is a build error: `chat: false` sat on 83 states of one real
+installation, every one of them answering the user it was written to
+silence, and nothing said a word.
 
-| | |
-| --- | --- |
-| unrecognized | **error** — a typo until proven otherwise |
-| renamed, or removed with nothing left to say | **warning**, and the rewrite below settles it: `project.talk-enabled`, an action's `actuator`/`on-enter`/`action-prompt`, a state's `chat`, an env key's `ai-access`/`ui-label` |
-| removed, with no single replacement | **error** naming what to write instead: a state's `on-enter`, whose script belongs to the actions that reach the state — which of them should still do it is a decision, so nothing makes it for you |
+A build knows what it reads and nothing else. It does not know that
+`chat` used to be that field's name, or that `on-enter` was `task` — a
+spelling the format has moved past is refused exactly like a typo,
+because telling them apart is not a build's job. It is
+`automaton/deprecations.py`'s, and the only thing that reads it is the
+modernizer (§8.2), which settles what it can before a build ever sees the
+file.
 
-One pass reports all of them at once. A build that stopped at the first
-would cost a whole pass per mistake, and five bad fields would take five
-rounds of fixing and rebuilding; every problem the pass can be carried
-out in spite of is collected and raised together (`BuildCursor.reject`).
+One pass reports all of them at once, each with its own line. A build
+that stopped at the first would cost a whole pass per mistake, and five
+bad fields would take five rounds of fixing and rebuilding; every problem
+the pass can be carried out in spite of is collected and raised together
+(`BuildCursor.reject`), so the design view can list them as one set of
+places to go.
 
 ### 8.2 What is rewritten, and what is not
 
 A stored revision that fails this checklist because the format moved on
-underneath it (a removed field, a removed method) is never rewritten
-automatically — there is no migration for a breaking format change. The
-project is paused, flagged broken, and stays that way until a human
-corrects the `index.yml` by hand in the design view, whose banner shows
-the builder's own rejection message.
+underneath it is not left for a person when it does not have to be.
+`automaton/deprecations.py` is the list of spellings that still have an
+exact meaning today — `project.talk-enabled` is `services: {talk: …}`,
+an action's `actuator`/`on-enter` is its `task`, its `action-prompt` is a
+`task.prompt(...)` call in that `task`, a state's `chat` is
+`chat-enabled`, its `on-enter` is the `task` of every action that reaches
+it, an env key's `ai-access`/`ui-label` are gone with nothing in their
+place — and the modernizer rewrites them, in place, wherever an
+`index.yml` enters or is opened: on import, when the design view is
+opened (which says what it changed), and when a stored revision fails to
+build, so that what a product serves recovers without anyone visiting.
 
-A spelling that still *reads* is the opposite case. Where a field is
-deprecated but today's format states exactly what it meant — the whole of
-it, mechanically, with nothing left to choose — the build says so as a
-warning and changes nothing: `automaton/deprecations.py` is the list of
-which spellings those are, and each one carries both the warning and the
-rewrite that settles it.
+It runs in rounds until a round finds nothing, because one rewrite
+uncovers the next: a script moved off a state onto the actions that reach
+it arrives carrying calls in a namespace that has its own replacement.
+Two properties hold throughout. It rewrites the field **where the field
+is** — one written on an anchor that entries merge (`<<: *action`) is the
+anchor's, and rewriting the entry that merges it would leave the original
+to be merged in again. And what it writes is never something it still
+recognizes, so opening the same project twice reports a fix exactly once.
 
-Building a project never applies it. A build reads, reports and returns
-an automaton; it does not edit the file it was given, so a loader stays a
-read path and a revision nobody opens stays byte-for-byte what it was.
-The rewrite is made by whoever authors projects, when a person opens one
-— it applies every rewrite there is, saves the file, and tells them what
-it changed, which is the whole reason it is allowed to happen without
-being asked. Comments, key order and formatting survive it
-(`AutomatonYamlEditor`), and the automaton built either side of it is the
-same one. A build with no authoring surface has nobody to tell and
-nothing to open, so it just keeps reporting the warning.
-
-Two properties it has to keep, because a person opens the same project
-many times. It rewrites the field **where the field is**: one written on
-an anchor that entries merge (`<<: *action`) is the anchor's, and
-rewriting the entry that merges it would leave the original to be merged
-in again — the warning survives and the next open rewrites it again,
-appending. And what it writes is never something it still recognizes, so
-opening the same project twice reports a fix exactly once.
+What it will not do is choose. `actuator.notify(..., actuator.prompt(...))`
+was one call reaching both the conversation and a service, and today's
+format has no single line for that: the whole action is left as written,
+including its field name, since renaming it alone would move a refusal
+rather than remove one. The rest of the file is still repaired, and what
+is left is refused with everything else — a person decides it.
 
 ## 9. Worked examples
 

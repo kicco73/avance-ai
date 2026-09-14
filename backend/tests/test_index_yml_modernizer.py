@@ -70,17 +70,28 @@ def test_a_file_that_does_not_parse_is_left_to_the_builder():
     assert IndexYmlModernizer().modernize(unparseable).fixes == ()
 
 
-def test_a_build_refuses_it_and_the_stored_file_is_left_alone(db):
-    """A build has no memory of the format's own past: `talk-enabled` is
-    a field `project` does not have, and that is all it says. It also
-    never edits what it was given — the repair happens where a person is
-    (see test_controller_index_yml_modernize.py), not on a read path."""
+def test_a_stored_revision_nobody_opens_is_repaired_where_it_is(db):
+    """What a product serves is the published revision, and nobody opens
+    it. A build refuses a spelling the format moved past, so a revision
+    written before the format tightened would take its project out of
+    service until its author happened to visit — the loader asks the
+    modernizer once, and stores the answer at that same revision."""
     revision = _store(db, LEGACY_YML)
 
-    with pytest.raises(AutomatonBuildError, match="project.talk-enabled is not a field"):
+    automaton = AutomatonLoader(db).load_at_revision(PROJECT_ID, revision)
+
+    assert automaton.services.as_raw() == {"talk": "required"}
+    stored = db.get_archive(PROJECT_ID, "index.yml", revision=revision).decode("utf-8")
+    assert "talk-enabled" not in stored and "talk: required" in stored
+
+
+def test_a_revision_it_cannot_settle_is_refused_and_left_as_written(db):
+    revision = _store(db, LEGACY_YML.replace("talk-enabled: true", "whatever: true"))
+
+    with pytest.raises(AutomatonBuildError, match="project.whatever is not a field"):
         AutomatonLoader(db).load_at_revision(PROJECT_ID, revision)
 
-    assert db.get_archive(PROJECT_ID, "index.yml", revision=revision).decode("utf-8") == LEGACY_YML
+    assert "whatever: true" in db.get_archive(PROJECT_ID, "index.yml", revision=revision).decode("utf-8")
 
 
 LEGACY_SCRIPTS_YML = """\
@@ -136,7 +147,6 @@ def test_every_spelling_the_format_moved_past_is_settled_in_one_visit():
     automaton = _automaton_of(modernized.text)
     actions = {action.name: action for state in automaton.states.values() for action in state.actions}
 
-    assert automaton.build_warnings == []
     assert automaton.states["a"].chat_enabled is False
     assert [key.name for key in automaton.env_keys] == ["counter"]
     assert actions["go"].on_exit == "chat.celebrate()"

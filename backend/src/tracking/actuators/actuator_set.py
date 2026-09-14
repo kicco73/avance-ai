@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import copy
 import json
 from abc import ABC, abstractmethod
@@ -44,8 +45,9 @@ _T = TypeVar("_T")
 
 
 def _run_sync(coro: Coroutine[Any, Any, _T]) -> _T:
+    context = contextvars.copy_context()
     with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(asyncio.run, coro).result()
+        return executor.submit(context.run, asyncio.run, coro).result()
 
 
 class TaskNamespace(ABC):

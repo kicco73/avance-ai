@@ -17,6 +17,7 @@ top, and automaton.py for the composition itself."""
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -38,6 +39,13 @@ logger = LoggerFactory.get_logger(__name__)
 class JsSnippet(str):
     # FIXME: subclassing str, not a plain str, is load-bearing —
     pass
+
+
+@dataclass(frozen=True)
+class TaskOutcome:
+
+    snippets: str | None = None
+    failures: tuple[tuple[str, Exception], ...] = ()
 
 
 class DeferredExpression(object):
@@ -223,7 +231,7 @@ class CoreAutomaton(object):
         task.*'s own send_mail/whatsapp/defer/prompt remain task's job
         alone — on-exit may only write env and call chat.*. Returns
         (env_updates, joined_chat_snippets_or_None), the second element
-        exactly `render_task_script`'s own final line."""
+        exactly what `render_task_script` puts in its own `snippets`."""
         if not action.on_exit:
             return {}, None
         try:
@@ -264,7 +272,7 @@ class CoreAutomaton(object):
         return result, ("\n".join(snippets) if snippets else None)
 
     @classmethod
-    def render_task(cls, action: "Action", scope: EvaluationScope) -> str | None:
+    def render_task(cls, action: "Action", scope: EvaluationScope) -> TaskOutcome:
         """Evaluates `action.task` — the same namespaced-expression
         grammar as `trigger`/`env` (one `task.<name>(...)` call per
         top-level statement, e.g. `task.send_mail(user.email, "Hi!")`,
@@ -286,31 +294,28 @@ class CoreAutomaton(object):
         task.defer(...) lambda, which shares this same evaluator/
         scope — see DeferredExpression.scope and freeze()'s own "extra"
         capture, which already snapshots any such bare scalar). A
-        statement that fails to evaluate is logged and simply contributes
-        nothing (an assignment that fails leaves `name` unset, so a later
-        reference to it fails too, same way any other undefined name
-        would) — this only ever affects task as a whole (rather than
-        one statement of it) when it fails to parse at all, which
-        build-time validation already rules out for any project this ever
-        runs against."""
+        statement that fails to evaluate is logged, recorded in the
+        outcome's `failures` and contributes nothing else (an assignment
+        that fails leaves `name` unset, so a later reference to it fails
+        too, same way any other undefined name would) — the script as a
+        whole only fails when it does not parse, which build-time
+        validation already rules out for any project this ever runs
+        against."""
         if not action.task:
-            return None
+            return TaskOutcome()
         return cls.render_task_script(action.task, scope.for_task(action_name=action.name))
 
     @classmethod
-    def render_task_script(cls, script: str, task_scope: EvaluationScope) -> str | None:
+    def render_task_script(cls, script: str, task_scope: EvaluationScope) -> TaskOutcome:
         """render_task's own engine, on a bare script and an already
         task-view scope — also what an ActionTask runs, later and
         possibly in another process, against a rehydrated scope (see
         tracking/actuators/action_task.py): the same code path whether
         the task fires now or was deferred."""
         action_name = task_scope.action_name
-        try:
-            statements = TriggerExpressionAnalyzer.task_statements(script)
-        except SyntaxError as exc:
-            logger.warning("task parsing failed for action '%s': %s", action_name, exc)
-            return None
+        statements = TriggerExpressionAnalyzer.task_statements(script)
         snippets = []
+        failures: list[tuple[str, Exception]] = []
         for _line_number, statement in statements:
             assignment = TriggerExpressionAnalyzer.task_assignment(statement)
             target, expression = assignment if assignment is not None else (None, statement)
@@ -321,12 +326,13 @@ class CoreAutomaton(object):
                     "task expression evaluation failed for action '%s' ('%s'): %s",
                     action_name, statement, exc,
                 )
+                failures.append((statement, exc))
                 continue
             if target is not None:
                 task_scope[target] = result
             elif isinstance(result, JsSnippet):
                 snippets.append(result)
-        return "\n".join(snippets) if snippets else None
+        return TaskOutcome("\n".join(snippets) if snippets else None, tuple(failures))
 
     @classmethod
     def _evaluate_expression(cls, expression: str, scope: dict[str, Any]) -> Any:

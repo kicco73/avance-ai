@@ -39,6 +39,10 @@ class TaskNamespaceFactory:
         self._hydrator = ScopeHydrator(db, project_service, self, ai_service)
         scheduler_service.register_task_type(ActionTask.TYPE, self._hydrator.hydrate)
 
+    @property
+    def scheduler_service(self) -> SchedulerService:
+        return self._scheduler_service
+
     def get_human_operator(self, session_id: int) -> str | None:
         return self._human_operators.get(session_id)
 

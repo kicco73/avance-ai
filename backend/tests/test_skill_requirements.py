@@ -12,7 +12,6 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from automaton.index_yml_modernizer import IndexYmlModernizer
 from conftest import installed_skill
 from project.archive.automaton_loader import AutomatonLoader
 from project.archive.layout import ArchiveLayout
@@ -119,8 +118,9 @@ def test_calling_a_service_the_project_disabled_is_a_contradiction(db):
 
 def test_the_deprecated_talk_enabled_flag_is_a_spelling_the_modernizer_settles(db):
     """A build has no memory of it: `talk-enabled` is a field `project`
-    does not have, and the project does not build until the modernizer
-    has rewritten it as the service level it always meant."""
+    does not have. Loading the stored revision goes through the
+    modernizer, which rewrites it as the service level it always meant —
+    so what a caller gets back is the automaton, not a refusal."""
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     for project_id, flag, expected in (("l", "true", "required"), ("m", "false", "disabled")):
         legacy = INDEX.format(id=project_id, task="task.prompt('x')", services=f"\n  talk-enabled: {flag}")
@@ -129,7 +129,7 @@ def test_the_deprecated_talk_enabled_flag_is_a_spelling_the_modernizer_settles(d
         db.publish_project(project_id)
 
         with pytest.raises(ValueError, match="project.talk-enabled is not a field"):
-            project_service.get_automaton(project_id, db.get_project_revision(project_id))
+            AutomatonBuilder().build({"index.yml": legacy})
 
-        modernized = IndexYmlModernizer().modernize(legacy)
-        assert AutomatonBuilder().build({"index.yml": modernized.text}).services.as_raw() == {"talk": expected}
+        automaton = project_service.get_automaton(project_id, db.get_project_revision(project_id))
+        assert automaton.services.as_raw() == {"talk": expected}

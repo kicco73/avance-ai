@@ -18,12 +18,6 @@ def test_graph_excludes_the_reserved_implicit_state_from_nodes(client, hello_pro
     assert graph["nodes"][0]["is_start"] is True
 
 
-def test_graph_reports_no_build_warnings_for_a_clean_project(client, hello_project):
-    graph = client.get(f"/api/skills/platform/projects/{hello_project}/graph").json()
-
-    assert graph["build_warnings"] == []
-
-
 def test_graph_includes_an_edge_from_the_reserved_state_for_init_action(client, hello_project):
     """The init-action edge has no real source state, unlike edges
     between two real states."""
