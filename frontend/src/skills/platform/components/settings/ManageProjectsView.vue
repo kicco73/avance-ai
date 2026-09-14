@@ -318,20 +318,20 @@ onBeforeUnmount(() => {
 
       <div class="manage-projects-preview">
         <Transition name="manage-projects-detail">
-          <ProjectDetailPanel
-            v-if="selectedAppStoreApp"
-            :key="selectedAppStoreApp.id"
-            :app="selectedAppStoreApp"
-            :published-revision="selectedRow?.published_revision ?? null"
-            :revision="selectedRow?.revision ?? null"
-            @edit="selectEdit"
-            @label="selectLabelSessions"
-            @download="selectDownload"
-            @share="selectShare"
-            @delete="selectDelete"
-            @publish="selectPublish"
-            @open-skill-view="selectSkillView"
-          />
+          <div v-if="selectedAppStoreApp" :key="selectedAppStoreApp.id" class="manage-projects-detail">
+            <ProjectDetailPanel
+              :app="selectedAppStoreApp"
+              :published-revision="selectedRow?.published_revision ?? null"
+              :revision="selectedRow?.revision ?? null"
+              @edit="selectEdit"
+              @label="selectLabelSessions"
+              @download="selectDownload"
+              @share="selectShare"
+              @delete="selectDelete"
+              @publish="selectPublish"
+              @open-skill-view="selectSkillView"
+            />
+          </div>
           <p v-else-if="selectedProjectId" key="unpublished" class="manage-projects-status">This project hasn't been published yet — no preview available.</p>
           <p v-else key="nothing-selected" class="manage-projects-status">Select a project to see its details.</p>
         </Transition>
@@ -491,6 +491,14 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
   overflow-y: auto;
   padding: 20px 0 var(--safe-area-bottom);
+}
+
+.manage-projects-detail {
+  flex: 1 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .manage-projects-detail-enter-active,
