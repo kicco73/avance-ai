@@ -13072,9 +13072,9 @@
     "first_run": "2026-09-14T16:45:55+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:47:09+00:00",
-    "runs": 6,
-    "seconds": 5.443,
+    "last_run": "2026-09-14T16:49:50+00:00",
+    "runs": 9,
+    "seconds": 7.022,
     "skips": 0
   },
   "tests/test_final_state_closes_session.py::test_a_self_loop_that_always_fires_keeps_a_one_state_conversation_open": {
@@ -13082,20 +13082,20 @@
     "first_run": "2026-09-14T16:34:07+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:47:09+00:00",
+    "last_run": "2026-09-14T16:49:50+00:00",
     "last_seconds": 0.824,
-    "runs": 7,
-    "seconds": 4.922,
+    "runs": 10,
+    "seconds": 6.682,
     "skips": 0
   },
   "tests/test_final_state_closes_session.py::test_a_trigger_that_lands_in_a_final_state_closes_the_session_after_the_reply[tracked-on-ai-message]": {
-    "failures": 3,
+    "failures": 6,
     "first_run": "2026-09-14T16:41:54+00:00",
-    "last_failed": "2026-09-14T16:47:09+00:00",
+    "last_failed": "2026-09-14T16:49:50+00:00",
     "last_outcome": "failed",
-    "last_run": "2026-09-14T16:47:09+00:00",
-    "runs": 3,
-    "seconds": 2.214,
+    "last_run": "2026-09-14T16:49:50+00:00",
+    "runs": 6,
+    "seconds": 4.432,
     "skips": 0
   },
   "tests/test_final_state_closes_session.py::test_a_trigger_that_lands_in_a_final_state_closes_the_session_after_the_reply[tracked-on-user-message]": {
@@ -13103,9 +13103,9 @@
     "first_run": "2026-09-14T16:41:54+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:47:09+00:00",
-    "runs": 3,
-    "seconds": 1.843,
+    "last_run": "2026-09-14T16:49:50+00:00",
+    "runs": 6,
+    "seconds": 3.696,
     "skips": 0
   },
   "tests/test_final_state_closes_session.py::test_a_turn_that_ends_in_a_final_state_closes_the_session_after_everything_it_said": {
@@ -13113,10 +13113,10 @@
     "first_run": "2026-09-14T16:14:39+00:00",
     "last_failed": "2026-09-14T16:14:39+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:47:09+00:00",
+    "last_run": "2026-09-14T16:49:50+00:00",
     "last_seconds": 0.654,
-    "runs": 12,
-    "seconds": 72.208,
+    "runs": 15,
+    "seconds": 76.203,
     "skips": 0
   },
   "tests/test_final_state_closes_session.py::test_a_turn_that_ends_in_a_state_with_a_way_out_leaves_the_session_open": {
@@ -13124,10 +13124,10 @@
     "first_run": "2026-09-14T16:15:12+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:47:09+00:00",
+    "last_run": "2026-09-14T16:49:50+00:00",
     "last_seconds": 0.579,
-    "runs": 11,
-    "seconds": 6.841,
+    "runs": 14,
+    "seconds": 9.047,
     "skips": 0
   },
   "tests/test_final_state_closes_session.py::test_the_new_project_template_is_a_conversation_that_stays_open": {
@@ -13135,10 +13135,10 @@
     "first_run": "2026-09-14T16:34:07+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:47:09+00:00",
+    "last_run": "2026-09-14T16:49:50+00:00",
     "last_seconds": 0.506,
-    "runs": 7,
-    "seconds": 4.618,
+    "runs": 10,
+    "seconds": 6.825,
     "skips": 0
   },
   "tests/test_frontend_calls_real_routes.py::test_every_call_written_in_the_frontend_was_read": {

@@ -105,19 +105,38 @@ def test_a_turn_that_ends_in_a_final_state_closes_the_session_after_everything_i
     assert chat_turn_error(client, session_id)["code"] == "session_closed"
 
 
-@pytest.mark.parametrize("on_ai_message", [False, True], ids=["tracked-on-user-message", "tracked-on-ai-message"])
-def test_a_trigger_that_lands_in_a_final_state_closes_the_session_after_the_reply(client, app_db, on_ai_message):
-    project_id = _published(client, _tracked_into_end(on_ai_message))
+def _closed_after_its_last_word(app_db, session_id: int, frames: list[dict]) -> None:
+    kinds = [frame["type"] for frame in frames]
+    assert kinds[-1] == "session.ended" and frames[-1]["reason"] == "final-state"
+    assert kinds.index("state.changed") < kinds.index("session.ended")
+    assert len(kinds) - 1 - kinds[::-1].index("output.text") < kinds.index("session.ended")
+    assert next(f for f in frames if f["type"] == "state.changed")["new_state"] == "end"
+    assert app_db.get_chat_session(session_id)["close_reason"] == "final-state"
+
+
+def test_a_trigger_evaluated_on_the_persons_message_closes_the_session_after_the_reply(client, app_db):
+    project_id = _published(client, _tracked_into_end(on_ai_message=False))
 
     session_id, frames = _exchange(
         client, project_id, {"type": "input.text", "text": "hi"}, "session.ended", "output.error",
     )
-    kinds = [frame["type"] for frame in frames]
 
-    assert kinds[-1] == "session.ended" and frames[-1]["reason"] == "final-state"
-    assert kinds.index("output.text") < kinds.index("session.ended")
-    assert next(f for f in frames if f["type"] == "state.changed")["new_state"] == "end"
-    assert app_db.get_chat_session(session_id)["close_reason"] == "final-state"
+    _closed_after_its_last_word(app_db, session_id, frames)
+    assert chat_turn_error(client, session_id)["code"] == "session_closed"
+
+
+def test_a_trigger_evaluated_on_the_ai_message_fires_on_the_greeting_itself_and_closes_after_it(client, app_db):
+    project_id = _published(client, _tracked_into_end(on_ai_message=True))
+
+    frames: list[dict] = []
+    with _frame_deadline(turn_frame_seconds(), frames):
+        with chat_socket(client) as ws:
+            ws.send_json({"type": "session.enter", "project_id": project_id, "session_type": "live"})
+            while frames[-1:] == [] or frames[-1]["type"] not in ("session.ended", "output.error"):
+                frames.append(ws.receive_json())
+    session_id = session_of(frames)
+
+    _closed_after_its_last_word(app_db, session_id, frames)
     assert chat_turn_error(client, session_id)["code"] == "session_closed"
 
 
