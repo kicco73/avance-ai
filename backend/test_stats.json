@@ -3205,10 +3205,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.002,
-    "runs": 10,
-    "seconds": 0.014,
+    "runs": 11,
+    "seconds": 0.015,
     "skips": 0
   },
   "src/build/tests/test_build_compiled_switch.py::test_absent_or_off_means_the_interpreted_loader": {
@@ -3216,10 +3216,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.002,
-    "runs": 10,
-    "seconds": 0.015,
+    "runs": 11,
+    "seconds": 0.017,
     "skips": 0
   },
   "src/build/tests/test_build_compiled_switch.py::test_on_means_the_compiled_loader": {
@@ -3227,10 +3227,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.001,
-    "runs": 10,
-    "seconds": 0.012,
+    "runs": 11,
+    "seconds": 0.013,
     "skips": 0
   },
   "src/build/tests/test_build_service_apps_dir.py::test_a_build_leaves_exactly_one_package_where_the_loader_looks": {
@@ -3238,10 +3238,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.044,
-    "runs": 10,
-    "seconds": 0.49,
+    "runs": 11,
+    "seconds": 0.534,
     "skips": 0
   },
   "src/build/tests/test_build_service_apps_dir.py::test_a_failed_build_leaves_nothing_the_loader_could_pick_up": {
@@ -3249,10 +3249,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.029,
-    "runs": 10,
-    "seconds": 0.388,
+    "runs": 11,
+    "seconds": 0.415,
     "skips": 0
   },
   "src/build/tests/test_build_service_apps_dir.py::test_a_package_that_does_not_import_is_never_published": {
@@ -3260,10 +3260,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.029,
-    "runs": 10,
-    "seconds": 0.369,
+    "runs": 11,
+    "seconds": 0.396,
     "skips": 0
   },
   "src/build/tests/test_build_service_apps_dir.py::test_a_project_with_unpublished_changes_cannot_be_built": {
@@ -3271,10 +3271,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.029,
-    "runs": 10,
-    "seconds": 0.393,
+    "runs": 11,
+    "seconds": 0.42,
     "skips": 0
   },
   "src/build/tests/test_build_service_apps_dir.py::test_building_again_at_a_new_revision_replaces_the_old_package": {
@@ -3282,10 +3282,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.052,
-    "runs": 10,
-    "seconds": 0.678,
+    "runs": 11,
+    "seconds": 0.728,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_backend_without_listen_talk_or_whatsapp_starts_for_real": {
@@ -3293,10 +3293,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.003,
-    "runs": 10,
-    "seconds": 0.02,
+    "runs": 11,
+    "seconds": 0.021,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_build_whose_own_tests_fail_is_a_failed_build": {
@@ -3304,10 +3304,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.008,
-    "runs": 11,
-    "seconds": 0.048,
+    "runs": 12,
+    "seconds": 0.05,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_built_backend_copy_is_a_whole_backend_around_one_project": {
@@ -3315,10 +3315,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 1.303,
-    "runs": 9,
-    "seconds": 22.978,
+    "runs": 10,
+    "seconds": 24.543,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_full_backend_copy_starts_for_real_and_not_as_the_fallback_app": {
@@ -3326,10 +3326,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 12.778,
-    "runs": 10,
-    "seconds": 147.815,
+    "runs": 11,
+    "seconds": 154.3,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_product_copy_starts_with_no_platform_no_chat_and_no_benchmark": {
@@ -3337,10 +3337,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.009,
-    "runs": 10,
-    "seconds": 0.025,
+    "runs": 11,
+    "seconds": 0.026,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_project_that_cannot_be_built_is_refused_before_any_job_exists": {
@@ -3348,10 +3348,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.636,
-    "runs": 11,
-    "seconds": 9.728,
+    "runs": 12,
+    "seconds": 9.995,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_project_with_unpublished_changes_cannot_be_built": {
@@ -3359,10 +3359,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.03,
-    "runs": 11,
-    "seconds": 0.502,
+    "runs": 12,
+    "seconds": 0.527,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_rebuild_leaves_no_previous_build_of_the_same_project_behind": {
@@ -3370,10 +3370,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 1.684,
-    "runs": 12,
-    "seconds": 17.995,
+    "runs": 13,
+    "seconds": 18.933,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_skill_left_out_of_a_build_is_a_directory_that_is_not_copied": {
@@ -3381,10 +3381,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.005,
-    "runs": 12,
-    "seconds": 0.033,
+    "runs": 13,
+    "seconds": 0.035,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_a_skill_left_out_takes_its_own_tests_with_it": {
@@ -3392,10 +3392,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 1.064,
-    "runs": 10,
-    "seconds": 17.198,
+    "runs": 11,
+    "seconds": 18.089,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_building_the_same_revision_twice_replaces_it": {
@@ -3403,10 +3403,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 3.257,
-    "runs": 10,
-    "seconds": 34.783,
+    "runs": 11,
+    "seconds": 36.979,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_every_installed_skill_starts_with_the_configuration_and_nothing_else": {
@@ -3414,10 +3414,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.018,
-    "runs": 12,
-    "seconds": 0.127,
+    "runs": 13,
+    "seconds": 0.133,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_pruning_a_database_with_only_the_kept_project_is_a_no_op": {
@@ -3425,10 +3425,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.035,
-    "runs": 11,
-    "seconds": 0.536,
+    "runs": 12,
+    "seconds": 0.568,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_pruning_drops_every_other_project_and_what_belongs_to_it": {
@@ -3436,10 +3436,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.046,
-    "runs": 11,
-    "seconds": 0.769,
+    "runs": 12,
+    "seconds": 0.811,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_the_composition_root_names_no_controller_a_build_could_leave_out": {
@@ -3447,10 +3447,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.009,
-    "runs": 12,
-    "seconds": 0.054,
+    "runs": 13,
+    "seconds": 0.056,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_the_installed_skills_are_read_off_the_source_tree": {
@@ -3458,10 +3458,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.009,
-    "runs": 12,
-    "seconds": 0.456,
+    "runs": 13,
+    "seconds": 0.461,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_the_last_step_of_a_build_is_running_the_built_backends_own_tests": {
@@ -3469,10 +3469,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.004,
-    "runs": 11,
-    "seconds": 0.018,
+    "runs": 12,
+    "seconds": 0.019,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_the_route_streams_the_build_instead_of_waiting_for_it": {
@@ -3480,10 +3480,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 1.55,
-    "runs": 11,
-    "seconds": 8.591,
+    "runs": 12,
+    "seconds": 9.159,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_the_test_step_runs_pytest_inside_the_build_and_never_recursively": {
@@ -3491,10 +3491,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.006,
-    "runs": 11,
-    "seconds": 0.053,
+    "runs": 12,
+    "seconds": 0.055,
     "skips": 0
   },
   "src/build/tests/test_build_service_backend_copy.py::test_webchat_is_offered_as_something_a_build_can_leave_out": {
@@ -3502,10 +3502,10 @@
     "first_run": "2026-09-13T21:45:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.011,
-    "runs": 12,
-    "seconds": 0.14,
+    "runs": 13,
+    "seconds": 0.144,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_a_compiled_state_keeps_its_ai_memory_strategy": {
@@ -3513,10 +3513,10 @@
     "first_run": "2026-09-14T16:22:37+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.055,
-    "runs": 4,
-    "seconds": 0.236,
+    "runs": 5,
+    "seconds": 0.277,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_a_compiled_state_keeps_its_signal_tracking_strategy_and_tracks_the_same_signals": {
@@ -3524,10 +3524,10 @@
     "first_run": "2026-09-14T13:50:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.07,
-    "runs": 7,
-    "seconds": 0.429,
+    "runs": 8,
+    "seconds": 0.475,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_a_package_compiled_from_another_revision_is_refused_and_the_project_still_loads": {
@@ -3535,10 +3535,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.071,
-    "runs": 15,
-    "seconds": 0.929,
+    "runs": 16,
+    "seconds": 0.958,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_a_package_that_does_not_import_degrades_rather_than_breaking_the_project": {
@@ -3546,10 +3546,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.056,
-    "runs": 15,
-    "seconds": 0.8,
+    "runs": 16,
+    "seconds": 0.826,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_a_revision_that_is_not_the_published_one_is_never_served_compiled": {
@@ -3557,10 +3557,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.069,
-    "runs": 15,
-    "seconds": 1.115,
+    "runs": 16,
+    "seconds": 1.151,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_everything_other_than_load_at_revision_is_the_ordinary_loader": {
@@ -3568,10 +3568,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.022,
-    "runs": 15,
-    "seconds": 0.402,
+    "runs": 16,
+    "seconds": 0.42,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_the_published_revision_is_served_from_the_package_when_one_matches": {
@@ -3579,10 +3579,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.061,
-    "runs": 15,
-    "seconds": 0.947,
+    "runs": 16,
+    "seconds": 0.98,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_the_second_load_comes_from_the_cache_rather_than_a_second_import": {
@@ -3590,10 +3590,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.063,
-    "runs": 15,
-    "seconds": 0.88,
+    "runs": 16,
+    "seconds": 0.913,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_two_revisions_of_one_project_can_be_imported_at_once_without_serving_each_other": {
@@ -3601,10 +3601,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.075,
-    "runs": 15,
-    "seconds": 1.389,
+    "runs": 16,
+    "seconds": 1.431,
     "skips": 0
   },
   "src/build/tests/test_compiled_automaton_loader.py::test_without_a_package_the_ordinary_loader_answers": {
@@ -3612,10 +3612,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.051,
-    "runs": 15,
-    "seconds": 0.894,
+    "runs": 16,
+    "seconds": 0.922,
     "skips": 0
   },
   "src/build/tests/test_compiled_product_end_to_end.py::test_a_project_serves_interpreted_until_it_is_built_and_compiled_after": {
@@ -3623,10 +3623,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 1.055,
-    "runs": 11,
-    "seconds": 10.632,
+    "runs": 12,
+    "seconds": 11.291,
     "skips": 0
   },
   "src/build/tests/test_compiled_product_end_to_end.py::test_a_project_with_unpublished_changes_cannot_be_built_through_the_panel": {
@@ -3634,10 +3634,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.707,
-    "runs": 11,
-    "seconds": 7.164,
+    "runs": 12,
+    "seconds": 7.468,
     "skips": 0
   },
   "src/build/tests/test_compiled_product_end_to_end.py::test_editing_the_project_again_takes_it_back_to_the_interpreted_automaton": {
@@ -3645,10 +3645,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.597,
-    "runs": 11,
-    "seconds": 5.739,
+    "runs": 12,
+    "seconds": 6.059,
     "skips": 0
   },
   "src/build/tests/test_compiled_product_end_to_end.py::test_the_app_store_listing_reports_whether_the_project_is_served_compiled": {
@@ -3656,10 +3656,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.764,
-    "runs": 11,
-    "seconds": 6.692,
+    "runs": 12,
+    "seconds": 7.089,
     "skips": 0
   },
   "src/build/tests/test_compiled_product_end_to_end.py::test_the_design_view_reads_a_compiled_project_like_any_other": {
@@ -3667,10 +3667,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.738,
-    "runs": 11,
-    "seconds": 6.536,
+    "runs": 12,
+    "seconds": 6.864,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_a_clean_copy_delivers_the_source_of_what_is_left": {
@@ -3678,10 +3678,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.023,
-    "runs": 10,
-    "seconds": 0.177,
+    "runs": 11,
+    "seconds": 0.188,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_a_delivered_source_still_naming_a_dropped_skill_fails_the_build": {
@@ -3689,10 +3689,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.021,
-    "runs": 10,
-    "seconds": 0.257,
+    "runs": 11,
+    "seconds": 0.269,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_a_package_with_no_frontend_directory_is_still_a_name_the_core_may_not_use": {
@@ -3700,10 +3700,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.015,
-    "runs": 10,
-    "seconds": 0.193,
+    "runs": 11,
+    "seconds": 0.205,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_a_package_with_no_frontend_of_its_own_drops_nothing": {
@@ -3711,10 +3711,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.017,
-    "runs": 10,
-    "seconds": 0.23,
+    "runs": 11,
+    "seconds": 0.241,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_an_excluded_package_takes_its_frontend_directory_with_it": {
@@ -3722,10 +3722,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.017,
-    "runs": 10,
-    "seconds": 0.164,
+    "runs": 11,
+    "seconds": 0.175,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_copy_leaves_out_what_a_frontend_never_needs": {
@@ -3733,10 +3733,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.023,
-    "runs": 10,
-    "seconds": 0.171,
+    "runs": 11,
+    "seconds": 0.182,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_directory_is_named_by_key_where_the_package_is_named_otherwise": {
@@ -3744,10 +3744,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.014,
-    "runs": 10,
-    "seconds": 0.255,
+    "runs": 11,
+    "seconds": 0.267,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_real_frontend_delivered_without_one_skill_keeps_every_other[build]": {
@@ -3755,10 +3755,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.44,
-    "runs": 11,
-    "seconds": 4.614,
+    "runs": 12,
+    "seconds": 4.818,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_real_frontend_delivered_without_one_skill_keeps_every_other[event]": {
@@ -3766,10 +3766,10 @@
     "first_run": "2026-09-14T06:03:39+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.432,
-    "runs": 9,
-    "seconds": 2.281,
+    "runs": 10,
+    "seconds": 2.681,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_real_frontend_delivered_without_one_skill_keeps_every_other[listen]": {
@@ -3777,10 +3777,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.45,
-    "runs": 11,
-    "seconds": 4.205,
+    "runs": 12,
+    "seconds": 4.418,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_real_frontend_delivered_without_one_skill_keeps_every_other[platform]": {
@@ -3788,10 +3788,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": "2026-09-14T09:35:16+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.537,
-    "runs": 11,
-    "seconds": 4.046,
+    "runs": 12,
+    "seconds": 4.251,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_real_frontend_delivered_without_one_skill_keeps_every_other[talk]": {
@@ -3799,10 +3799,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.357,
-    "runs": 11,
-    "seconds": 4.006,
+    "runs": 12,
+    "seconds": 4.208,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_real_frontend_delivered_without_one_skill_keeps_every_other[testing]": {
@@ -3810,10 +3810,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.454,
-    "runs": 11,
-    "seconds": 3.876,
+    "runs": 12,
+    "seconds": 4.084,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_real_frontend_delivered_without_one_skill_keeps_every_other[webchat]": {
@@ -3821,10 +3821,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.345,
-    "runs": 11,
-    "seconds": 3.734,
+    "runs": 12,
+    "seconds": 3.947,
     "skips": 0
   },
   "src/build/tests/test_frontend_copy.py::test_the_real_frontend_delivered_without_one_skill_keeps_every_other[whatsapp]": {
@@ -3832,10 +3832,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.466,
-    "runs": 11,
-    "seconds": 4.242,
+    "runs": 12,
+    "seconds": 4.454,
     "skips": 0
   },
   "src/build/tests/test_requirements_pruning.py::test_a_build_that_leaves_nothing_out_writes_the_file_unchanged": {
@@ -3843,10 +3843,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.011,
-    "runs": 10,
-    "seconds": 0.098,
+    "runs": 11,
+    "seconds": 0.103,
     "skips": 0
   },
   "src/build/tests/test_requirements_pruning.py::test_a_build_without_a_skill_writes_a_requirements_file_without_its_line": {
@@ -3854,10 +3854,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T16:56:14+00:00",
+    "last_run": "2026-09-14T18:07:05+00:00",
     "last_seconds": 0.014,
-    "runs": 10,
-    "seconds": 0.205,
+    "runs": 11,
+    "seconds": 0.209,
     "skips": 0
   },
   "src/docs/tests/test_controller_docs.py::test_a_document_carries_the_section_of_every_installed_skill_that_serves_that_slug": {

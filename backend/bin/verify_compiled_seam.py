@@ -49,7 +49,7 @@ for project in sorted(Path("samples/projects").iterdir()):
     sys.path.insert(0, str(out))
     for stale in [m for m in sys.modules if m.startswith("seamcheck")]: del sys.modules[stale]
     compiled = importlib.import_module("seamcheck").AUTOMATON
-    expressions, statements = C._collect_sources(interpreted)
+    expressions, statements = C.Compiler(interpreted)._collect_sources()
     bad = 0
     for label, scope in scopes_for(interpreted):
         for expr in expressions:
