@@ -16,7 +16,7 @@ matching the filter returns "" — not even the header — so
 `value(*values, key=...)`: the `key` cell of the first matching row, as a scalar string, for
 scripts/triggers that want one value rather than a table to parse —
 never a model tool. A whole-file read is
-`attachment.read(name)`'s job (task only, see
+`attachment.read(name)`'s job (on-exit/task only, see
 tracking.actuators.attachment_namespace) — SourceDriver itself has no
 such method at all: every method here must return a bounded result, and
 a whole file is exactly what bounding a result doesn't make sense for.

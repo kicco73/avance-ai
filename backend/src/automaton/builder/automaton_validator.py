@@ -77,7 +77,7 @@ class AutomatonValidator:
         if unknown:
             message = f"{context} references undefined name(s): {', '.join(sorted(unknown))}"
             if read_on_a_source:
-                message += " — a whole-file read is attachment.read(name)'s job (task only), not source.*."
+                message += " — a whole-file read is attachment.read(name)'s job (on-exit/task only), not source.*."
             raise ValueError(message)
         cls.validate_expression_types(expression, context)
 
@@ -161,7 +161,7 @@ class AutomatonValidator:
     @classmethod
     def validate_on_exit(
         cls, on_exit: str | None, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
-        env_keys: dict[str, EnvKey],
+        env_keys: dict[str, EnvKey], archives: ProjectArchives,
     ) -> None:
         """`on-exit` shares task's own statement splitting
         (TriggerExpressionAnalyzer.task_statements — same multi-line-
@@ -175,7 +175,7 @@ class AutomatonValidator:
         bare_namespace_call) — on-exit's own side effect, arity-checked
         the same way task's own namespaced calls are (see
         validate_chat_arity). `registry` here is expected to be the
-        for_on_exit() view: `chat` visible, `task`/`attachment` excluded
+        for_on_exit() view: `chat` visible, `task` excluded
         — on-exit can't call task.*'s own send_mail/whatsapp/defer/prompt,
         that's task's own job."""
         if not on_exit:
@@ -195,6 +195,7 @@ class AutomatonValidator:
                         "'env' section — declare it there first."
                     )
                 cls.validate_namespaced_expression(expression, line_context, registry, sources)
+                cls.validate_attachment_read(expression, line_context, archives)
                 cls.validate_env_key_type(env_keys[env_key], expression, line_context)
                 continue
             if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") is None:
@@ -203,6 +204,7 @@ class AutomatonValidator:
                     "or a bare 'chat.<method>(...)' call."
                 )
             cls.validate_namespaced_expression(statement, line_context, registry, sources)
+            cls.validate_attachment_read(statement, line_context, archives)
             cls.validate_chat_arity(statement, line_context)
 
     @staticmethod
@@ -257,7 +259,7 @@ class AutomatonValidator:
             if action.task:
                 self.validate_task(action.task, action_context, registry_for_task, sources, archives)
             if action.on_exit:
-                self.validate_on_exit(action.on_exit, action_context, registry_for_on_exit, sources, env_keys)
+                self.validate_on_exit(action.on_exit, action_context, registry_for_on_exit, sources, env_keys, archives)
 
     def validate_state_io(self, state: State, env_keys: dict[str, EnvKey]) -> None:
         for field_name, names in (("input", state.input), ("output", state.output)):

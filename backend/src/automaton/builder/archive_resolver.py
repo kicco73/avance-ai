@@ -69,9 +69,9 @@ class ProjectArchives:
 
     def text(self, path: str) -> str | None:
         """The file's text, or None if it isn't a text file — the same
-        text/plain rule the run-time reader applies, decided from the
+        text/* rule the run-time reader applies, decided from the
         extension in exactly one place (automaton.media_types)."""
-        if self.media_type(path) != "text/plain":
+        if not self.media_type(path).startswith("text/"):
             return None
         content = self._contents.get(path)
         if isinstance(content, (bytes, bytearray)):

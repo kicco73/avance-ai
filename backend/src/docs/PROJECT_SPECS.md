@@ -535,7 +535,7 @@ now" — not the `attachments:` mechanism, nothing is eagerly loaded).
 Assumes a normalized CSV (header + one row per record; the separator is
 detected). Implements every `select_rows_*` read and `value` — never
 `update`, read-only. A
-whole-file read is `attachment.read(name)`'s job (task only), not a
+whole-file read is `attachment.read(name)`'s job (`on-exit`/`task` only), not a
 `source.*` capability.
 
 **`websearch:user` — the last web search this user ran.** The same reads
@@ -724,7 +724,10 @@ span several lines, and a `#` comment just works). Each line is
 Unlike `task` (§5.4), a line here may only be one of those two shapes
 — no bare local variables, and no `task.<name>(...)` calls: `task:`'s
 own `task.<name>(...)` calls stay off-limits, that remains `task`'s own
-job:
+job. `attachment.read(name)` (§5.2, data sources) is available in either shape, under
+the same build-time checks — a string-literal name, an existing text
+file, under the size limit — so an action can store a file in an env
+key or show one, e.g. `chat.show(attachment.read('rules.md'))`:
 
 ```yaml
     actions:

@@ -8,6 +8,9 @@ on either.
 """
 from __future__ import annotations
 
+import io
+import zipfile
+
 import pytest
 
 from conftest import chat_action, chat_action_frames, enter_chat, parse_sse_result, session_of
@@ -87,3 +90,49 @@ def test_get_state_has_no_task_since_nothing_just_fired(client):
 
     assert resp.status_code == 200
     assert "task" not in resp.json()
+
+
+NOTES_YML = (
+    "project:\n  id: proj\n"
+    "init-action:\n  target: a\n"
+    "states:\n"
+    "  a:\n"
+    "    contextual-prompt: hi\n"
+    "    actions:\n"
+    "      - name: show-notes\n"
+    "        target: a\n"
+    "        on-exit: chat.show(attachment.read('notes.md'))\n"
+)
+
+
+def _zip_of(files: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return buffer.getvalue()
+
+
+def test_on_exit_reads_an_attachment_and_shows_it(client, app_db):
+    archive = _zip_of({"index.yml": NOTES_YML, "behaviour/notes.md": "# Notes\n\nhello notes"})
+    resp = client.post("/api/skills/platform/projects/upload", content=archive, headers={"Content-Type": "application/zip"})
+    assert resp.status_code == 200, resp.text
+    project_id = parse_sse_result(resp)["project_id"]
+    assert client.post(f"/api/core/projects/{project_id}/activate").status_code == 200
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
+    assert resp.status_code == 200, resp.text
+    session_id = session_of(enter_chat(client, project_id))
+
+    frames = chat_action_frames(client, session_id, "show-notes")
+
+    assert [frame for frame in frames if frame["type"] == "ui.notification"] == [
+        {"type": "ui.notification", "task": 'show("# Notes\\n\\nhello notes")'},
+    ]
+    assert app_db.list_tasks() == []
+
+
+def test_on_exit_attachment_read_of_a_missing_file_is_refused_at_build_time():
+    from automaton.automaton_builder import AutomatonBuilder
+
+    with pytest.raises(ValueError, match="attachment named 'notes.md' not found"):
+        AutomatonBuilder().build({"index.yml": NOTES_YML})

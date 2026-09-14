@@ -62,11 +62,7 @@ class EvaluationScopeBuilder(object):
         evaluated the same turn a state produces output already sees the
         new value, ahead of TrackingProcessor.process's own persisted
         copy-back. env/session/user/source/attachment/metric are cheap,
-        lazy proxies included unconditionally
-        (attachment.read is only ever reachable from task — see
-        IdentifierRegistry.TRIGGER_SCOPE_EXCLUDES — but nothing stops it
-        being present for trigger/env too, the same as `task`/`chat`
-        already are); only the bare core-metric names are gated, since
+        lazy proxies included unconditionally; only the bare core-metric names are gated, since
         building them is eager. `source`/`attachment` are rebuilt fresh every call
         (unlike env/session/user, never threaded through __init__) since
         they need `automaton` itself — a `build()` parameter, not a

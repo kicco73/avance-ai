@@ -44,7 +44,7 @@ class IdentifierRegistry:
     }
 
     ATTACHMENT: dict[str, str] = {
-        "read": "Returns one of this project's own archive files' whole text content — e.g. attachment.read('policy.txt'). Task only. `name` must be a string literal (exact archive path, or a unique basename under behaviour/); the file must exist, be text, and be under the size limit — all checked when the project is built, not when this runs.",
+        "read": "Returns one of this project's own archive files' whole text content — e.g. attachment.read('policy.txt'). Reachable from an action's on-exit and task scripts, never from a trigger. `name` must be a string literal (exact archive path, or a unique basename under behaviour/); the file must exist, be text, and be under the size limit — all checked when the project is built, not when this runs.",
     }
 
     DATETIME: dict[str, str] = {
@@ -79,7 +79,7 @@ class IdentifierRegistry:
     METRIC: dict[str, str] = _metric_descriptions(has_scope="all_sessions_per_user", excludes_scope="one_session")
     TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment", "chat")
     TASK_SCOPE_EXCLUDES: tuple[str, ...] = ("session", "chat")
-    ON_EXIT_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment")
+    ON_EXIT_SCOPE_EXCLUDES: tuple[str, ...] = ("task",)
 
     @staticmethod
     def excluding(registry: dict[str, dict[str, str]], excluded: tuple[str, ...]) -> dict[str, dict[str, str]]:
