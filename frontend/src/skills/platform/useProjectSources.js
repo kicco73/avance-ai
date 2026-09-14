@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { getProjectSources, postAddSource, postAddSourceFromFile, putSourceField, deleteProjectSource } from './api.js'
+import { getProjectSources, postAddSource, postAddSourceFromFile, postAddWebSearchSource, putSourceField, deleteProjectSource } from './api.js'
 
 function sourceNameHint(fileName) {
   return fileName.replace(/\.[^./]+$/, '')
@@ -40,6 +40,19 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
     guardedAction('add a new source', async () => {
       try {
         const source = await postAddSource(projectId)
+        await loadSources()
+        sourcesRootSelected.value = false
+        currentSourceName.value = source.name
+        flashRecentlyAdded(`source:${source.name}`)
+      } catch {
+      }
+    })
+  }
+
+  function handleAddWebSearchSource() {
+    guardedAction('add a new web search source', async () => {
+      try {
+        const source = await postAddWebSearchSource(projectId)
         await loadSources()
         sourcesRootSelected.value = false
         currentSourceName.value = source.name
@@ -95,6 +108,7 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
 
   return {
     sourcesLoading, sources, currentSourceName, sourcesRootSelected, selectedSource, deletingSource,
-    loadSources, selectSource, selectSourcesRoot, handleAddSource, handleUploadSourceFile, handleSetSourceField, handleDeleteSource,
+    loadSources, selectSource, selectSourcesRoot, handleAddSource, handleAddWebSearchSource, handleUploadSourceFile,
+    handleSetSourceField, handleDeleteSource,
   }
 }

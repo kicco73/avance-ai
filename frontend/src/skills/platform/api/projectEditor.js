@@ -152,6 +152,18 @@ export function postAddSource(projectId) {
   return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/sources`, { method: 'POST' })
 }
 
+export function postAddWebSearchSource(projectId) {
+  return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/websearch-sources`, { method: 'POST' })
+}
+
+export function getWebSearchCache(projectId) {
+  return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/websearch-cache`)
+}
+
+export function deleteWebSearchCache(projectId) {
+  return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/websearch-cache`, { method: 'DELETE' })
+}
+
 export function postAddSourceFromFile(projectId, fileName, content) {
   const query = `?file_name=${encodeURIComponent(fileName)}`
   return projectFetch(

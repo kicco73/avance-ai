@@ -546,9 +546,13 @@ entry per user (`cache/websearch/<project id>/<user id>`), so nothing
 is shared between two people in the same project and a new search
 replaces the previous one. `user` is the only path the scheme takes —
 the scope of the result, not a file name — and any other is a build
-error. Reading before any search has run is an error text naming
-`task.websearch`, not an empty table: `""` means "this search found no
-such row," and the two must not read alike.
+error. A user who has never searched reads an empty cache file — `""`,
+the same answer a search that matched nothing gives — never an error:
+a source is a table to query, and "nobody has searched yet" is a state
+the project's own triggers handle as "no rows", not as a failure. In the editor it is declared
+from the file explorer's own "+" menu, **Add web search**, next to **Add
+source** — the only difference being that this one writes no `sources/`
+archive, since there is no file to edit.
 
 The automaton's own `env:` keys are never reached through a `sources:`
 driver — the model reads/sets them through a state's own `input`/`output`

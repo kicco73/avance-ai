@@ -85,3 +85,15 @@ projects, warnings, runtime status, tasks — should be exported as a
 work rather than following from it, so nothing here decided it, and
 `settings_controller.py` should not be rearranged on the assumption that
 it has been.
+
+## `POST .../websearch-sources` is its own route, not a parameter
+
+`POST .../sources` already creates a source, so a `driver=websearch`
+query parameter looks like the smaller change. It is the flag design
+again: the two creations share a name and nothing else. The `avance` one
+takes a body and an optional `file_name` (the CSV upload path), writes a
+`sources/<id>.csv` archive before the project revalidates, and points
+`url` at it; the websearch one takes no payload at all, writes no
+archive, and sets `url` to the single fixed `websearch:user`. One route
+per creation keeps each with one payload, one side effect and one
+caller — the explorer's "Add source" and "Add web search" menu items.

@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../../../api.js', () => ({
   getProjectSources: vi.fn(),
   postAddSource: vi.fn(),
+  postAddWebSearchSource: vi.fn(),
   putSourceField: vi.fn(),
   deleteProjectSource: vi.fn(),
 }))
 
-import { getProjectSources, postAddSource, putSourceField, deleteProjectSource } from '../../../api.js'
+import { getProjectSources, postAddSource, postAddWebSearchSource, putSourceField, deleteProjectSource } from '../../../api.js'
 import { useProjectSources } from '../useProjectSources.js'
 
 const PINO = { name: 'pino', ui_label: 'Flights', ui_description: null, url: 'avance:behaviour/flights.csv' }
@@ -46,8 +47,8 @@ describe('useProjectSources', () => {
 
   it('handleAddSource creates, reloads, selects and flashes the new source', async () => {
     postAddSource.mockResolvedValue({ name: 'behaviour' })
-    getProjectSources.mockResolvedValueOnce(sourceList()).mockResolvedValueOnce(
-      sourceList({ name: 'behaviour', ui_label: 'behaviour', ui_description: null, url: '' })
+    getProjectSources.mockResolvedValueOnce(
+      sourceList({ name: 'behaviour', ui_label: 'behaviour', ui_description: null, url: 'avance:sources/behaviour.csv' })
     )
 
     s.handleAddSource()
@@ -56,6 +57,21 @@ describe('useProjectSources', () => {
     await vi.waitFor(() => expect(s.currentSourceName.value).toBe('behaviour'))
     expect(postAddSource).toHaveBeenCalledWith('proj')
     expect(flashRecentlyAdded).toHaveBeenCalledWith('source:behaviour')
+  })
+
+  it('handleAddWebSearchSource creates the websearch-driven source, reloads, selects and flashes it', async () => {
+    postAddWebSearchSource.mockResolvedValue({ name: 'websearch' })
+    getProjectSources.mockResolvedValueOnce(
+      sourceList({ name: 'websearch', ui_label: 'websearch', ui_description: null, url: 'websearch:user' })
+    )
+
+    s.handleAddWebSearchSource()
+
+    expect(guardedAction).toHaveBeenCalledWith('add a new web search source', expect.any(Function))
+    await vi.waitFor(() => expect(s.currentSourceName.value).toBe('websearch'))
+    expect(postAddWebSearchSource).toHaveBeenCalledWith('proj')
+    expect(s.selectedSource.value.url).toBe('websearch:user')
+    expect(flashRecentlyAdded).toHaveBeenCalledWith('source:websearch')
   })
 
   it('handleSetSourceField needs a selected source, then edits it and follows a rename', async () => {

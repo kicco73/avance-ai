@@ -90,7 +90,8 @@ onBeforeUnmount(() => { if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer)
 
 const {
   sourcesLoading, sources, currentSourceName, sourcesRootSelected, selectedSource, deletingSource,
-  loadSources, selectSource, selectSourcesRoot, handleAddSource, handleUploadSourceFile, handleSetSourceField, handleDeleteSource,
+  loadSources, selectSource, selectSourcesRoot, handleAddSource, handleAddWebSearchSource, handleUploadSourceFile,
+  handleSetSourceField, handleDeleteSource,
 } = useProjectSources(props.projectId, guardedAction, flashRecentlyAdded)
 
 async function handleUploadFileOrSource(event) {
@@ -508,6 +509,7 @@ async function handleSetSessionComment(sessionId, comment) {
           @new-aspect="handleNewAspect"
           @new-legal="handleNewLegal"
           @new-source="handleAddSource"
+          @new-websearch-source="handleAddWebSearchSource"
           @select-file="selectFileNode"
           @select-source="selectSourceNode"
           @select-sources-root="selectSourcesRootNode"

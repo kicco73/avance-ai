@@ -12,8 +12,11 @@ import zipfile
 import pytest
 
 from conftest import parse_sse_result
+from tracking.sources.websearch import WebSearchArchive
 
 pytestmark = pytest.mark.contract
+
+WEBSEARCH_CSV = "name,district\nDr. Nuria,Eixample\n"
 
 
 def _index_yml(client, project_name: str) -> str:
@@ -274,6 +277,37 @@ class TestSources:
         assert second["url"] == "avance:sources/behaviour1.csv"
         assert _archive_content(client, hello_project, "sources/behaviour1.csv")["content"] == ""
 
+
+    def test_add_websearch_declares_a_user_scoped_source_with_no_archive_of_its_own(self, client, hello_project):
+        response = client.post(f"/api/skills/platform/projects/{hello_project}/websearch-sources")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["name"] == "websearch"
+        assert payload["url"] == "websearch:user"
+        assert "websearch:" in _index_yml(client, hello_project)
+        assert client.get(f"/api/skills/platform/projects/{hello_project}/files/sources/websearch.csv").status_code == 404
+
+        second = client.post(f"/api/skills/platform/projects/{hello_project}/websearch-sources").json()
+        assert second["name"] == "websearch1"
+        assert second["url"] == "websearch:user"
+
+        renamed = client.put(
+            f"/api/skills/platform/projects/{hello_project}/sources/websearch1/name", json={"value": "Last Search"}
+        ).json()
+        assert renamed["name"] == "last_search"
+        assert renamed["url"] == "websearch:user"
+
+    def test_the_websearch_cache_is_served_to_the_panel_and_cleared_on_demand(self, client, app_db, hello_project):
+        client.post(f"/api/skills/platform/projects/{hello_project}/websearch-sources")
+        assert client.get(f"/api/skills/platform/projects/{hello_project}/websearch-cache").json() == {"content": ""}
+
+        WebSearchArchive(app_db, hello_project, app_db.get_project_revision(hello_project)).write(WEBSEARCH_CSV)
+        assert client.get(f"/api/skills/platform/projects/{hello_project}/websearch-cache").json() == {
+            "content": WEBSEARCH_CSV,
+        }
+
+        assert client.delete(f"/api/skills/platform/projects/{hello_project}/websearch-cache").status_code == 204
+        assert client.get(f"/api/skills/platform/projects/{hello_project}/websearch-cache").json() == {"content": ""}
 
     def test_ui_label_is_a_plain_edit_and_renaming_the_id_renames_its_archive_keeping_its_content(self, client, hello_project):
         source = client.post(f"/api/skills/platform/projects/{hello_project}/sources").json()

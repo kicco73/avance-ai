@@ -1,8 +1,9 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { vAutosize } from '../../../../components/skillkit/textareaAutosize.js'
 import { handleEnterNext } from '../../../../components/skillkit/enterToNextField.js'
 import CardMenu from '../../../../components/skillkit/CardMenu.vue'
+import { SOURCE_DRIVERS, sourceDriverOf } from '../../sourceDrivers.js'
 
 const props = defineProps({
   source: { type: Object, default: null },
@@ -11,9 +12,7 @@ const props = defineProps({
 
 const emit = defineEmits(['set-field', 'delete'])
 
-const DRIVER_OPTIONS = [
-  { value: 'avance', label: 'Avance Embedded' },
-]
+const driver = computed(() => sourceDriverOf(props.source))
 
 const editUiLabel = ref('')
 const editUiDescription = ref('')
@@ -120,8 +119,8 @@ function handleDelete() {
         ></textarea>
 
         <label class="inspector-detail-form-label">Driver</label>
-        <select class="inspector-source-select" value="avance" disabled title="Set once, at creation — pick it from the sources panel's own &quot;+&quot; menu.">
-          <option v-for="option in DRIVER_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+        <select class="inspector-source-select" :value="driver" disabled title="Set once, at creation — pick it from the sources panel's own &quot;+&quot; menu.">
+          <option v-for="option in SOURCE_DRIVERS" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
       </div>
     </div>

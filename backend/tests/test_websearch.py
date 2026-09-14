@@ -158,14 +158,13 @@ def test_what_task_websearch_found_is_kept_for_this_user_and_read_back_through_a
     assert scope["source"].web.value("Gracia", key="rating") == "4.6"
 
 
-def test_a_websearch_source_says_no_search_has_run_rather_than_reading_another_users_results(db):
+def test_a_websearch_source_reads_empty_before_any_search_and_never_another_users_results(db):
     scope = _scope(db, _automaton(db))
 
-    with pytest.raises(ValueError, match="no web search results"):
-        scope["source"].web.select_rows_containing("Gracia")
+    assert scope["source"].web.select_rows_containing("Gracia") == ""
+    assert scope["source"].web.value("Gracia", key="rating") == ""
 
     scope["task"].with_ai_service(FakeWebSearchAi(COLUMNS, MODEL_CSV)).websearch("dentists in Barcelona")
     assert scope["source"].web.select_rows_containing("Gracia") != ""
     with WebSession().impersonate("somebody-else"):
-        with pytest.raises(ValueError, match="no web search results"):
-            scope["source"].web.select_rows_containing("Gracia")
+        assert scope["source"].web.select_rows_containing("Gracia") == ""

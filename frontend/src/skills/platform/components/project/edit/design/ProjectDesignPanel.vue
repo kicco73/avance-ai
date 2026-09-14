@@ -6,8 +6,10 @@ import IndexYmlEditorPanel from './IndexYmlEditorPanel.vue'
 import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
 import MdEditorPanel from './MdEditorPanel.vue'
 import SourceContentPanel from './SourceContentPanel.vue'
+import WebSearchSourcePanel from './WebSearchSourcePanel.vue'
 import { projectFileContentUrl } from '../../../../api.js'
 import { projectFileTypes } from '../../../../../../projectFileTypes.js'
+import { sourceDriverOf, WEBSEARCH_DRIVER } from '../../../../sourceDrivers.js'
 import AspectMediaPanel from './AspectMediaPanel.vue'
 
 const props = defineProps({
@@ -36,10 +38,14 @@ const currentSourceArchiveName = computed(() => (
   props.currentSourceName ? `sources/${props.currentSourceName}.csv` : null
 ))
 
+const currentSourceIsWebSearch = computed(() => (
+  sourceDriverOf(props.sources.find((entry) => entry.source.name === props.currentSourceName)?.source) === WEBSEARCH_DRIVER
+))
+
 const noSourceSelection = computed(() => !props.currentSourceName && !props.sourcesRootSelected)
 
 const emit = defineEmits([
-  'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'new-source',
+  'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'new-source', 'new-websearch-source',
   'select-file', 'select-source', 'select-sources-root', 'upload-file',
   'jump-to-definition', 'select', 'saved', 'renamed'
 ])
@@ -78,6 +84,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
       @new-aspect="emit('new-aspect')"
       @new-legal="emit('new-legal')"
       @new-source="emit('new-source')"
+      @new-websearch-source="emit('new-websearch-source')"
       @select-file="emit('select-file', $event)"
       @select-source="emit('select-source', $event)"
       @select-sources-root="emit('select-sources-root')"
@@ -93,8 +100,14 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
         </span>
         <p>Select a source, or add one.</p>
       </div>
+      <WebSearchSourcePanel
+        v-if="currentSourceName && currentSourceIsWebSearch"
+        :key="currentSourceName"
+        :project-id="projectId"
+        :source-name="currentSourceName"
+      />
       <SourceContentPanel
-        v-if="currentSourceName"
+        v-else-if="currentSourceName"
         :key="currentSourceName"
         ref="sourceContentPanelRef"
         :project-id="projectId"

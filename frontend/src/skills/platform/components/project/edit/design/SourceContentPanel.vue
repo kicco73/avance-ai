@@ -5,6 +5,7 @@ import { TabulatorFull as Tabulator } from 'tabulator-tables'
 import 'tabulator-tables/dist/css/tabulator.min.css'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile, postSourceWebImport } from '../../../../api.js'
 import { promptDialog } from '../../../../../../dialogStore.js'
+import { parseCsvRows } from '../../../../csvTable.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -33,10 +34,8 @@ let table = null
 let requestToken = 0
 
 function parseCsv(text) {
-  const result = Papa.parse(text ?? '', { header: true, skipEmptyLines: true })
-  const fields = result.meta.fields ?? []
-  const columns = fields.map((field) => ({ title: field, field, editor: 'input' }))
-  return { columns, data: result.data }
+  const { fields, data } = parseCsvRows(text)
+  return { columns: fields.map((field) => ({ title: field, field, editor: 'input' })), data }
 }
 
 function serializeTable() {

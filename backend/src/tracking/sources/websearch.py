@@ -38,9 +38,16 @@ class WebSearchArchive:
             self._project_id, self.name, self._revision, csv_text.encode("utf-8"), CONTENT_TYPE,
         )
 
-    def read(self) -> str | None:
+    def clear(self) -> None:
+        self.write("")
+
+    def read(self) -> str:
+        """An entry nobody has written yet reads as an empty cache file,
+        never as a missing one: this user simply has no results, which is
+        the same table `task.websearch(...)` leaves behind for a search
+        that matched nothing."""
         content = self._db.get_archive(self._project_id, self.name, revision=self._revision)
-        return content.decode("utf-8") if content is not None else None
+        return content.decode("utf-8") if content is not None else ""
 
 
 class NoWebSearchArchive(WebSearchArchive):
@@ -55,8 +62,11 @@ class NoWebSearchArchive(WebSearchArchive):
     def write(self, csv_text: str) -> None:
         return None
 
-    def read(self) -> str | None:
+    def clear(self) -> None:
         return None
+
+    def read(self) -> str:
+        return ""
 
 
 def websearch_archive_for(db: "Db | None", automaton: "Automaton") -> WebSearchArchive:
@@ -72,10 +82,4 @@ class WebSearchSource(AvanceArchiveSource):
         self._archive = websearch_archive_for(context.db, context.automaton)
 
     def _read_text(self) -> str:
-        found = self._archive.read()
-        if found is None:
-            raise ValueError(
-                f"source.{self._name}: no web search results stored for this user yet — "
-                "task.websearch(...) writes them."
-            )
-        return found
+        return self._archive.read()
