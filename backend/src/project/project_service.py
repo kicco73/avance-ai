@@ -15,6 +15,7 @@ from db import Db
 from system.project_locks import ProjectLocks
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
+from websearch import WebCrawler
 
 from .editor import ProjectEditor
 from .inspector import ProjectInspector
@@ -22,7 +23,6 @@ from .invites import InviteManager
 from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .project_import_bundle_job import ProjectImportBundleJob
-from .web_import_crawler import WebCrawler
 
 if TYPE_CHECKING:
     from ai import AiService

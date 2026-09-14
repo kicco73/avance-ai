@@ -26,6 +26,7 @@ from system import bus
 from system.bus import POINT_PROJECT_PUBLISHED
 from system.wiring import construct
 from tracking.sources.url import parse_source_url
+from websearch import WebSearch
 
 if TYPE_CHECKING:
     from project.project_service import ProjectService
@@ -184,7 +185,7 @@ class PlatformService(object):
         if self.ai_service is None:
             raise ValueError("No AI service is configured — an AI web import needs one.")
         return WebImportJob(
-            self.editor, self.ai_service, self.web_crawler, asyncio.get_running_loop(),
+            self.editor, WebSearch(self.ai_service, self.web_crawler), asyncio.get_running_loop(),
             project_id, source_name, self._source_archive_name(project_id, source_name), query,
         )
 

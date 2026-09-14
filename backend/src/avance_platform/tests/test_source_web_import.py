@@ -2,7 +2,9 @@
 /api/skills/platform/projects/{id}/sources/{name}/web-import, its 4-step WebImportJob
 (crawl, schema extraction, CSV extraction, import) and the SSE progress
 the same response streams back, ending with the CSV written into the
-source's own archive exactly as a manual upload would leave it."""
+source's own archive exactly as a manual upload would leave it. The
+search itself is WebSearch's, and what it makes of a model's reply is
+tested in backend/tests/test_websearch.py."""
 from __future__ import annotations
 
 import asyncio
@@ -12,8 +14,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from project.web_import_crawler import CrawledPage, resolve_result_url
-from project.web_import_job import WebImportJob
+from websearch import CrawledPage
 
 pytestmark = pytest.mark.contract
 
@@ -141,18 +142,3 @@ def test_a_failing_step_ends_the_stream_as_a_failed_job_leaving_the_source_untou
     assert final["error"]
     stored = client.get(f"/api/skills/platform/projects/{hello_project}/files/sources/{source_name}.csv")
     assert stored.json()["content"] == ""
-
-
-def test_parse_columns_reads_a_fenced_or_prefixed_json_array_and_refuses_anything_else():
-    assert WebImportJob.parse_columns('```json\n["a", " b "]\n```') == ["a", "b"]
-    assert WebImportJob.parse_columns('Here you go: ["a"]') == ["a"]
-    for bad in ("no array here", "[]", "[\"\"]"):
-        with pytest.raises(ValueError):
-            WebImportJob.parse_columns(bad)
-
-
-def test_a_search_result_link_resolves_to_its_real_target_and_never_to_the_engine_itself():
-    assert resolve_result_url("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&rut=x") == "https://example.com/a"
-    assert resolve_result_url("https://example.com/b") == "https://example.com/b"
-    assert resolve_result_url("https://duckduckgo.com/settings") is None
-    assert resolve_result_url("/about") is None

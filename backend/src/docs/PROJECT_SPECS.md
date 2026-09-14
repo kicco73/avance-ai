@@ -808,7 +808,7 @@ a `task.defer(...)` lambda too, the same way `user`/`signal`/`env`
 are — frozen at the moment `defer` runs, not re-evaluated later.
 
 **`task.*`** is code-defined, not project-declared, and what it holds
-depends on what this installation was built with: the two below are
+depends on what this installation was built with: the three below are
 always there, and each installed service adds its own — see the end of
 this document. (`celebrate`/`notify`/`show`/`switch_to_human`/
 `switch_to_ai` used to live here too; they moved to `chat.*`, reachable
@@ -846,6 +846,22 @@ have anything left to tunnel to the browser synchronously.)
   transition — read-only, but its return value is real text. This is what
   replaced the old, removed `action-prompt` field, and what a project
   still carrying one is rewritten to call (§8).
+- `task.websearch(query)` — searches the web for `query` and returns
+  what the pages it finds say, as CSV. The search engine's own results
+  are fetched and read, a model decides which columns describe them and
+  fills them in, and the CSV text (header row first) comes back for a
+  later statement in the same script to use:
+
+  ```yaml
+  task: |
+    places = task.websearch('well-reviewed dentists in Barcelona')
+    task.send_mail(user.email, places)
+  ```
+
+  This is the same search the Source card's own **AI Web Import** runs,
+  with its result returned instead of written into a source's archive:
+  nothing is stored, and the project's own `sources:` are untouched.
+  Read-only, like `prompt` — it always runs, actuators on or off.
 
 **No `task.*` call tunnels anything to the browser.** Every member
 returns `None`, a plain value for an assignment, or a bool, never a

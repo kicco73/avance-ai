@@ -17,6 +17,7 @@ from system.bus import TOOL_SEND_MAIL, OUTPUT_TEXT, Message
 from system.logging_factory import LoggerFactory
 from scheduler import SchedulerService
 from system.web_session import WebSession
+from websearch import WebCrawler, WebSearch
 
 from .action_task import AnnouncedActionTask, ScopeHydrator
 
@@ -51,22 +52,25 @@ def _run_sync(coro: Coroutine[Any, Any, _T]) -> _T:
 
 
 class TaskNamespace(ABC):
-    """`prompt` compiles to a read-only generation call — no real-world
-    side effect either subclass could meaningfully suppress, so it
-    behaves identically regardless of a test session's "Run actuators"
-    toggle. Only `send_mail`/`whatsapp`/`defer` (real side effects) are
-    each subclass's own concern. `celebrate`/`notify`/`show`/
+    """`prompt` and `websearch` compile to read-only calls — a
+    generation, and a search-and-read of public web pages: no
+    real-world side effect either subclass could meaningfully suppress,
+    so they behave identically regardless of a test session's "Run
+    actuators" toggle. Only `send_mail`/`whatsapp`/`defer` (real side
+    effects) are each subclass's own concern. `celebrate`/`notify`/`show`/
     `switch_to_human`/`switch_to_ai` used to live here too — they moved
     to ChatNamespace (see chat_namespace.py), since only an on-exit
     script may call them now."""
 
     def __init__(
         self, dispatcher: "TaskDispatcher | None" = None, factory: "TaskNamespaceFactory | None" = None,
+        crawler: WebCrawler | None = None,
     ) -> None:
         self._ai_service: "AiService | None" = None
         self._tool_set: "ToolSet | None" = None
         self._dispatcher = dispatcher
         self._factory = factory
+        self._crawler = crawler
         self._session_id: int | None = None
         self._services = ProjectServices()
 
@@ -93,6 +97,19 @@ class TaskNamespace(ABC):
             return ""
         kwargs = {"tool_set": self._tool_set} if self._tool_set is not None else {}
         return _run_sync(self._ai_service.prompt(prompt, **kwargs))
+
+    def websearch(self, query: str) -> str:
+        """Searches the web for `query` and returns what the pages it
+        finds say, as CSV — the same WebSearch the Source card's own AI
+        Web Import runs (see websearch/search.py), minus the step-by-step
+        progress and the archive write: here the CSV is the return
+        value, for a later statement in the same script to use. Returns
+        "" (logged) wherever no AI service is bound, exactly as `prompt`
+        does."""
+        if self._ai_service is None:
+            logger.warning("task.websearch() called with no AI service bound — returning ''.")
+            return ""
+        return _run_sync(WebSearch(self._ai_service, self._crawler).csv_for(query))
 
     def with_ai_service(self, ai_service: "AiService", tool_set: "ToolSet | None" = None) -> "TaskNamespace":
         """A copy of this namespace bound to `ai_service` (and,
@@ -186,8 +203,9 @@ class LiveTaskNamespace(TaskNamespace):
 
     def __init__(
         self, dispatcher: "TaskDispatcher", factory: "TaskNamespaceFactory | None" = None,
+        crawler: WebCrawler | None = None,
     ) -> None:
-        super().__init__(dispatcher, factory)
+        super().__init__(dispatcher, factory, crawler)
 
     def send_mail(self, to: str, body_md: str) -> JsSnippet | None:
         _run_sync(self._services["mail"].deliver(Message(

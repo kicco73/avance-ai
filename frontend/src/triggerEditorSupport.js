@@ -2,6 +2,7 @@ import { snippetCompletion } from '@codemirror/autocomplete'
 
 const CALL_PARAMS = {
   'task.send_mail': ['to', 'body_md'],
+  'task.websearch': ['query'],
   'chat.notify': ['title', 'body_md'],
   'chat.show': ['body_md'],
   'chat.switch_to_human': ['user_id']
