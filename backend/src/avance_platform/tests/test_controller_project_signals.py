@@ -1,7 +1,8 @@
 """GET /api/core/projects/{project_id}/signals — see ProjectService.get_project_signals.
 Each signal's `relevant` field feeds the Inspector's "show only relevant
-signals" filter directly. Scoped to `state_key`'s outgoing actions when
-given, else falls back to every state's triggers combined."""
+signals" filter directly. Scoped to what a turn in `state_key` computes
+(its `signal-tracking-strategy`) when given, else falls back to every state's
+combined."""
 from __future__ import annotations
 
 import io
@@ -145,3 +146,38 @@ def test_an_unknown_state_key_falls_back_to_every_states_triggers_combined(clien
     by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["progressSignal"]["relevant"] is True
     assert by_name["moodSignal"]["relevant"] is True
+
+
+def test_a_state_tracking_all_signals_reports_every_one_relevant_and_leaves_the_others_scoped(client):
+    project = TWO_STATE_PROJECT.replace(
+        '  b:\n    contextual-prompt: "middle"', '  b:\n    signal-tracking-strategy: all\n    contextual-prompt: "middle"',
+    )
+    project_id = _upload(client, "two_state_all_test", project)
+
+    by_name_b = {s["signal"]["name"]: s for s in client.get(f"/api/core/projects/{project_id}/signals?state_key=b").json()["signals"]}
+    assert {name for name, s in by_name_b.items() if s["relevant"]} == {"progressSignal", "moodSignal", "unusedSignal"}
+
+    by_name_a = {s["signal"]["name"]: s for s in client.get(f"/api/core/projects/{project_id}/signals?state_key=a").json()["signals"]}
+    assert {name for name, s in by_name_a.items() if s["relevant"]} == {"progressSignal"}
+
+    by_name = {s["signal"]["name"]: s for s in client.get(f"/api/core/projects/{project_id}/signals").json()["signals"]}
+    assert by_name["unusedSignal"]["relevant"] is True
+
+
+def test_signal_tracking_strategy_is_a_state_field_the_editor_sets_and_the_graph_reports(client):
+    project_id = _upload(client, "signal_tracking_strategy_edit_test", TWO_STATE_PROJECT)
+
+    def strategy_of(state_key):
+        nodes = client.get(f"/api/skills/platform/projects/{project_id}/graph").json()["nodes"]
+        return next(n["signal_tracking_strategy"] for n in nodes if n["state"]["key"] == state_key)
+
+    assert strategy_of("b") == "relevant"
+
+    response = client.put(f"/api/skills/platform/projects/{project_id}/states/b/signal-tracking-strategy", json={"value": "all"})
+    assert response.status_code == 200, response.text
+    assert strategy_of("b") == "all"
+    assert "signal-tracking-strategy: all" in client.get(f"/api/skills/platform/projects/{project_id}/files/index.yml").json()["content"]
+
+    response = client.put(f"/api/skills/platform/projects/{project_id}/states/b/signal-tracking-strategy", json={"value": "some"})
+    assert response.status_code == 400
+    assert strategy_of("b") == "all"

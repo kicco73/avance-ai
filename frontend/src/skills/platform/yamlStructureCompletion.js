@@ -25,6 +25,7 @@ const STATE_FIELDS = [
   { name: 'chat-enabled' },
   { name: 'history-cutoff' },
   { name: 'transition-log-level' },
+  { name: 'signal-tracking-strategy' },
   { name: 'attachments', nested: true },
   { name: 'ai-may-read-sources', nested: true },
   { name: 'ai-must-read-sources', nested: true },

@@ -143,3 +143,42 @@ def test_everything_other_than_load_at_revision_is_the_ordinary_loader(db, tmp_p
         name for name in vars(CompiledAutomatonLoader) if not name.startswith("_") and callable(getattr(loader, name))
     }
     assert overridden == {"load_at_revision"}
+
+
+ALL_SIGNALS_INDEX = """
+project:
+  id: demo
+init-action:
+  target: start
+general-prompt: hello
+signals:
+  mood:
+    definition: how the user feels
+  pace:
+    definition: how fast the user goes
+states:
+  start:
+    signal-tracking-strategy: all
+    contextual-prompt: go
+    actions:
+      - name: advance
+        ui-label: Advance
+        target: end
+        trigger: signal.mood > 50
+  end:
+    contextual-prompt: bye
+"""
+
+
+def test_a_compiled_state_keeps_its_signal_tracking_strategy_and_tracks_the_same_signals(db, tmp_path):
+    revision = _publish(db, ALL_SIGNALS_INDEX)
+    _compile_into(tmp_path, revision, index=ALL_SIGNALS_INDEX)
+
+    compiled = _loader(db, tmp_path).load_at_revision(PROJECT_ID, revision)
+    interpreted = AutomatonLoader(db).load_at_revision(PROJECT_ID, revision)
+
+    assert isinstance(compiled, CompiledAutomaton)
+    assert compiled.states["start"] == interpreted.states["start"]
+    assert compiled.states["start"].signal_tracking_strategy == "all"
+    assert compiled.tracked_signal_names("start") == interpreted.tracked_signal_names("start") == {"mood", "pace"}
+    assert compiled.tracked_signal_names("end") == interpreted.tracked_signal_names("end") == set()

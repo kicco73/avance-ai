@@ -131,13 +131,13 @@ def test_on_exit_may_reference_signal_env_and_chat_but_not_task():
         _build(_go("        on-exit: env.counter = 1 if task.prompt('hi') else 0\n"))
 
 
-def test_declared_env_key_names_and_triggerable_signal_names_include_on_exit_writes():
+def test_declared_env_key_names_and_tracked_signal_names_include_on_exit_writes():
     content = _project(
         "      - name: go\n        target: b\n        trigger: \"1\"\n        on-exit: env.counter = signal.mood\n",
     ).replace("project:\n  id: proj\n", "project:\n  id: proj\nsignals:\n  mood:\n    definition: mood\n")
     automaton = _build(content)
     assert "counter" in automaton.declared_env_key_names()
-    assert "mood" in automaton.triggerable_signal_names("a")
+    assert "mood" in automaton.tracked_signal_names("a")
 
 
 def test_eval_action_on_exit_evaluates_assignments_against_scope_and_skips_bad_ones():

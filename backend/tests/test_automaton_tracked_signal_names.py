@@ -1,6 +1,7 @@
-"""Automaton.triggerable_signal_names — the subset of a project's declared
-signals actually referenced (as `signal.<name>`) by at least one
-triggerable action leaving a given state.
+"""Automaton.tracked_signal_names — which of a project's declared
+signals a turn in a given state computes: with the default
+`signal-tracking-strategy: relevant`, the ones referenced (as `signal.<name>`) by
+at least one action leaving that state; with `all`, every declared one.
 """
 from __future__ import annotations
 
@@ -19,11 +20,17 @@ def _action(name: str, target: str = "a", **fields) -> Action:
     return Action(name=name, ui_label=name.upper(), ui_button=name.upper(), target=target, **fields)
 
 
-def _automaton(signals: list[Signal], actions_a: list[Action], actions_b: list[Action] | None = None) -> Automaton:
+def _automaton(
+    signals: list[Signal], actions_a: list[Action], actions_b: list[Action] | None = None,
+    strategy_a: str = "relevant",
+) -> Automaton:
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {
         "": State(key="", ui_label="", final=False, actions=[init_action]),
-        "a": State(key="a", ui_label="A", final=not actions_a, contextual_prompt="hi", actions=actions_a),
+        "a": State(
+            key="a", ui_label="A", final=not actions_a, contextual_prompt="hi", actions=actions_a,
+            signal_tracking_strategy=strategy_a,
+        ),
     }
     if actions_b is not None:
         states["b"] = State(key="b", ui_label="B", final=not actions_b, contextual_prompt="bye", actions=actions_b)
@@ -60,15 +67,34 @@ def _automaton(signals: list[Signal], actions_a: list[Action], actions_b: list[A
     "final-state", "literal-env", "metric-or-env-key-in-env",
 ])
 def test_only_signals_a_states_own_triggers_or_env_expressions_reference_are_reported(actions, signals, expected):
-    assert _automaton(signals, actions).triggerable_signal_names("a") == expected
+    assert _automaton(signals, actions).tracked_signal_names("a") == expected
 
 
-def test_all_triggerable_signal_names_unions_every_state_excluding_what_nothing_references():
+def test_all_tracked_signal_names_unions_every_state_excluding_what_nothing_references():
     referencing = _automaton(
         [MOOD, STABILITY, UNUSED],
         [_action("a1", trigger="signal.mood >= 50")],
         [_action("b1", target="b", trigger="signal.stability >= 1")],
     )
-    assert referencing.all_triggerable_signal_names() == {"mood", "stability"}
+    assert referencing.all_tracked_signal_names() == {"mood", "stability"}
 
-    assert _automaton([MOOD], [_action("a1")], []).all_triggerable_signal_names() == set()
+    assert _automaton([MOOD], [_action("a1")], []).all_tracked_signal_names() == set()
+
+
+@pytest.mark.parametrize("actions", [
+    [_action("advance", trigger="signal.mood >= 50")],
+    [_action("advance")],
+    [],
+], ids=["one-referenced", "no-trigger", "final-state"])
+def test_strategy_all_tracks_every_declared_signal_whatever_the_actions_reference(actions):
+    assert _automaton([MOOD, STABILITY, UNUSED], actions, strategy_a="all").tracked_signal_names("a") == {
+        "mood", "stability", "unused",
+    }
+
+
+def test_strategy_all_in_one_state_does_not_widen_another_states_relevant_set():
+    automaton = _automaton(
+        [MOOD, STABILITY, UNUSED], [], [_action("b1", target="b", trigger="signal.stability >= 1")], strategy_a="all",
+    )
+    assert automaton.tracked_signal_names("b") == {"stability"}
+    assert automaton.all_tracked_signal_names() == {"mood", "stability", "unused"}

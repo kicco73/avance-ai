@@ -46,6 +46,7 @@ class State:
     actions: list[Action] = field(default_factory=list)
     fixed_message: str | None = None
     transition_log_level: str = "WARNING"
+    signal_tracking_strategy: str = "relevant"
     attachments: tuple[str, ...] = ()
     history_cutoff: bool = False
     chat_enabled: bool = True

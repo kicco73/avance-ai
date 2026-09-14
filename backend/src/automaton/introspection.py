@@ -1,5 +1,5 @@
 """IntrospectionMixin — questions about the project that no chat turn
-asks: which signals are referenced anywhere (the Inspector's "relevant
+asks: which signals are computed anywhere (the Inspector's "relevant
 signals" filter), whether a state's triggers mention a metric name (so
 metrics can skip resolving a value set nothing reads), and the
 name-returning form of trigger evaluation that only tests call.
@@ -24,11 +24,11 @@ class IntrospectionMixin(object):
             self._trigger_bare_names[state_key] = cached
         return bool(cached & names)
 
-    def all_triggerable_signal_names(self) -> set[str]:
-        """triggerable_signal_names, unioned across every state — the
-        project-wide "is this signal used anywhere" view (backs the
+    def all_tracked_signal_names(self) -> set[str]:
+        """tracked_signal_names, unioned across every state — the
+        project-wide "is this signal computed anywhere" view (backs the
         Inspector Signals tab's "relevant signals" filter)."""
-        return {name for state_key in self.states for name in self.triggerable_signal_names(state_key)}
+        return {name for state_key in self.states for name in self.tracked_signal_names(state_key)}
 
     def evaluate_triggers(self, state_key: str, scope: dict[str, Any]) -> str | None:
         action = self.evaluate_triggers_action(state_key, scope)

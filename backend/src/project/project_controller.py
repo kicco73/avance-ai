@@ -76,8 +76,8 @@ class ProjectController(BaseController):
     @get("/api/core/projects/{project_id}/signals", role="supervisor")
     def get_project_signals(self, project_id: str, state_key: str | None = None, session_id: int | None = None):
         """Signal definitions for the Inspect panel. `state_key`, when
-        given, scopes each signal's `relevant` field to that state's
-        outgoing actions. `session_id`: see get_project_graph.
+        given, scopes each signal's `relevant` field to what a turn in
+        that state computes (its `signal-tracking-strategy`). `session_id`: see get_project_graph.
 
         Core: a signal definition describes what the engine tracks, which
         every build does; the benchmark reads these too."""

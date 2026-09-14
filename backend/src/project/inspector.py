@@ -174,15 +174,15 @@ class ProjectInspector:
         self, project_id: str, state_key: str | None = None, session_id: int | None = None
     ) -> list[dict]:
         """Signal definitions of `project_id`'s index.yml, for the
-        Inspect panel. `relevant` scopes to `state_key`'s outgoing
-        actions when given, or every state's triggers combined otherwise."""
+        Inspect panel. `relevant` is what a turn in `state_key` computes
+        (its `signal-tracking-strategy`) when given, or every state's combined otherwise."""
         automaton = self._automaton_loader.load_at_revision(
             project_id, self._resolve_inspector_revision(project_id, session_id)
         )
         if state_key is not None and state_key in automaton.states:
-            relevant_names = automaton.triggerable_signal_names(state_key)
+            relevant_names = automaton.tracked_signal_names(state_key)
         else:
-            relevant_names = automaton.all_triggerable_signal_names()
+            relevant_names = automaton.all_tracked_signal_names()
         return [
             {
                 "signal": Automaton.get_signal_payload(signal),
@@ -293,6 +293,7 @@ class ProjectInspector:
                 "history_cutoff": state.history_cutoff,
                 "reactions_enabled": state.reactions_enabled,
                 "transition_log_level": state.transition_log_level,
+                "signal_tracking_strategy": state.signal_tracking_strategy,
                 "attachments": list(state.attachments),
                 "contextual_prompt": state.contextual_prompt,
             }

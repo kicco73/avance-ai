@@ -620,8 +620,8 @@ def verify_package(project_path: Path, module_name: str) -> None:
     )
     for key in interpreted.states:
         problems += _compare(
-            f"triggerable_signal_names({key!r})",
-            compiled.triggerable_signal_names(key), interpreted.triggerable_signal_names(key),
+            f"tracked_signal_names({key!r})",
+            compiled.tracked_signal_names(key), interpreted.tracked_signal_names(key),
         )
 
     if problems:

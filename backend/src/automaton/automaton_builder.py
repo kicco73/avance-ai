@@ -19,6 +19,7 @@ from ruamel.yaml.error import YAMLError
 logger = LoggerFactory.get_logger(__name__)
 
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+VALID_SIGNAL_TRACKING_STRATEGIES = {"relevant", "all"}
 
 ACTION_FIELDS = {
     "name", "ui-label", "ui-button", "ui-description",
@@ -36,7 +37,7 @@ LEGACY_STATE_SOURCE_FIELDS = {
 STATE_FIELDS = {
     "ui-label", "ui-description", "contextual-prompt", "fixed-message", "actions",
     "attachments", "chat-enabled", "history-cutoff", "reactions-enabled",
-    "transition-log-level", "input", "output",
+    "transition-log-level", "signal-tracking-strategy", "input", "output",
 } | {field for field, _ in STATE_SOURCE_FIELDS} | set(LEGACY_STATE_SOURCE_FIELDS)
 
 STATE_SUGGESTED_FIELDS = STATE_FIELDS - set(LEGACY_STATE_SOURCE_FIELDS)
@@ -253,6 +254,12 @@ class AutomatonBuilder(object):
                 f"State '{key}': transition-log-level "
                 f"'{transition_log_level}' must be one of {sorted(VALID_LOG_LEVELS)}"
             )
+        signal_tracking_strategy = raw_state.get("signal-tracking-strategy", "relevant")
+        if signal_tracking_strategy not in VALID_SIGNAL_TRACKING_STRATEGIES:
+            raise ValueError(
+                f"State '{key}': signal-tracking-strategy "
+                f"'{signal_tracking_strategy}' must be one of {sorted(VALID_SIGNAL_TRACKING_STRATEGIES)}"
+            )
 
         raw_source_lists = self._build_state_source_lists(key, raw_state)
         input_names = self._build_variable_name_list(key, raw_state, "input")
@@ -267,6 +274,7 @@ class AutomatonBuilder(object):
             actions=actions,
             fixed_message=fixed_message.strip() if fixed_message else None,
             transition_log_level=transition_log_level,
+            signal_tracking_strategy=signal_tracking_strategy,
             attachments=archives.require(raw_state.get("attachments", []), f"state '{key}'"),
             history_cutoff=raw_state.get("history-cutoff", False),
             chat_enabled=raw_state.get("chat-enabled", True),

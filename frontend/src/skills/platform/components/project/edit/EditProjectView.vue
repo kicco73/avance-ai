@@ -7,6 +7,7 @@ import RevisionMenu from './RevisionMenu.vue'
 import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
+import DesignSignalsTab from './DesignSignalsTab.vue'
 import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
 import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
@@ -197,7 +198,7 @@ const inspectorTabs = computed(() => {
   }
   return [
     { id: 'state', label: 'Info' },
-    { id: 'signals', label: 'Signals' },
+    { id: 'design-signals', label: 'Signals' },
     { id: 'output', label: 'I/O' }
   ]
 })
@@ -628,11 +629,27 @@ async function handleSetSessionComment(sessionId, comment) {
                 :project-id="projectId"
                 :signal-values="effectiveSignalValues"
                 :editable-files="files"
-                :state-key="editorOpen ? selectedStateKey : highlightedStateKey"
+                :state-key="highlightedStateKey"
                 :recently-added-key="recentlyAddedKey"
                 @jump-to-definition="jumpSilently"
                 @select-attachment="selectFile"
                 @set-field="handleSetSignalField"
+                @delete="handleDeleteSignal"
+              />
+            </template>
+            <template #tab-design-signals="{ registerTab }">
+              <DesignSignalsTab
+                :ref="registerTab('design-signals')"
+                :project-id="projectId"
+                :signal-values="effectiveSignalValues"
+                :editable-files="files"
+                :state-key="selectedStateKey"
+                :state-data="selectedStateData"
+                :recently-added-key="recentlyAddedKey"
+                @jump-to-definition="jumpSilently"
+                @select-attachment="selectFile"
+                @set-field="handleSetSignalField"
+                @set-state-field="(field, value) => handleSetStateField(selectedStateKey, field, value)"
                 @add-signal="handleAddSignal"
                 @delete="handleDeleteSignal"
               />

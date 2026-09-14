@@ -203,10 +203,11 @@ signals:
 
 **3.1 Computation.** Signals are requested inline, as part of the same
 structured reply a normal chat turn already produces — there is no
-separate model call for them. A turn requests a signal's value only when
-the current state's own triggers can actually reach it (a state with no
-such triggers asks for none); when it does, the system prompt lists every
-requested signal's `name`+`definition`, and that signal's own
+separate model call for them. Which signals a turn requests is the
+current state's `signal-tracking-strategy` (§4): with `relevant`, only the ones
+its own actions read (a state with no such actions asks for none); with
+`all`, every declared signal. When it requests any, the system prompt lists
+every requested signal's `name`+`definition`, and that signal's own
 `attachments` (deduplicated against global/state attachments already
 being sent, §6) ride along with the very same turn. The model's reply
 includes one JSON object mapping name → value for whatever was requested.
@@ -233,6 +234,7 @@ states:
     chat-enabled: true
     history-cutoff: false
     transition-log-level: WARNING
+    signal-tracking-strategy: relevant
     attachments: []
     actions: [ ... ]   # see §5
 ```
@@ -247,6 +249,7 @@ states:
 | `chat-enabled` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation, and the chat shows no text input line. Independent of `final`/`fixed-message`. |
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
+| `signal-tracking-strategy` | no | `relevant` \| `all` | `relevant` | Which signals a turn in this state computes (§3.1). `relevant`: only the ones this state's own actions read — in a `trigger`, an `env:` expression or an `on-exit` assignment. `all`: every declared signal, whether or not anything here reads it — for a state whose signals feed a later state, a metric, or a report rather than its own triggers. |
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
 | `ai-must-read-sources` | no | list of source names | `[]` | Same, but the read is forced once per entry into this state — §4.2. A source name can appear in at most one of the two read fields. |
@@ -943,6 +946,7 @@ of how you're likely to hit them:
   YAML happily parses that as its own separate, invalid state).
 - Every state has **exactly one** of `contextual-prompt` / `fixed-message`.
 - Every state's `transition-log-level`, if given, is a valid level.
+- Every state's `signal-tracking-strategy`, if given, is `relevant` or `all`.
 - Every action's `target` (incl. `init-action`'s) names a real state (or is a self-loop).
 - Every action's `trigger`, if given: syntactically valid and every
   reference resolves (§5.2's rules per namespace).

@@ -93,8 +93,8 @@ kind of automaton it has.
 
 ## Derived answers
 
-`declared_env_key_names`, `triggerable_signal_names`, `triggers_reference`
-and `all_triggerable_signal_names` used to call
+`declared_env_key_names`, `tracked_signal_names`, `triggers_reference`
+and `all_tracked_signal_names` used to call
 `TriggerExpressionAnalyzer` on every invocation — `tracking_processor.py`
 calls the first once per turn and the second up to three times per turn.
 Their answers are fixed when the project is written.

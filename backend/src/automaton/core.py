@@ -132,7 +132,7 @@ class CoreAutomaton(object):
         self.revision: int | None = None
         self.archives_dir: "Path | None" = None
         self._declared_env_key_names: set[str] | None = None
-        self._triggerable_signal_names: dict[str, set[str]] = {}
+        self._tracked_signal_names: dict[str, set[str]] = {}
         self._trigger_bare_names: dict[str, set[str]] = {}
 
     def set_storage_location(self, revision: int) -> None:
@@ -172,13 +172,13 @@ class CoreAutomaton(object):
             )
         return set(self._declared_env_key_names)
 
-    def triggerable_signal_names(self, state_key: str) -> set[str]:
-        cached = self._triggerable_signal_names.get(state_key)
+    def tracked_signal_names(self, state_key: str) -> set[str]:
+        cached = self._tracked_signal_names.get(state_key)
         if cached is None:
-            cached = analysis.triggerable_signal_names(
+            cached = analysis.tracked_signal_names(
                 self.states[state_key], {signal.name for signal in self.signals},
             )
-            self._triggerable_signal_names[state_key] = cached
+            self._tracked_signal_names[state_key] = cached
         return set(cached)
 
     def evaluate_triggers_action(self, state_key: str, scope: dict[str, Any]) -> Action | None:

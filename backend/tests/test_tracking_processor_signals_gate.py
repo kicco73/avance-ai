@@ -1,6 +1,6 @@
 """TrackingProcessor.build_turn_protocol's own evaluate_signals gate must
 also account for whether anything is actually triggerable from the state
-the reply is being generated for (see automaton.triggerable_signal_names)
+the reply is being generated for (see automaton.tracked_signal_names)
 — asking the model to calculate signal values nothing in that state could
 ever act on is pure waste: no definition in the prompt, no 'signals'
 field in the schema. The gate only ever switches off that *request*: the
@@ -34,16 +34,19 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-def _automaton(*, triggerable_from_a: bool) -> Automaton:
+def _automaton(*, triggerable_from_a: bool, signal_tracking_strategy: str = "relevant") -> Automaton:
     """A signal is declared project-wide either way — `triggerable_from_a`
     only controls whether state "a"'s own action actually references it
-    in a trigger, which is exactly what triggerable_signal_names checks."""
+    in a trigger, which is exactly what tracked_signal_names checks."""
     mood = Signal(name="mood", ui_label="Mood", definition="0-100 mood score.")
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="b",
         trigger="signal.mood >= 50" if triggerable_from_a else None,
     )
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action])
+    state_a = State(
+        key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action],
+        signal_tracking_strategy=signal_tracking_strategy,
+    )
     state_b = State(key="b", ui_label="B", final=True, contextual_prompt="You are in B.")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
@@ -100,6 +103,16 @@ async def test_a_state_with_nothing_triggerable_never_requests_signals(db):
     assert "signals" not in ai_service.calls[0]
 
 
+async def test_a_state_tracking_all_signals_requests_them_with_nothing_triggerable(db):
+    automaton = _automaton(triggerable_from_a=False, signal_tracking_strategy="all")
+    processor, ai_service = _processor(db, automaton)
+
+    await processor.process("hello")
+
+    assert len(ai_service.calls) == 1
+    assert "signals" in ai_service.calls[0]
+
+
 async def test_a_state_with_something_triggerable_still_requests_signals(db):
     automaton = _automaton(triggerable_from_a=True)
     processor, ai_service = _processor(db, automaton)
@@ -112,7 +125,7 @@ async def test_a_state_with_something_triggerable_still_requests_signals(db):
 
 def _env_only_trigger_automaton() -> Automaton:
     """`advance`'s own trigger references only env.ready — no signal at
-    all, so triggerable_signal_names("a") is empty and _evaluate_signals_
+    all, so tracked_signal_names("a") is empty and _evaluate_signals_
     for is False regardless of turn type; that's exactly the case the
     opening-turn gate has to distinguish from "asks for nothing, but
     still evaluates" (the real-user-message case above)."""

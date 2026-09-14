@@ -63,7 +63,7 @@ def _turn_attachment_paths(automaton: Automaton, state: State, include_signal_at
 	identical."""
 	paths = [*automaton.general_attachments, *state.attachments]
 	if include_signal_attachments:
-		signal_names = automaton.triggerable_signal_names(state.key)
+		signal_names = automaton.tracked_signal_names(state.key)
 		for signal in automaton.signals:
 			if signal.name in signal_names:
 				paths.extend(signal.attachments)
@@ -456,7 +456,7 @@ class TrackingProcessor(object):
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		return (
 			not (has_to_evaluate_signals_before_ai_reply and self.user.has_ai_started_conversation)
-		) and bool(self.user.automaton.triggerable_signal_names(state.key))
+		) and bool(self.user.automaton.tracked_signal_names(state.key))
 
 	def build_regeneration_prompt(self, state: State, base_prompt: str) -> Prompt:
 		"""The fixed (audio, text, memory) Prompt the transition-
@@ -496,7 +496,7 @@ class TrackingProcessor(object):
 			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, None, None, []
 		output_definition = build_output_definition_for_names(automaton, state.output)
 		signals = Signals(FixedProjectContext(automaton), self.db)
-		signal_names = automaton.triggerable_signal_names(state.key)
+		signal_names = automaton.tracked_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
 		reaction_definition = self._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
@@ -599,7 +599,7 @@ def estimate_state_prompt(
 	else:
 		output_definition = build_output_definition_for_names(automaton, state.output)
 		signals = Signals(FixedProjectContext(automaton), None)
-		signal_definition = signals.get_definition(automaton.triggerable_signal_names(state.key))
+		signal_definition = signals.get_definition(automaton.tracked_signal_names(state.key))
 		reaction_definition = (
 			TrackingProcessor._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		)

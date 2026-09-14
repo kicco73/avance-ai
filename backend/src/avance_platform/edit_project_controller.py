@@ -25,6 +25,7 @@ from system.web_session import WebSession
 from controllers.base_controller import BaseController, delete, get, post, put
 STATE_EDITABLE_FIELDS = {
     "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat-enabled", "reactions-enabled",
+    "signal-tracking-strategy",
     "ai-may-read-sources", "ai-must-read-sources", "ai-may-write-sources", "input", "output",
 }
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit", "env"}
