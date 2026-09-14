@@ -158,8 +158,12 @@ class ActionTask(Task):
         return self._payload["project_id"]
 
     @property
+    def session_id(self) -> int | None:
+        return self._payload.get("session_id")
+
+    @property
     def is_deferred(self) -> bool:
-        return self._payload.get("session_id") is None
+        return self.session_id is None
 
     @property
     def ui_label(self) -> str:
@@ -194,65 +198,116 @@ class ActionTask(Task):
     def result(self) -> str | None:
         return None
 
+    async def _run_next_step(self) -> None:
+        await self._execute()
+
+    async def _execute(self) -> TaskOutcome:
+        outcome = self._hydrator.run(self.username, self._payload)
+        if outcome.snippets is not None:
+            await bus.publish(Message(
+                type=UI_NOTIFICATION, body={"task": outcome.snippets}, username=self.username,
+                project_id=self.project_id, session_id=self.session_id,
+            ))
+        return outcome
+
+
+class AnnouncedActionTask(ActionTask):
+
+    RETRY_BASE_SECONDS = 1
+    MAX_ATTEMPTS = 5
+
+    def __init__(
+        self, key: str, username: str, payload: dict[str, Any], hydrator: "ScopeHydrator",
+        scheduler_service: "SchedulerService",
+    ) -> None:
+        super().__init__(key, username, payload, hydrator)
+        self._scheduler_service = scheduler_service
+
+    @classmethod
+    def now(
+        cls, action: Action, scope: EvaluationScope, *, username: str, namespace_kind: str, session_id: int | None,
+        hydrator: "ScopeHydrator", scheduler_service: "SchedulerService",
+    ) -> "AnnouncedActionTask":
+        return cls._speaking_for(
+            ActionTask.now(
+                action, scope, username=username, namespace_kind=namespace_kind, session_id=session_id,
+                hydrator=hydrator,
+            ),
+            hydrator, scheduler_service,
+        )
+
+    @classmethod
+    def later(
+        cls, act: DeferredExpression, when: datetime, *, username: str, namespace_kind: str,
+        hydrator: "ScopeHydrator", scheduler_service: "SchedulerService",
+    ) -> "AnnouncedActionTask":
+        return cls._speaking_for(
+            ActionTask.later(act, when, username=username, namespace_kind=namespace_kind, hydrator=hydrator),
+            hydrator, scheduler_service,
+        )
+
+    @classmethod
+    def _speaking_for(
+        cls, task: ActionTask, hydrator: "ScopeHydrator", scheduler_service: "SchedulerService",
+    ) -> "AnnouncedActionTask":
+        return cls(task.key, task.username, task.payload, hydrator, scheduler_service)
+
     @property
-    def announced_key(self) -> str:
+    def origin_key(self) -> str:
         return self._payload.get("origin_key") or self.key
+
+    @property
+    def is_origin(self) -> bool:
+        return self._payload.get("origin_key") is None
 
     @property
     def attempt(self) -> int:
         return self._payload.get("attempt", 0)
 
     async def _run_next_step(self) -> None:
-        if self._payload.get("origin_key") is None:
-            await self._announce(TASK_STARTED, {"key": self.announced_key})
+        if self.is_origin:
+            await self._announce(TASK_STARTED, {"key": self.origin_key})
         try:
-            outcome = self._hydrator.run(self.username, self._payload)
+            outcome = await self._execute()
         except Exception as exc:
-            await self._announce(TASK_ENDED, {"key": self.announced_key, "result": None, "error": str(exc)})
+            await self._announce(TASK_ENDED, {"key": self.origin_key, "result": None, "error": str(exc)})
             raise
-        if outcome.snippets is not None:
-            await self._notify_ui(outcome.snippets)
-        if self._retryable(outcome):
-            self._schedule_retry()
+        if self._worth_another_attempt(outcome):
+            self._schedule_another_attempt()
             return
         error = self._error_text(outcome)
-        await self._announce(TASK_ENDED, {"key": self.announced_key, "result": outcome.snippets, "error": error})
+        await self._announce(TASK_ENDED, {"key": self.origin_key, "result": outcome.snippets, "error": error})
         if error is not None:
             raise RuntimeError(error)
-
-    async def _notify_ui(self, snippets: str) -> None:
-        await bus.publish(Message(
-            type=UI_NOTIFICATION, body={"task": snippets}, username=self.username,
-            project_id=self.project_id, session_id=self._payload.get("session_id"),
-        ))
 
     async def _announce(self, message_type: str, body: dict[str, Any]) -> None:
         try:
             await bus.publish(Message(
                 type=message_type, body=body, username=self.username,
-                project_id=self.project_id, session_id=self._payload.get("session_id"),
+                project_id=self.project_id, session_id=self.session_id,
             ))
         except Exception:
-            logger.exception("Announcing %s for task %s failed.", message_type, self.announced_key)
+            logger.exception("Announcing %s for task %s failed.", message_type, self.origin_key)
 
-    def _retryable(self, outcome: TaskOutcome) -> bool:
+    def _worth_another_attempt(self, outcome: TaskOutcome) -> bool:
         return (
             self.attempt < self.MAX_ATTEMPTS
             and any(isinstance(exc, TryAgainError) for _statement, exc in outcome.failures)
         )
 
-    def _schedule_retry(self) -> None:
-        when = datetime.now(timezone.utc) + timedelta(
-            seconds=self.RETRY_BASE_SECONDS * 2 ** self.attempt
-        )
+    def _schedule_another_attempt(self) -> None:
+        when = datetime.now(timezone.utc) + timedelta(seconds=self.RETRY_BASE_SECONDS * 2 ** self.attempt)
         payload = {
             **self._payload,
             "attempt": self.attempt + 1,
-            "origin_key": self.announced_key,
+            "origin_key": self.origin_key,
             "when": when.isoformat(),
         }
-        self._hydrator.scheduler_service.schedule(
-            ActionTask(f"{self.TYPE}:{uuid.uuid4()}", self.username, payload, self._hydrator), when,
+        self._scheduler_service.schedule(
+            AnnouncedActionTask(
+                f"{self.TYPE}:{uuid.uuid4()}", self.username, payload, self._hydrator, self._scheduler_service,
+            ),
+            when,
         )
 
     @staticmethod
@@ -273,16 +328,13 @@ class ScopeHydrator(object):
 
     def __init__(
         self, db: "Db", project_service: "ProjectService", namespace_factory: "TaskNamespaceFactory",
-        ai_service: "AiService | None",
+        ai_service: "AiService | None", scheduler_service: "SchedulerService",
     ) -> None:
         self._db = db
         self._project_service = project_service
         self._namespace_factory = namespace_factory
         self._ai_service = ai_service
-
-    @property
-    def scheduler_service(self) -> "SchedulerService":
-        return self._namespace_factory.scheduler_service
+        self._scheduler_service = scheduler_service
 
     def hydrate(self, key: str, username: str, payload: dict[str, Any]) -> ActionTask:
         """SchedulerService's hydrator for ActionTask.TYPE. Cheap and
@@ -291,7 +343,7 @@ class ScopeHydrator(object):
         for field in ("script", "project_id", "project_revision", "state_key", "snapshot", "namespace_kind"):
             if field not in payload:
                 raise ValueError(f"Task {key} payload is missing '{field}'.")
-        return ActionTask(key, username, payload, self)
+        return AnnouncedActionTask(key, username, payload, self, self._scheduler_service)
 
     def build_scope(self, username: str, payload: dict[str, Any]) -> EvaluationScope:
         """Must be called under WebSession().impersonate(username): every

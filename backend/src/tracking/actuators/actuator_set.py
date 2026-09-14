@@ -18,7 +18,7 @@ from system.logging_factory import LoggerFactory
 from scheduler import SchedulerService
 from system.web_session import WebSession
 
-from .action_task import ActionTask, ScopeHydrator
+from .action_task import AnnouncedActionTask, ScopeHydrator
 
 if TYPE_CHECKING:
     from ai import AiService
@@ -163,16 +163,17 @@ class TaskDispatcher(object):
 
     def schedule_now(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
         self._check_project(scope)
-        task = ActionTask.now(
+        task = AnnouncedActionTask.now(
             action, scope, username=WebSession().user, namespace_kind=self._namespace_kind, session_id=session_id,
-            hydrator=self._hydrator,
+            hydrator=self._hydrator, scheduler_service=self._scheduler_service,
         )
         self._scheduler_service.schedule(task, datetime.now(timezone.utc))
 
     def schedule_later(self, act: DeferredExpression, when: datetime) -> None:
         self._check_project(act.scope)
-        task = ActionTask.later(
+        task = AnnouncedActionTask.later(
             act, when, username=WebSession().user, namespace_kind=self._namespace_kind, hydrator=self._hydrator,
+            scheduler_service=self._scheduler_service,
         )
         self._scheduler_service.schedule(task, when)
 

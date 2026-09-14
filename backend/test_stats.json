@@ -7011,10 +7011,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.492,
-    "runs": 23,
-    "seconds": 4.749,
+    "runs": 30,
+    "seconds": 6.647,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_lambda_is_the_same_task_with_a_later_when_and_no_session": {
@@ -7022,10 +7022,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.565,
-    "runs": 23,
-    "seconds": 4.059,
+    "runs": 30,
+    "seconds": 5.674,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_lambda_sees_names_assigned_earlier_in_the_same_script": {
@@ -7033,10 +7033,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.48,
-    "runs": 23,
-    "seconds": 4.815,
+    "runs": 30,
+    "seconds": 6.021,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_task_announces_itself_with_no_session_on_the_envelope": {
@@ -7044,9 +7044,9 @@
     "first_run": "2026-09-14T08:07:00+00:00",
     "last_failed": "2026-09-14T08:07:08+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 11,
-    "seconds": 1.603,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 18,
+    "seconds": 2.705,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_failing_statement_is_announced_while_the_others_still_reach_the_browser": {
@@ -7054,9 +7054,9 @@
     "first_run": "2026-09-14T08:07:00+00:00",
     "last_failed": "2026-09-14T08:07:08+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 11,
-    "seconds": 1.346,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 18,
+    "seconds": 2.386,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_fake_task_namespaces_task_still_runs_as_a_task_and_reports": {
@@ -7064,10 +7064,20 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.47,
-    "runs": 23,
-    "seconds": 4.097,
+    "runs": 30,
+    "seconds": 5.088,
+    "skips": 0
+  },
+  "tests/test_action_task.py::test_a_hibernated_row_comes_back_as_the_task_that_announces_itself": {
+    "failures": 0,
+    "first_run": "2026-09-14T08:25:02+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 5,
+    "seconds": 0.642,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_notification_says_which_conversation_its_script_is_about": {
@@ -7075,19 +7085,39 @@
     "first_run": "2026-09-14T08:07:00+00:00",
     "last_failed": "2026-09-14T08:07:00+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 10,
-    "seconds": 1.359,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 17,
+    "seconds": 2.402,
+    "skips": 0
+  },
+  "tests/test_action_task.py::test_a_pending_row_left_by_a_dead_process_announces_itself_when_it_finally_runs": {
+    "failures": 0,
+    "first_run": "2026-09-14T08:28:48+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 2,
+    "seconds": 0.399,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_provider_that_says_not_now_reschedules_the_whole_script_instead_of_ending": {
-    "failures": 0,
+    "failures": 2,
     "first_run": "2026-09-14T08:07:00+00:00",
-    "last_failed": null,
+    "last_failed": "2026-09-14T08:24:30+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 10,
-    "seconds": 1.271,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 18,
+    "seconds": 2.385,
+    "skips": 0
+  },
+  "tests/test_action_task.py::test_a_queued_retry_is_claimed_and_run_by_a_brand_new_process": {
+    "failures": 1,
+    "first_run": "2026-09-14T08:27:43+00:00",
+    "last_failed": "2026-09-14T08:27:43+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 5,
+    "seconds": 0.841,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_script_that_does_not_parse_raises_rather_than_reporting_a_partial_run": {
@@ -7095,9 +7125,9 @@
     "first_run": "2026-09-14T08:08:05+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 6,
-    "seconds": 0.813,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 13,
+    "seconds": 1.659,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_script_that_never_ran_is_announced_as_ended_with_no_result": {
@@ -7105,9 +7135,9 @@
     "first_run": "2026-09-14T08:07:00+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 10,
-    "seconds": 1.21,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 17,
+    "seconds": 2.254,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_script_whose_statements_all_succeed_reports_no_failure": {
@@ -7115,9 +7145,9 @@
     "first_run": "2026-09-14T08:08:05+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 6,
-    "seconds": 0.735,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 13,
+    "seconds": 1.591,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_statement_that_raises_is_collected_and_the_ones_after_it_still_run": {
@@ -7125,9 +7155,9 @@
     "first_run": "2026-09-14T08:08:05+00:00",
     "last_failed": "2026-09-14T08:08:05+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 6,
-    "seconds": 0.765,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 13,
+    "seconds": 1.627,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_announces_its_start_and_its_end_with_what_the_script_produced": {
@@ -7135,9 +7165,9 @@
     "first_run": "2026-09-14T08:07:00+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 10,
-    "seconds": 1.315,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 17,
+    "seconds": 2.235,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_is_hibernated_as_a_task_due_now_not_run_inline": {
@@ -7145,10 +7175,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.445,
-    "runs": 23,
-    "seconds": 3.93,
+    "runs": 30,
+    "seconds": 4.949,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_never_sees_a_session": {
@@ -7156,10 +7186,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": "2026-09-14T08:06:15+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.522,
-    "runs": 23,
-    "seconds": 7.405,
+    "runs": 30,
+    "seconds": 8.634,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_prompt_runs_as_the_user_the_task_belongs_to": {
@@ -7167,9 +7197,9 @@
     "first_run": "2026-09-14T08:08:05+00:00",
     "last_failed": "2026-09-14T08:08:29+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 7,
-    "seconds": 0.962,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 14,
+    "seconds": 1.875,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_reports_a_suppressed_send_mail_in_fake_mode": {
@@ -7177,10 +7207,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.463,
-    "runs": 23,
-    "seconds": 3.921,
+    "runs": 30,
+    "seconds": 4.897,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_task_survives_a_restart_and_runs_against_an_equivalent_environment": {
@@ -7188,10 +7218,20 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.422,
-    "runs": 23,
-    "seconds": 4.002,
+    "runs": 30,
+    "seconds": 5.117,
+    "skips": 0
+  },
+  "tests/test_action_task.py::test_an_action_task_on_its_own_pushes_its_snippets_and_says_nothing_else": {
+    "failures": 0,
+    "first_run": "2026-09-14T08:25:02+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 5,
+    "seconds": 0.606,
     "skips": 0
   },
   "tests/test_action_task.py::test_build_scope_with_no_session_never_constructs_a_persisted_env": {
@@ -7199,10 +7239,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.399,
-    "runs": 24,
-    "seconds": 3.612,
+    "runs": 31,
+    "seconds": 4.509,
     "skips": 0
   },
   "tests/test_action_task.py::test_deleting_the_project_takes_its_pending_tasks_with_it": {
@@ -7210,10 +7250,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.529,
-    "runs": 23,
-    "seconds": 3.854,
+    "runs": 30,
+    "seconds": 5.348,
     "skips": 0
   },
   "tests/test_action_task.py::test_persisted_env_cannot_be_constructed_without_a_session_id": {
@@ -7221,10 +7261,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.056,
-    "runs": 23,
-    "seconds": 0.558,
+    "runs": 30,
+    "seconds": 0.704,
     "skips": 0
   },
   "tests/test_action_task.py::test_task_prompt_runs_inside_the_task_with_the_firing_sessions_history": {
@@ -7232,10 +7272,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.595,
-    "runs": 23,
-    "seconds": 4.402,
+    "runs": 30,
+    "seconds": 5.475,
     "skips": 0
   },
   "tests/test_action_task.py::test_the_last_attempt_ends_the_task_under_the_key_the_chain_started_with": {
@@ -7243,9 +7283,9 @@
     "first_run": "2026-09-14T08:07:00+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
-    "runs": 10,
-    "seconds": 1.286,
+    "last_run": "2026-09-14T08:29:07+00:00",
+    "runs": 17,
+    "seconds": 2.296,
     "skips": 0
   },
   "tests/test_action_task.py::test_the_task_runs_against_the_revision_it_was_written_for": {
@@ -7253,10 +7293,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.547,
-    "runs": 23,
-    "seconds": 4.765,
+    "runs": 30,
+    "seconds": 6.063,
     "skips": 0
   },
   "tests/test_ai_package_boundary.py::test_nothing_outside_the_ai_package_imports_a_provider": {
@@ -12142,10 +12182,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 1.036,
-    "runs": 14,
-    "seconds": 4.647,
+    "runs": 17,
+    "seconds": 5.433,
     "skips": 0
   },
   "tests/test_controller_scheduled_tasks.py::test_scheduled_tasks_lists_every_task_soonest_first": {
@@ -12153,10 +12193,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 1.924,
-    "runs": 14,
-    "seconds": 15.031,
+    "runs": 17,
+    "seconds": 17.659,
     "skips": 0
   },
   "tests/test_controller_settings_services.py::test_get_services_returns_the_configured_snapshot_verbatim": {
@@ -15027,10 +15067,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 1.084,
-    "runs": 12,
-    "seconds": 9.127,
+    "runs": 14,
+    "seconds": 10.572,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::TestTheTableIsTheQueue::test_a_new_scheduler_runs_what_the_previous_one_left_pending": {
@@ -15038,10 +15078,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.458,
-    "runs": 12,
-    "seconds": 1.824,
+    "runs": 14,
+    "seconds": 2.045,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::TestTheTableIsTheQueue::test_a_row_deleted_behind_the_schedulers_back_never_runs": {
@@ -15049,10 +15089,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 1.121,
-    "runs": 12,
-    "seconds": 11.181,
+    "runs": 14,
+    "seconds": 13.002,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::TestTheTableIsTheQueue::test_a_row_the_hydrator_rejects_is_marked_failed_with_the_reason": {
@@ -15060,10 +15100,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.382,
-    "runs": 12,
-    "seconds": 1.753,
+    "runs": 14,
+    "seconds": 1.995,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::TestTheTableIsTheQueue::test_a_stale_claim_is_recovered_by_a_running_scheduler_too_not_only_at_boot": {
@@ -15071,10 +15111,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.749,
-    "runs": 12,
-    "seconds": 6.737,
+    "runs": 14,
+    "seconds": 7.794,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::TestTheTableIsTheQueue::test_deleting_the_project_or_erasing_the_user_cascades_their_pending_tasks_away": {
@@ -15082,10 +15122,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.313,
-    "runs": 13,
-    "seconds": 1.726,
+    "runs": 15,
+    "seconds": 1.965,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::TestTheTableIsTheQueue::test_settled_rows_are_never_run_and_a_row_of_an_unknown_type_is_marked_failed_not_dropped": {
@@ -15093,10 +15133,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.788,
-    "runs": 12,
-    "seconds": 5.699,
+    "runs": 14,
+    "seconds": 6.549,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::TestTheTableIsTheQueue::test_two_schedulers_over_one_table_never_run_the_same_row_twice": {
@@ -15104,10 +15144,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.717,
-    "runs": 12,
-    "seconds": 3.979,
+    "runs": 14,
+    "seconds": 4.558,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::test_a_due_task_is_claimed_run_and_settled_done_while_a_failing_one_is_recorded_failed_with_its_error": {
@@ -15115,10 +15155,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.329,
-    "runs": 13,
-    "seconds": 1.875,
+    "runs": 15,
+    "seconds": 2.113,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::test_a_future_task_becomes_a_pending_row_that_does_not_run_and_cancelling_it_marks_it_canceled": {
@@ -15126,10 +15166,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.613,
-    "runs": 13,
-    "seconds": 5.585,
+    "runs": 15,
+    "seconds": 6.39,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::test_a_non_task_job_or_a_task_of_an_unregistered_type_is_refused_leaving_no_row": {
@@ -15137,10 +15177,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.3,
-    "runs": 13,
-    "seconds": 1.748,
+    "runs": 15,
+    "seconds": 1.951,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::test_a_task_due_soon_runs_at_its_time_without_waiting_for_a_poll": {
@@ -15148,10 +15188,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.795,
-    "runs": 13,
-    "seconds": 8.184,
+    "runs": 15,
+    "seconds": 9.38,
     "skips": 0
   },
   "tests/test_persisted_scheduler.py::test_nothing_is_claimed_before_start": {
@@ -15159,10 +15199,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.595,
-    "runs": 12,
-    "seconds": 5.37,
+    "runs": 14,
+    "seconds": 6.197,
     "skips": 0
   },
   "tests/test_precommit.py::test_a_file_that_cannot_be_parsed_is_left_alone_and_the_commit_goes_on": {
@@ -15923,10 +15963,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:28:20+00:00",
     "last_seconds": 0.107,
-    "runs": 13,
-    "seconds": 0.451,
+    "runs": 15,
+    "seconds": 0.497,
     "skips": 0
   },
   "tests/test_scheduler_service_task_type_registration.py::test_a_task_type_is_registered_once": {
@@ -15934,10 +15974,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:28:20+00:00",
     "last_seconds": 0.047,
-    "runs": 13,
-    "seconds": 0.308,
+    "runs": 15,
+    "seconds": 0.343,
     "skips": 0
   },
   "tests/test_scheduler_service_task_type_registration.py::test_start_is_idempotent": {
@@ -15945,10 +15985,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:28:20+00:00",
     "last_seconds": 0.052,
-    "runs": 13,
-    "seconds": 0.349,
+    "runs": 15,
+    "seconds": 0.386,
     "skips": 0
   },
   "tests/test_session_channel_context.py::test_creating_a_live_session_without_a_channel_fails": {
@@ -17859,10 +17899,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.004,
-    "runs": 15,
-    "seconds": 0.023,
+    "runs": 18,
+    "seconds": 0.026,
     "skips": 0
   },
   "tests/test_task_defer.py::test_a_live_defer_refuses_anything_but_a_task_lambda_and_a_real_datetime_scheduling_nothing": {
@@ -17870,10 +17910,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.049,
-    "runs": 15,
-    "seconds": 0.364,
+    "runs": 18,
+    "seconds": 0.418,
     "skips": 0
   },
   "tests/test_task_defer.py::test_a_zero_argument_lambda_evaluates_to_a_deferred_expression_that_knows_its_own_source_and_scope_and_runs_on_call": {
@@ -17881,10 +17921,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.003,
-    "runs": 15,
-    "seconds": 0.018,
+    "runs": 18,
+    "seconds": 0.021,
     "skips": 0
   },
   "tests/test_task_defer.py::test_task_eval_rejects_a_lambda_with_arguments_and_a_plain_dict_scope": {
@@ -17892,10 +17932,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T08:29:07+00:00",
     "last_seconds": 0.003,
-    "runs": 15,
-    "seconds": 0.019,
+    "runs": 18,
+    "seconds": 0.022,
     "skips": 0
   },
   "tests/test_tests_stay_on_the_contract.py::test_every_declaration_is_still_needed": {
