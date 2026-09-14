@@ -104,4 +104,20 @@ describe('publishing from the manage projects panel', () => {
     expect(button('Publish')).toBeUndefined()
     expect(button('Build').disabled).toBe(false)
   })
+
+  it('offers to publish a compiled app whose draft has moved past the published revision', async () => {
+    app.unmount()
+    backend.compiled = true
+    const { default: AdminHome } = await import('../components/AdminHome.vue')
+    app = createApp(AdminHome, { profile: null, viewStack: { pushView: vi.fn() } })
+    app.mount(container)
+    await settle()
+
+    const row = [...container.querySelectorAll('.manage-projects-row')]
+      .find((el) => el.querySelector('.project-card-title').textContent === 'proj')
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+    expect(badges()).toContain('COMPILED')
+    expect(button('Publish')).toBeDefined()
+  })
 })

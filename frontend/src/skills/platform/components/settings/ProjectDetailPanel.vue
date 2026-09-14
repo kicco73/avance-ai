@@ -104,7 +104,7 @@ onBeforeUnmount(async () => {
     <button type="button" class="project-detail-secondary-btn" @click="emit('download', app.id)">Export</button>
     <button type="button" class="project-detail-secondary-btn" @click="emit('share', app.id)">Invite</button>
     <button
-      v-if="!app.compiled"
+      v-if="revision !== publishedRevision"
       type="button"
       class="project-detail-secondary-btn"
       title="Publish this project's current revision, then compile it if this backend can"
