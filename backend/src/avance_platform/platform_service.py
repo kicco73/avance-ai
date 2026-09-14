@@ -20,6 +20,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton, CompiledAutomaton, ProjectPayload, StatePayload
+from automaton.build_error import AutomatonBuildError
 from automaton.file_types import ICON_FILE_RE
 from project.web_import_job import WebImportJob
 from system import bus
@@ -201,14 +202,21 @@ class PlatformService(object):
         raise FileNotFoundError(f"Source '{source_name}' does not exist in project '{project_id}'.")
 
     def list_app_store_apps(self, username: str, search: str | None = None) -> list[dict]:
-        apps = self.db.list_projects_for_app_store(username, search)
-        for app in apps:
-            app["icon_file"] = self._find_app_icon_file(app["id"])
-            automaton = self.project_service.get_automaton(app["id"], self.project_service.get_published_revision(app["id"]))
-            app["family"] = automaton.family
-            app["reactions_enabled"] = any(automaton.reactions_enabled_for(s) for s in automaton.states.values())
-            app["compiled"] = isinstance(automaton, CompiledAutomaton)
+        apps = []
+        for app in self.db.list_projects_for_app_store(username, search):
+            try:
+                apps.append(self._offered(app))
+            except AutomatonBuildError:
+                continue
         return apps
+
+    def _offered(self, app: dict) -> dict:
+        automaton = self.project_service.get_automaton(app["id"], self.project_service.get_published_revision(app["id"]))
+        app["icon_file"] = self._find_app_icon_file(app["id"])
+        app["family"] = automaton.family
+        app["reactions_enabled"] = any(automaton.reactions_enabled_for(s) for s in automaton.states.values())
+        app["compiled"] = isinstance(automaton, CompiledAutomaton)
+        return app
 
     def _find_app_icon_file(self, project_id: str) -> str | None:
         revision = self.project_service.get_published_revision(project_id)

@@ -82,8 +82,8 @@ annotating one. Even reading a transcript opens nothing
 | Type | Body | Published by |
 | --- | --- | --- |
 | `ui.notification` | `dict` | `tracking/actuators/action_task.py` — with `project_id` and, for an immediate run, `session_id` on the envelope, so a client can tell whether the script is about the conversation it has open — `tracking/actuators/chat_namespace.py`, and any installed skill that moves a conversation nobody is speaking in |
-| `task.started` | `{key}` | `tracking/actuators/action_task.py`, as the first act of a scheduled `task:` script. `key` names the whole run: a script that retries announces itself once, under the key of the attempt that began the chain. Envelope: the task's `username`, its `project_id`, and its `session_id` — `None` for a deferred call |
-| `task.ended` | `{key, result, error}` | `tracking/actuators/action_task.py`, once that script is over for good. `result` is the JS text its snippet-producing statements built (`None` if the script never ran); `error` names every statement that raised, one per line, or is `None` when none did. Same `key` and same envelope as `task.started`. A run that is about to be retried says nothing — only the attempt that settles it does |
+| `task.started` | `{key}` | `tracking/actuators/action_task.py`, as the first act of a scheduled `task:` script. `key` is the task's own key. Envelope: the task's `username`, its `project_id`, and its `session_id` — `None` for a deferred call |
+| `task.ended` | `{key, result, error}` | `tracking/actuators/action_task.py`, once that script is over for good. `result` is the JS text its snippet-producing statements built (`None` if the script never ran); `error` names every statement that raised, one per line, or is `None` when none did. Same `key` and same envelope as `task.started` |
 | `ui.progress` | `dict` | `system/broadcaster.py` |
 | `tool.send_mail` | `{to, subject, body_md}` | `tracking/actuators/actuator_set.py` |
 

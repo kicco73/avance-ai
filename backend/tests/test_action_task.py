@@ -24,7 +24,7 @@ import asyncio
 import json
 import time
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -46,7 +46,6 @@ from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
-from system.try_again_error import TryAgainError
 from system.web_session import WebSession
 from tracking.user_facts import UserFacts
 
@@ -176,7 +175,7 @@ def test_build_scope_with_no_session_never_constructs_a_persisted_env(file_db):
     real FK) — now it fails fast, right here, if it regresses."""
     _, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
-    hydrator = ScopeHydrator(file_db, project_service, factory, None, make_test_scheduler_service(file_db))
+    hydrator = ScopeHydrator(file_db, project_service, factory, None)
     payload = {
         "project_id": PROJECT,
         "project_revision": file_db.get_project_published_revision(PROJECT),
@@ -388,39 +387,24 @@ def test_a_task_never_sees_a_session(file_db):
     assert notified.messages == []
 
 
-class _AwayAiService(FakeAiService):
-
-    def __init__(self, away_for: int = 99) -> None:
-        super().__init__()
-        self.attempts = 0
-        self._away_for = away_for
-
-    async def prompt(self, prompt: str, channels=None):
-        self.attempts += 1
-        if self.attempts <= self._away_for:
-            raise TryAgainError("the provider is busy")
-        return await super().prompt(prompt, channels)
-
-
 def _hibernated(
     db: Db, project_service: ProjectService, factory, *,
     session_id: int | None = None, ai_service=None, fake: bool = True, running_script: str | None = None,
-    scheduler_service, plain: bool = False,
+    plain: bool = False,
 ):
     _fire_go(db, factory, project_service, {"distress": 10}, session_id=session_id, ai_service=ai_service, fake=fake)
     (row,) = db.list_tasks()
     payload = {**row["payload"], **({"script": running_script} if running_script else {})}
     return _rehydrated(
-        db, project_service, factory, row["key"], payload,
-        ai_service=ai_service, scheduler_service=scheduler_service, plain=plain,
+        db, project_service, factory, row["key"], payload, ai_service=ai_service, plain=plain,
     )
 
 
 def _rehydrated(
     db: Db, project_service: ProjectService, factory, key: str, payload: dict, *,
-    ai_service=None, scheduler_service, plain: bool = False,
+    ai_service=None, plain: bool = False,
 ):
-    hydrator = ScopeHydrator(db, project_service, factory, ai_service, scheduler_service)
+    hydrator = ScopeHydrator(db, project_service, factory, ai_service)
     task = ActionTask(key, USERNAME, payload, hydrator) if plain else hydrator.hydrate(key, USERNAME, payload)
     task.prepare()
     return task
@@ -439,7 +423,7 @@ def test_a_task_announces_its_start_and_its_end_with_what_the_script_produced(fi
     scheduler, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
     recorded = RecordedMessages(TASK_STARTED, TASK_ENDED, UI_NOTIFICATION)
-    task = _hibernated(file_db, project_service, factory, scheduler_service=scheduler)
+    task = _hibernated(file_db, project_service, factory)
 
     _drive(task)
 
@@ -456,7 +440,7 @@ def test_an_action_task_on_its_own_pushes_its_snippets_and_says_nothing_else(fil
     scheduler, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
     recorded = RecordedMessages(TASK_STARTED, TASK_ENDED, UI_NOTIFICATION)
-    task = _hibernated(file_db, project_service, factory, scheduler_service=scheduler, plain=True)
+    task = _hibernated(file_db, project_service, factory, plain=True)
 
     _drive(task)
 
@@ -470,7 +454,7 @@ def test_a_hibernated_row_comes_back_as_the_task_that_announces_itself(file_db):
     _fire_go(file_db, factory, project_service, {"distress": 10})
     (row,) = file_db.list_tasks()
 
-    hydrator = ScopeHydrator(file_db, project_service, factory, None, scheduler)
+    hydrator = ScopeHydrator(file_db, project_service, factory, None)
     task = hydrator.hydrate(row["key"], USERNAME, row["payload"])
 
     assert isinstance(task, AnnouncedActionTask)
@@ -483,7 +467,7 @@ def test_a_failing_statement_is_announced_while_the_others_still_reach_the_brows
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
     recorded = RecordedMessages(TASK_STARTED, TASK_ENDED, UI_NOTIFICATION)
     task = _hibernated(
-        file_db, project_service, factory, scheduler_service=scheduler,
+        file_db, project_service, factory,
         running_script="task.send_mail(session.number_of_user_sessions(), 'x')\ntask.send_mail(user.name, 'welcome')",
     )
 
@@ -502,7 +486,7 @@ def test_a_script_that_never_ran_is_announced_as_ended_with_no_result(file_db):
     scheduler, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
     recorded = RecordedMessages(TASK_STARTED, TASK_ENDED, UI_NOTIFICATION)
-    broken = _hibernated(file_db, project_service, factory, scheduler_service=scheduler, running_script="task.send_mail('unclosed")
+    broken = _hibernated(file_db, project_service, factory, running_script="task.send_mail('unclosed")
 
     with pytest.raises(SyntaxError):
         _drive(broken)
@@ -517,10 +501,10 @@ def test_a_deferred_task_announces_itself_with_no_session_on_the_envelope(file_d
     scheduler, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml(DEFER_LINE))
     session_id = _session_of(file_db)
-    outer = _hibernated(file_db, project_service, factory, session_id=session_id, fake=False, scheduler_service=scheduler)
+    outer = _hibernated(file_db, project_service, factory, session_id=session_id, fake=False)
     _drive(outer)
     inner = next(r for r in file_db.list_tasks() if r["payload"]["session_id"] is None)
-    task = _rehydrated(file_db, project_service, factory, inner["key"], inner["payload"], scheduler_service=scheduler)
+    task = _rehydrated(file_db, project_service, factory, inner["key"], inner["payload"])
     recorded = RecordedMessages(TASK_STARTED, TASK_ENDED)
 
     _drive(task)
@@ -535,53 +519,13 @@ def test_a_notification_says_which_conversation_its_script_is_about(file_db):
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
     session_id = _session_of(file_db)
     recorded = RecordedMessages(UI_NOTIFICATION)
-    task = _hibernated(file_db, project_service, factory, session_id=session_id, scheduler_service=scheduler)
+    task = _hibernated(file_db, project_service, factory, session_id=session_id)
 
     _drive(task)
 
     (notified,) = recorded.of_type(UI_NOTIFICATION)
     assert notified.project_id == PROJECT
     assert notified.session_id == session_id
-
-
-def test_a_provider_that_says_not_now_reschedules_the_whole_script_instead_of_ending(file_db):
-    recorded = RecordedMessages(TASK_STARTED, TASK_ENDED)
-    ai_service = _AwayAiService()
-    scheduler, project_service, factory = _process(file_db, ai_service=ai_service)
-    _publish(file_db, project_service, _yml("task.send_mail(task.prompt('hi'), 'note')"))
-    _fire_go(file_db, factory, project_service, {"distress": 10}, ai_service=ai_service)
-    (row,) = file_db.list_tasks()
-    task = _rehydrated(file_db, project_service, factory, row["key"], row["payload"], ai_service=ai_service, scheduler_service=scheduler)
-
-    _drive(task)
-
-    assert recorded.of_type(TASK_ENDED) == []
-    retry = next(r for r in file_db.list_tasks() if r["key"] != row["key"])
-    assert retry["payload"]["attempt"] == 1
-    assert retry["payload"]["origin_key"] == row["key"]
-    assert retry["payload"]["script"] == row["payload"]["script"]
-    expected = datetime.now(timezone.utc) + timedelta(seconds=ActionTask.RETRY_BASE_SECONDS)
-    assert abs((retry["run_at"] - expected).total_seconds()) < 2
-
-
-def test_the_last_attempt_ends_the_task_under_the_key_the_chain_started_with(file_db):
-    recorded = RecordedMessages(TASK_STARTED, TASK_ENDED)
-    ai_service = _AwayAiService()
-    scheduler, project_service, factory = _process(file_db, ai_service=ai_service)
-    _publish(file_db, project_service, _yml("task.send_mail(task.prompt('hi'), 'note')"))
-    _fire_go(file_db, factory, project_service, {"distress": 10}, ai_service=ai_service)
-    (row,) = file_db.list_tasks()
-    payload = {**row["payload"], "attempt": ActionTask.MAX_ATTEMPTS, "origin_key": "task:origin"}
-    task = _rehydrated(file_db, project_service, factory, "task:last", payload, ai_service=ai_service, scheduler_service=scheduler)
-
-    with pytest.raises(Exception):
-        _drive(task)
-
-    assert [r["key"] for r in file_db.list_tasks()] == [row["key"]]
-    assert recorded.of_type(TASK_STARTED) == []
-    (ended,) = recorded.of_type(TASK_ENDED)
-    assert ended.body["key"] == "task:origin"
-    assert "TryAgainError" in ended.body["error"]
 
 
 class _RecordingAiService(FakeAiService):
@@ -601,7 +545,7 @@ def test_a_task_prompt_runs_as_the_user_the_task_belongs_to(file_db):
     _publish(file_db, project_service, _yml("task.send_mail(task.prompt('hi'), 'note')"))
     _fire_go(file_db, factory, project_service, {"distress": 10}, ai_service=ai_service)
     (row,) = file_db.list_tasks()
-    task = _rehydrated(file_db, project_service, factory, row["key"], row["payload"], ai_service=ai_service, scheduler_service=scheduler)
+    task = _rehydrated(file_db, project_service, factory, row["key"], row["payload"], ai_service=ai_service)
 
     _drive(task)
 
@@ -619,7 +563,7 @@ def _task_scope(db: Db, project_service: ProjectService, factory):
         "snapshot": {"user": {"name": "Ada"}},
         "namespace_kind": TASK_NAMESPACE_FAKE,
     }
-    hydrator = ScopeHydrator(db, project_service, factory, None, make_test_scheduler_service(db))
+    hydrator = ScopeHydrator(db, project_service, factory, None)
     with WebSession().impersonate(USERNAME):
         yield hydrator.build_scope(USERNAME, payload)
 
@@ -655,43 +599,12 @@ def test_a_script_that_does_not_parse_raises_rather_than_reporting_a_partial_run
             scope.automaton.render_task_script("task.send_mail('unclosed", scope)
 
 
-def test_a_queued_retry_is_claimed_and_run_by_a_brand_new_process(file_db):
-    ai_service = _AwayAiService(away_for=1)
-    scheduler, project_service, factory = _process(file_db, start=True, ai_service=ai_service)
-    _publish(file_db, project_service, _yml("task.send_mail(task.prompt('hi'), 'note')"))
-    _fire_go(file_db, factory, project_service, {"distress": 10}, ai_service=ai_service)
-
-    assert _wait_until(lambda: len(file_db.list_tasks()) == 2), file_db.list_tasks()
-    origin = next(r for r in file_db.list_tasks() if r["payload"].get("origin_key") is None)
-    retry = next(r for r in file_db.list_tasks() if r["key"] != origin["key"])
-    assert _wait_until(lambda: file_db.get_task(origin["key"])["status"] == "done")
-    assert retry["status"] == "pending"
-    assert retry["payload"]["attempt"] == 1
-    assert retry["payload"]["origin_key"] == origin["key"]
-    assert retry["payload"]["script"] == origin["payload"]["script"]
-    assert retry["payload"]["snapshot"] == origin["payload"]["snapshot"]
-    scheduler.stop()
-
-    recorded = RecordedMessages(TASK_STARTED, TASK_ENDED, UI_NOTIFICATION)
-    _due_now(retry["key"])
-    _process(file_db, start=True, ai_service=ai_service)
-
-    assert _wait_until(lambda: file_db.get_task(retry["key"])["status"] == "done"), file_db.get_task(retry["key"])
-    assert len(file_db.list_tasks()) == 2
-    assert recorded.of_type(TASK_STARTED) == []
-    (ended,) = recorded.of_type(TASK_ENDED)
-    assert ended.body["key"] == origin["key"]
-    assert ended.body["error"] is None
-    assert ended.body["result"] == recorded.of_type(UI_NOTIFICATION)[0].body["task"]
-
-
 def test_a_pending_row_left_by_a_dead_process_announces_itself_when_it_finally_runs(file_db):
     scheduler, project_service, factory = _process(file_db, start=True)
     _publish(file_db, project_service, _yml(DEFER_LINE))
     _fire_go(file_db, factory, project_service, {"distress": 70}, fake=False)
     assert _wait_until(lambda: len(file_db.list_tasks()) == 2), file_db.list_tasks()
     inner = next(r for r in file_db.list_tasks() if r["status"] == "pending")
-    assert "attempt" not in inner["payload"] and "origin_key" not in inner["payload"]
     scheduler.stop()
     _due_now(inner["key"])
     recorded = RecordedMessages(TASK_STARTED, TASK_ENDED)

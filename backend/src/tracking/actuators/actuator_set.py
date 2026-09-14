@@ -182,7 +182,7 @@ class TaskDispatcher(object):
         self._check_project(scope)
         task = AnnouncedActionTask.now(
             action, scope, username=WebSession().user, namespace_kind=self._namespace_kind, session_id=session_id,
-            hydrator=self._hydrator, scheduler_service=self._scheduler_service,
+            hydrator=self._hydrator,
         )
         self._scheduler_service.schedule(task, datetime.now(timezone.utc))
 
@@ -190,7 +190,6 @@ class TaskDispatcher(object):
         self._check_project(act.scope)
         task = AnnouncedActionTask.later(
             act, when, username=WebSession().user, namespace_kind=self._namespace_kind, hydrator=self._hydrator,
-            scheduler_service=self._scheduler_service,
         )
         self._scheduler_service.schedule(task, when)
 

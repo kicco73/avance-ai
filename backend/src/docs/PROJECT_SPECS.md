@@ -795,12 +795,9 @@ services › Scheduler). What a failing statement leaves behind is what it
 always left behind: an assignment that raised leaves its name unset, so a
 later line reading it fails too.
 
-**A service that is only temporarily away is retried.** When a statement
-fails because whatever it called says "not now" rather than "no", the
-*whole script* is re-run from the top a little later — after 1s, then 2,
-4, 8, 16 — up to 5 attempts, after which it is a failure like any other.
-The script is re-run entire, so one written to be re-runnable is one that
-survives a provider being briefly down.
+A statement whose service answers "not now" rather than "no" is a failed
+statement like any other: it is listed in the task's `error` and in the
+log, and nothing is re-run.
 
 `name` can't shadow a reserved namespace or a core metric name (§2) —
 rejected at build time. `name` is visible inside
