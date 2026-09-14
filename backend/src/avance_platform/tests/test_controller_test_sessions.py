@@ -28,6 +28,10 @@ states:
   a:
     ui-label: A
     contextual-prompt: hi
+    actions:
+      - name: stay
+        target: a
+        trigger: "False"
 """
 
 

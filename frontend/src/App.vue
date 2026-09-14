@@ -89,11 +89,6 @@ function openChatFromPreview(projectId) {
   return openChatOn(projectId)
 }
 
-function openStoreFromPreview() {
-  closeHomePreview()
-  pushView('appStore')
-}
-
 const profileMenuListeners = { home: goHome, profile: openProfile, logout: handleLogout }
 
 const overlayListeners = {
@@ -125,7 +120,7 @@ const homePreviewListeners = {
   close: closeHomePreview,
   'open-chat': openChatFromPreview,
   open: openChatFromPreview,
-  'open-store': openStoreFromPreview,
+  'open-store': () => pushView('appStore'),
   'project-select': selectLandingProject,
 }
 
@@ -205,21 +200,6 @@ onBeforeUnmount(() => {
           />
 
           <Transition :name="slideTransitionName">
-            <component
-              v-if="overlayView"
-              :is="overlayView.component"
-              :key="`${pushedView}-${pushedViewContext.projectId}-${pushedViewContext.sessionId}`"
-              :project-id="pushedViewContext.projectId"
-              :session-id="pushedViewContext.sessionId"
-              :build-error="pushedViewContext.buildError"
-              :current-user-role="currentUserRole"
-              :profile="currentUserProfile"
-              :view-stack="viewStack"
-              v-on="overlayListeners"
-            />
-          </Transition>
-
-          <Transition :name="slideTransitionName">
             <LiveChatWindow
               v-if="homePreviewRole === 'user'"
               role="admin"
@@ -239,6 +219,21 @@ onBeforeUnmount(() => {
               :profile="currentUserProfile"
               :view-stack="viewStack"
               v-on="homePreviewListeners"
+            />
+          </Transition>
+
+          <Transition :name="slideTransitionName">
+            <component
+              v-if="overlayView"
+              :is="overlayView.component"
+              :key="`${pushedView}-${pushedViewContext.projectId}-${pushedViewContext.sessionId}`"
+              :project-id="pushedViewContext.projectId"
+              :session-id="pushedViewContext.sessionId"
+              :build-error="pushedViewContext.buildError"
+              :current-user-role="currentUserRole"
+              :profile="currentUserProfile"
+              :view-stack="viewStack"
+              v-on="overlayListeners"
             />
           </Transition>
         </div>

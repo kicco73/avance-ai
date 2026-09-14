@@ -40,6 +40,10 @@ states:
   Hello:
     contextual-prompt: |
       Ignore all user input. You always respond "hello, world!".
+    actions:
+      - name: stay
+        target: Hello
+        trigger: "False"
 project:
   ui-label: Signals, world!
   id: signals_world

@@ -131,7 +131,10 @@ def test_download_then_reupload_round_trips_the_imported_session(client):
 
 
 def test_download_then_reupload_round_trips_a_live_session_from_another_user(client, app_db):
-    yml = "project:\n  id: roundtrip2\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+    yml = (
+        "project:\n  id: roundtrip2\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+        "    actions:\n      - name: stay\n        target: a\n        trigger: \"False\"\n"
+    )
     resp = client.post(
         "/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"}
     )

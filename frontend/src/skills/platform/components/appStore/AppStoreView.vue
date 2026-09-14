@@ -148,22 +148,22 @@ defineExpose({ refresh: load })
 
       <div class="app-store-preview">
         <Transition name="app-store-detail">
-          <div v-if="selectedApp" :key="selectedApp.id" class="app-store-detail">
-            <CustomerAppDetailPanel
-              v-if="subscribedOnly"
-              :app="selectedApp"
-              @open="handleDetailOpen"
-            />
-            <AppDetailPanel
-              v-else
-              :app="selectedApp"
-              :show-free-badge="showFreeBadge"
-              :hide-install-actions="hideInstallActions"
-              :try-button-label="tryButtonLabel"
-              :show-uninstall-menu="showUninstallMenu"
-              @open="handleDetailOpen"
-            />
-          </div>
+          <CustomerAppDetailPanel
+            v-if="selectedApp && subscribedOnly"
+            :key="`customer-${selectedApp.id}`"
+            :app="selectedApp"
+            @open="handleDetailOpen"
+          />
+          <AppDetailPanel
+            v-else-if="selectedApp"
+            :key="selectedApp.id"
+            :app="selectedApp"
+            :show-free-badge="showFreeBadge"
+            :hide-install-actions="hideInstallActions"
+            :try-button-label="tryButtonLabel"
+            :show-uninstall-menu="showUninstallMenu"
+            @open="handleDetailOpen"
+          />
         </Transition>
         <p v-if="!selectedApp && !loading" class="app-store-status">Select an app to see its details.</p>
       </div>
@@ -342,14 +342,6 @@ defineExpose({ refresh: load })
   flex-direction: column;
   gap: 0.5rem;
   overflow-y: auto;
-}
-
-.app-store-detail {
-  flex: 1 0 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
 }
 
 .app-store-detail-enter-active,

@@ -35,6 +35,10 @@ states:
   a:
     contextual-prompt: hi
     reactions-enabled: true
+    actions:
+      - name: stay
+        target: a
+        trigger: "False"
   b:
     contextual-prompt: there
     reactions-enabled: false
@@ -120,6 +124,10 @@ states:
   a:
     contextual-prompt: hi
     reactions-enabled: true
+    actions:
+      - name: stay
+        target: a
+        trigger: "False"
 """
 
 
