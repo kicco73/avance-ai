@@ -6,11 +6,12 @@ import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../shareLink.js'
 import { loadSkillRoster } from '../skillRoster.js'
-import { chatChannel, messageListeners, modelSelectors, stateListeners } from '../skills/registry.js'
+import { chatChannel, liveChatObservers, messageListeners, modelSelectors, stateListeners } from '../skills/registry.js'
 import { observeMessages } from '../messageNotifier.js'
 import { installModelSelector, modelSelector } from '../modelSelector.js'
 import { installChatChannel } from '../liveChatChannel.js'
-import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages } from '../chatStore.js'
+import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, observeLiveChat } from '../chatStore.js'
+import { watchPushedTasks } from '../notificationBus.js'
 
 export function useAppBoot(
   currentUserProfile, currentUserRole, landingProjectId,
@@ -41,6 +42,8 @@ export function useAppBoot(
       observeMessages(messageListeners.value)
       installModelSelector(modelSelectors.value)
       installChatChannel(chatChannel.value)
+      watchPushedTasks()
+      observeLiveChat(liveChatObservers.value)
       publishState(newState)
       return 'ready'
     } catch (err) {

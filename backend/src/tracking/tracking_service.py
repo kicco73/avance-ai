@@ -3,7 +3,7 @@ from __future__ import annotations
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Callable
 
-from automaton.automaton import Automaton, SignalPayload
+from automaton.automaton import Automaton, Signal, SignalPayload
 from ai import AiService
 from project.project_service import ProjectService
 from db import Db
@@ -233,9 +233,10 @@ class TrackingService(object):
 					raise TrackingServiceError(
 						f"Unknown signal '{name}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
 					)
-				if isinstance(value, bool) or not isinstance(value, (int, float)) or not (0 <= value <= 100):
+				if isinstance(value, bool) or not isinstance(value, (int, float)) \
+						or not Signal.MIN_VALUE <= value <= Signal.MAX_VALUE:
 					raise TrackingServiceError(
-						f"Signal '{name}' must be a number between 0 and 100.",
+						f"Signal '{name}' must be a number between {Signal.MIN_VALUE} and {Signal.MAX_VALUE}.",
 						status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
 					)
 		self._db.set_signal_expected_values(row["id"], expected_values)

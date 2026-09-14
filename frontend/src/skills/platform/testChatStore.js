@@ -17,7 +17,6 @@ export const testStore = createChatStore({
   confirmNewSession: false,
   useAutoTracking: true,
   useActuatorsToggle: true,
-  subscribeToNotifications: false,
 })
 
 export const {

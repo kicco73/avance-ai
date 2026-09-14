@@ -1,0 +1,62 @@
+#!/bin/bash
+set -e
+
+if [ "${SKIP_STRIP_COMMENTS:-}" = "1" ]; then
+  exit 0
+fi
+
+root=$(git rev-parse --show-toplevel)
+tool="$root/backend/bin/strip_comments.py"
+if [ ! -f "$tool" ]; then
+  exit 0
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+stripped=""
+unsynced=""
+
+while IFS= read -r -d '' file; do
+  case "$file" in
+    *.py|*.pyi|*.js|*.mjs|*.cjs|*.jsx|*.ts|*.tsx|*.vue) ;;
+    *) continue ;;
+  esac
+
+  entry=$(git ls-files -s -- "$file")
+  mode=${entry%% *}
+  if [ "$mode" != "100644" ] && [ "$mode" != "100755" ]; then
+    continue
+  fi
+
+  mkdir -p "$tmp/staged/$(dirname "$file")" "$tmp/clean/$(dirname "$file")"
+  git show ":$file" > "$tmp/staged/$file"
+  cp "$tmp/staged/$file" "$tmp/clean/$file"
+
+  if ! python3 "$tool" --quiet "$tmp/clean/$file"; then
+    printf 'pre-commit: left alone, could not be parsed: %s\n' "$file" >&2
+    continue
+  fi
+
+  if cmp -s "$tmp/staged/$file" "$tmp/clean/$file"; then
+    continue
+  fi
+
+  sha=$(git hash-object -w -- "$tmp/clean/$file")
+  git update-index --cacheinfo "$mode,$sha,$file"
+  stripped="$stripped  $file"$'\n'
+
+  if cmp -s "$root/$file" "$tmp/staged/$file"; then
+    cp "$tmp/clean/$file" "$root/$file"
+  else
+    unsynced="$unsynced  $file"$'\n'
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACM -z)
+
+if [ -n "$stripped" ]; then
+  printf 'pre-commit: comments stripped from:\n%s' "$stripped"
+fi
+if [ -n "$unsynced" ]; then
+  printf 'pre-commit: staged only, working copy differed and was left alone:\n%s' "$unsynced"
+fi
+exit 0

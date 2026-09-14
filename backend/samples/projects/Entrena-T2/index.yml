@@ -102,7 +102,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-1
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-2:
     ui-label: Caso 2
     attachments:
@@ -122,7 +122,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-1
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-3:
     ui-label: Caso 3
     attachments:
@@ -142,7 +142,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-1
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-4:
     ui-label: Caso 4
     attachments:
@@ -162,7 +162,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-1
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-5:
     ui-label: Caso 5
     attachments:
@@ -182,7 +182,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-1
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-6:
     ui-label: Caso 6
     attachments:
@@ -202,7 +202,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-1
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-7:
     ui-label: Caso 7
     attachments:
@@ -222,7 +222,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-1
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-8:
     ui-label: Caso 8
     attachments:
@@ -242,7 +242,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-1
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-9:
     ui-label: Caso 9
     attachments:
@@ -262,7 +262,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-1
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-10:
     ui-label: Caso 10
     attachments:
@@ -282,7 +282,7 @@ states:
         trigger: signal.fin_de_ejercicio == 100
       - name: action-2
         ui-label: Señales
-        trigger: signal.companerismo == "" and signal.cultivar_el_discurso_de_cambio == "" and signal.empatia == "" and signal.enfoque == "" and signal.manejar_la_discordancia == "" and signal.planificacion == "" and signal.suavizar_el_discurso_de_mantenimiento
+        trigger: signal.companerismo < 0 and signal.cultivar_el_discurso_de_cambio < 0 and signal.empatia < 0 and signal.enfoque < 0 and signal.manejar_la_discordancia < 0 and signal.planificacion < 0 and signal.suavizar_el_discurso_de_mantenimiento
   state-11:
     ui-label: Evaluación
     attachments:

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import ast
 
+from automaton.model import Signal
+
 
 class TriggerExpressionAnalyzer:
     """Everything a trigger/`env:` expression's own text can be statically
@@ -262,6 +264,7 @@ class TriggerExpressionAnalyzer:
     _ALWAYS_NUMERIC_NAMESPACES = (("signal",), ("session", "metric"), ("metric",))
 
     _ORDERING_OPS: dict[type, str] = {ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">="}
+    _COMPARISON_OPS: dict[type, str] = {**_ORDERING_OPS, ast.Eq: "==", ast.NotEq: "!="}
 
     @classmethod
     def _leaf_kind(cls, node: ast.AST) -> str | None:
@@ -316,6 +319,59 @@ class TriggerExpressionAnalyzer:
                     f"'{ast.unparse(left)} {symbol} {ast.unparse(right)}' compares a {left_kind} "
                     f"with a {right_kind} — this will raise a TypeError as soon as it's evaluated"
                 )
+        return violations
+
+    _NOT_A_LITERAL = object()
+
+    @classmethod
+    def _signal_name_of(cls, node: ast.AST) -> str | None:
+        if not isinstance(node, ast.Attribute):
+            return None
+        ref = cls._namespace_path_of(node)
+        return ref[1] if ref is not None and ref[0] == ("signal",) else None
+
+    @classmethod
+    def _literal_value(cls, node: ast.AST) -> object:
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            inner = cls._literal_value(node.operand)
+            if isinstance(inner, (int, float)) and not isinstance(inner, bool):
+                return -inner
+        return cls._NOT_A_LITERAL
+
+    @classmethod
+    def _outside_signal_domain(cls, value: object) -> bool:
+        if value is cls._NOT_A_LITERAL:
+            return False
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return True
+        return not Signal.MIN_VALUE <= value <= Signal.MAX_VALUE
+
+    @classmethod
+    def signal_domain_violations(cls, expression: str) -> list[str]:
+        """Every comparison in `expression` matching a `signal.*` against a
+        literal no signal value can ever be — a string, a bool, or a number
+        outside Signal.MIN_VALUE..MAX_VALUE. Returns messages, never raises."""
+        tree = ast.parse(expression, mode="eval").body
+        violations = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Compare):
+                continue
+            operands = [node.left, *node.comparators]
+            for left, op, right in zip(operands, node.ops, operands[1:]):
+                symbol = cls._COMPARISON_OPS.get(type(op))
+                if symbol is None:
+                    continue
+                for signal_side, literal_side in ((left, right), (right, left)):
+                    name = cls._signal_name_of(signal_side)
+                    if name is None or not cls._outside_signal_domain(cls._literal_value(literal_side)):
+                        continue
+                    violations.append(
+                        f"'{ast.unparse(left)} {symbol} {ast.unparse(right)}' compares signal.{name} with "
+                        f"{ast.unparse(literal_side)} — a signal is an integer between "
+                        f"{Signal.MIN_VALUE} and {Signal.MAX_VALUE}"
+                    )
         return violations
 
     _KIND_DATETIME = "datetime"

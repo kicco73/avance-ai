@@ -2,15 +2,19 @@
 import { computed, ref, onMounted } from 'vue'
 import { getProjectEnvKeys, getProjectSources } from '../../api.js'
 import { identifierRegistry } from '../../../../identifierRegistry.js'
+import InspectorEnvKeysList from './InspectorEnvKeysList.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },
   stateKey: { type: String, default: null },
   stateData: { type: Object, default: null },
+  recentlyAddedKey: { type: String, default: null },
   saveField: { type: Function, required: true },
 })
 
-const emit = defineEmits(['set-field', 'jump-to-definition'])
+const emit = defineEmits([
+  'set-field', 'jump-to-definition', 'add-env-key', 'set-env-key-field', 'delete-env-key',
+])
 
 const envKeysLoading = ref(true)
 const envKeys = ref([])
@@ -91,7 +95,7 @@ function setSourceAccess(name, level) {
     <p v-if="stateKey == null" class="signals-status">Select a state in the graph to edit what it reads and produces.</p>
     <template v-else>
       <p v-if="envKeysLoading" class="signals-status">Loading…</p>
-      <p v-else-if="!envKeys.length" class="signals-status">No env keys declared yet — declare one in the Env tab first.</p>
+      <p v-else-if="!envKeys.length" class="signals-status">No env keys declared yet — declare one below first.</p>
       <template v-else>
         <div v-for="field in IO_FIELDS" :key="field.name" class="inspector-io-block">
           <div class="inspector-signal-header">
@@ -144,6 +148,20 @@ function setSourceAccess(name, level) {
         </div>
       </div>
     </template>
+
+    <div class="inspector-io-section-header">
+      <span class="inspector-detail-badge inspector-detail-badge-env">Env</span>
+      <span class="inspector-signal-name">The variables this project declares</span>
+    </div>
+    <InspectorEnvKeysList
+      :env-keys="envKeys"
+      :loading="envKeysLoading"
+      :recently-added-key="recentlyAddedKey"
+      @add-env-key="emit('add-env-key')"
+      @set-field="(name, field, value) => emit('set-env-key-field', name, field, value)"
+      @delete="(name) => emit('delete-env-key', name)"
+      @jump-to-definition="(target) => emit('jump-to-definition', target)"
+    />
   </div>
 </template>
 
@@ -152,6 +170,7 @@ function setSourceAccess(name, level) {
 .signals-status { margin: 0; color: #444; font-size: 0.9rem; }
 .inspector-io-block { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
 .inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.2rem; }
+.inspector-io-section-header { display: flex; align-items: center; gap: 0.4rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-env { background: #00838f; }
 .inspector-detail-badge-output { background: #004d40; }

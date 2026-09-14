@@ -98,7 +98,7 @@ class WebSession(object):
         in the publisher's own task, so ContextVars propagate — but that
         is already false for the producers that are not a request at all:
         system/broadcaster.py publishes onto the main loop from another
-        thread, and tracking/wakeup_service.py from a scheduled job.
+        thread, and a scheduled job from a worker.
         Both pass `username` on the Message because they had to.
 
         So a listener establishes its context rather than inheriting it,

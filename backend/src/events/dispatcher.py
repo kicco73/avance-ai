@@ -17,6 +17,12 @@ def subscribe(event_type: type, handler: Handler) -> None:
     _subscribers.setdefault(event_type, []).append(handler)
 
 
+def unsubscribe(event_type: type, handler: Handler) -> None:
+    for handlers in filter(None, [_subscribers.get(event_type)]):
+        for _ in [handler] if handler in handlers else []:
+            handlers.remove(handler)
+
+
 def publish(event: Any) -> None:
     for handler in _subscribers.get(type(event), []):
         handler(event)

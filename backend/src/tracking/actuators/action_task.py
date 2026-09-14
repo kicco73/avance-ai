@@ -37,8 +37,8 @@ An equivalent environment later is therefore *not* a pickle of a closure
 (its proxies hold a db handle, a project service, a websocket adapter —
 and a ContextVar user a worker thread never had): it is the frozen part,
 stored verbatim as JSON, plus the live part rebuilt from (username,
-project_id, project_revision, state_key) the way tracking/wakeup_service.py
-rebuilds a scope for a user who is not the current request —
+project_id, project_revision, state_key) the way a scope is rebuilt
+for a user who is not the current request —
 WebSession().impersonate(username) and a FixedProjectContext pinned on the
 project, at the *revision* the script was written against (published
 revisions are kept in Archive; a later republish never reinterprets a

@@ -1,4 +1,4 @@
-from .dispatcher import publish, subscribe
+from .dispatcher import publish, subscribe, unsubscribe
 from .events import (
     AvailabilityChanged, EnvChanged, ProjectPublishedHealthChanged, ProjectRevisionBuildFailed, StateChanged,
 )
@@ -11,4 +11,5 @@ __all__ = [
     "StateChanged",
     "publish",
     "subscribe",
+    "unsubscribe",
 ]

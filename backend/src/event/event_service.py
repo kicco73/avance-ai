@@ -7,7 +7,7 @@ from __future__ import annotations
 from ai import AiService
 from automaton.automaton import pressable_actions
 from db.db import Db
-from events import EnvChanged, StateChanged, subscribe
+from events import EnvChanged, StateChanged, subscribe, unsubscribe
 from jobs import CancelableJob
 from system import bus
 from system.bus import UI_NOTIFICATION, Message
@@ -31,7 +31,7 @@ logger = LoggerFactory.get_logger(__name__)
 
 class WakeupJob(CancelableJob):
 
-    def __init__(self, service: "WakeupService", username: str, observer_project_id: str) -> None:
+    def __init__(self, service: "EventService", username: str, observer_project_id: str) -> None:
         super().__init__(key=f"wakeup:{observer_project_id}:{username}", username="system")
         self._service = service
         self._username = username
@@ -52,7 +52,7 @@ class WakeupJob(CancelableJob):
         await self._service._reevaluate_and_apply(self._username, self._observer_project_id)
 
 
-class WakeupService:
+class EventService:
     def __init__(
         self, db: Db, project_service: ProjectService, scheduler_service: SchedulerService, namespace_factory: TaskNamespaceFactory,
         tracking_service: TrackingService | None = None,
@@ -68,6 +68,10 @@ class WakeupService:
     def register(self) -> None:
         subscribe(StateChanged, self._on_event)
         subscribe(EnvChanged, self._on_event)
+
+    def unregister(self) -> None:
+        unsubscribe(StateChanged, self._on_event)
+        unsubscribe(EnvChanged, self._on_event)
 
     def _on_event(self, event: StateChanged | EnvChanged) -> None:
         try:

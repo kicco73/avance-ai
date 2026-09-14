@@ -5,7 +5,7 @@ A Bus listener inherits the publisher's context today, because
 bus.publish awaits each listener in the publisher's own task. That is an
 accident of how the two channels publish, and it is already false for
 system/broadcaster.py (another thread, another loop) and
-tracking/wakeup_service.py (a scheduled job). A listener that establishes
+a scheduled job. A listener that establishes
 its context from the Message works from any producer.
 """
 from __future__ import annotations

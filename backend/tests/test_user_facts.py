@@ -56,7 +56,7 @@ def test_is_empty_for_an_identity_with_no_user_row_yet(db):
 def test_reads_session_user_lazily_not_at_construction(db):
     """Matches PersistedEnv/SessionFacts: constructed once,
     re-reads WebSession().user on every call — so WebSession().impersonate(...)
-    (wakeup_service.py) scopes an already-built UserFacts correctly too."""
+    scopes an already-built UserFacts correctly too."""
     facts = UserFacts(db)
     assert facts.as_dict()["email"] == "user"
 

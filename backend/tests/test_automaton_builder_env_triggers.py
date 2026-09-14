@@ -54,7 +54,12 @@ def test_a_trigger_may_reference_any_session_call_or_user_field(trigger):
     ("env.some_custom_env_key >= 1", "", r"undefined name\(s\).*env.some_custom_env_key"),
     ("mood >= 50", MOOD_SIGNAL, r"undefined name\(s\).*mood"),
     ("user.name >= 5", MOOD_SIGNAL, "user.name.*>=.*5"),
-], ids=["retired-system", "unknown-user-attr", "unknown-source", "undeclared-env-key", "bare-signal-name", "string-vs-number"])
+    ("signal.mood > 150", MOOD_SIGNAL, "signal.mood.*between 0 and 100"),
+    ("signal.mood == 'alto'", MOOD_SIGNAL, "signal.mood.*between 0 and 100"),
+], ids=[
+    "retired-system", "unknown-user-attr", "unknown-source", "undeclared-env-key", "bare-signal-name",
+    "string-vs-number", "signal-above-range", "signal-vs-string",
+])
 def test_a_trigger_referencing_anything_undeclared_or_mistyped_is_rejected_at_build_time(trigger, top_yaml, match):
     """`system.*` (today/time) is gone — a bare name outside every reserved
     namespace fails like any other unknown; a bare signal name must fail

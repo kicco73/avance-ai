@@ -21,7 +21,8 @@ describe('the notification bus runs a pushed task script once, globally', () => 
     vi.doMock('../src/busChannel.js', () => ({ busChannel: { subscribe: vi.fn(() => () => {}), onConnectionState: vi.fn(() => () => {}), send: vi.fn(() => true), connectionState: 'open' } }))
     taskActions = await import('../src/taskActions.js')
     ;({ busChannel } = await import('../src/busChannel.js'))
-    await import('../src/notificationBus.js')
+    const bus = await import('../src/notificationBus.js')
+    bus.watchPushedTasks()
   })
 
   afterEach(() => {
@@ -36,41 +37,27 @@ describe('the notification bus runs a pushed task script once, globally', () => 
   }
 
   it('runs the script of a frame carrying only "task" (an ActionTask that ran server-side)', async () => {
-    const bus = await import('../src/notificationBus.js')
-    const seen = []
-    bus.subscribeToStateNotifications((frame) => seen.push(frame))
-
     pushedFrame()({ project_name: undefined, state: undefined, 'task': "notify('Nice!', 'You reached **state B**.')" })
 
     expect(taskActions.runTaskScript).toHaveBeenCalledTimes(1)
     expect(taskActions.runTaskScript).toHaveBeenCalledWith("notify('Nice!', 'You reached **state B**.')")
-    expect(seen).toEqual([])
   })
 
-  it('runs the script once however many stores subscribed, and hands the state to each', async () => {
+  it('subscribes once however many times the boot asks for it', async () => {
     const bus = await import('../src/notificationBus.js')
-    const a = []
-    const b = []
-    bus.subscribeToStateNotifications((frame) => a.push(frame))
-    bus.subscribeToStateNotifications((frame) => b.push(frame))
+    bus.watchPushedTasks()
+    bus.watchPushedTasks()
 
-    pushedFrame()({ project_name: 'proj', state: { key: 'x' }, 'task': 'celebrate()' })
+    pushedFrame()({ 'task': 'celebrate()' })
 
+    expect(busChannel.subscribe.mock.calls.filter(([type]) => type === 'ui.notification')).toHaveLength(1)
     expect(taskActions.runTaskScript).toHaveBeenCalledTimes(1)
-    expect(a).toEqual([{ project_name: 'proj', state: { key: 'x' } }])
-    expect(b).toEqual([{ project_name: 'proj', state: { key: 'x' } }])
   })
 
-  it('a live chat store applies a pushed state only when it is about its own project', async () => {
-    const chatStore = await import('../src/chatStore.js')
-    chatStore.currentProjectId.value = 'proj'
-    const push = pushedFrame()
+  it('has nothing to say about a frame carrying no task', async () => {
+    pushedFrame()({ project_name: 'proj', state: { key: 'x' } })
 
-    push({ project_name: 'other', state: { key: 'x', actions: [] } })
-    expect(chatStore.state.value?.key).not.toBe('x')
-
-    push({ project_name: 'proj', state: { key: 'x', actions: [] } })
-    expect(chatStore.state.value.key).toBe('x')
+    expect(taskActions.runTaskScript).not.toHaveBeenCalled()
   })
 })
 

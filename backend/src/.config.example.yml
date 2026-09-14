@@ -2,6 +2,27 @@
 # Copy this file to .config.yml and fill in your values.
 # .config.yml is gitignored (it holds secrets); this example file is not.
 
+web:
+  # Optional section — can be omitted entirely. The browser origins
+  # allowed to make credentialed cross-origin calls to this backend
+  # (CORS). Defaults to the frontend dev server, http://localhost:5173
+  # and http://127.0.0.1:5173 — the port frontend/vite.config.js listens
+  # on, which .env.dev points at the backend on :8000, so a local
+  # `npm run dev` works unconfigured.
+  # A deployed product needs no entry here at all: the container's nginx
+  # serves the bundle and proxies /api to uvicorn on the same origin
+  # (see nginx.conf), and the bundle calls the relative /api — nothing
+  # is cross-origin, so no CORS header is ever consulted.
+  # Set this only when the frontend is served from a different origin
+  # than the API, or to lock the backend down to fewer origins: the list
+  # replaces the default entirely. Scheme + host + port, no trailing
+  # slash; an empty list allows no cross-origin caller at all. "*" is
+  # not a usable value — the session cookie makes every call
+  # credentialed, and browsers reject a wildcard on those.
+  allowed-origins:
+    - http://localhost:5173
+    - http://127.0.0.1:5173
+
 database:
   # Peewee connection URL (see backend/db.py). sqlite:///path.db for SQLite,
   # mysql://user:pass@host/dbname for MySQL (requires adding a MySQL driver

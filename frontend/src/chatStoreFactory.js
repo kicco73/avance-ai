@@ -10,7 +10,6 @@ import { ChatExchange } from './chatExchange.js'
 import { modelSelector } from './modelSelector.js'
 import { watchSession } from './watchedSessions.js'
 import { ToolStatusHold } from './toolStatusHold.js'
-import { subscribeToStateNotifications } from './notificationBus.js'
 import { playMessageChime, playReactionChime } from './audio.js'
 import { audioEnabled } from './chatPreferences.js'
 import { messageArrived } from './messageNotifier.js'
@@ -43,7 +42,6 @@ export function createChatStore({
   kind, channel = null, getSessionsList, resetSession = null,
   getAutoTracking = null, putAutoTracking = null,
   confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
-  subscribeToNotifications = false,
 }) {
   const state = ref(null)
   const currentSessionId = ref(null)
@@ -194,14 +192,6 @@ export function createChatStore({
     }
     if (frame.reaction) playReactionChime()
   })
-
-  if (subscribeToNotifications) {
-    subscribeToStateNotifications(({ project_name, state: newState }) => {
-      if (project_name === currentProjectId.value) {
-        handleStateChange(newState)
-      }
-    })
-  }
 
   function toStoreMessage(m) {
     return {

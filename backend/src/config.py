@@ -11,6 +11,8 @@ from system.bus import POINT_CONFIG_SERVICES
 from system.config_services import ui_section
 DEFAULT_APPS_DIR = Path(__file__).resolve().parent.parent / "apps"
 
+DEFAULT_ALLOWED_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
 
 
 def _redact_database_url(url: str) -> str:
@@ -212,6 +214,16 @@ class AppConfig:
         return providers
 
     @classmethod
+    def _parse_allowed_origins(cls, raw: dict, path: Path) -> list[str]:
+        sub = cls._get_optional_section(raw, "web", path)
+        origins = sub.get("allowed-origins")
+        if origins is None:
+            return list(DEFAULT_ALLOWED_ORIGINS)
+        if not isinstance(origins, list) or not all(isinstance(o, str) and o.strip() for o in origins):
+            raise ConfigError(f"{path}: 'web.allowed-origins' must be a list of non-empty strings if present.")
+        return [o.strip().rstrip("/") for o in origins]
+
+    @classmethod
     def _parse_build_service_config(cls, raw: dict, path: Path) -> BuildServiceConfig:
         sub = cls._get_optional_section(raw, "build-service", path)
         for field in ("repo-url", "username", "token", "apps-dir"):
@@ -327,6 +339,7 @@ class AppConfig:
         self.auth_providers = self._parse_auth_providers(raw, path)
 
         self.build_service_config = self._parse_build_service_config(raw, path)
+        self.allowed_origins = self._parse_allowed_origins(raw, path)
 
     @staticmethod
     def _public_provider_fields(entry) -> dict:

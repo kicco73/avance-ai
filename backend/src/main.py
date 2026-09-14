@@ -19,7 +19,7 @@ from system import bus
 from system.bus import POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES
 from system.bus_channel import BusChannel
 from system import skills
-from config import AppConfig
+from config import DEFAULT_ALLOWED_ORIGINS, AppConfig
 from tracking.project_files import configure_project_file_cache
 from controller import AvanceController
 from db import Db
@@ -37,7 +37,6 @@ from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
-from tracking.wakeup_service import WakeupService
 
 __version__ = "2.0.0"
 
@@ -52,7 +51,7 @@ def _build_fallback_app(error: Exception) -> FastAPI:
     fallback_app = FastAPI(title="Avance State Engine (misconfigured)")
     fallback_app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=list(DEFAULT_ALLOWED_ORIGINS),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -130,6 +129,8 @@ def create_app() -> FastAPI:
             "tracking_service": tracking_service,
             "scheduler_service": scheduler_service,
             "ai_test_service": ai_test_service,
+            "ai_live_service": ai_live_service,
+            "namespace_factory": namespace_factory,
             "progress_broadcaster": progress_broadcaster,
             "bus_channel": bus_channel,
             "apps_dir": config.build_service_config.apps_dir,
@@ -139,10 +140,6 @@ def create_app() -> FastAPI:
         project_service.register_availability_cascade()
         ProjectHealthNotifications(db, scheduler_service).register()
         project_service.recompute_all_availability()
-        WakeupService(
-            db, project_service, scheduler_service, namespace_factory, tracking_service=tracking_service,
-            ai_service=ai_live_service,
-        ).register()
 
         controller = AvanceController(
             turn_service, project_service, bus_channel=bus_channel,
@@ -170,7 +167,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # FIXME: restrict in production
+        allow_origins=config.allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

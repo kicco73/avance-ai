@@ -29,6 +29,7 @@ vi.mock('../src/skills/registry.js', () => ({
   messageListeners: { value: [] },
   stateListeners: { value: [{ stateReceived: (...args) => stateReceivedSpy(...args) }] },
   modelSelectors: { value: [] },
+  liveChatObservers: { value: [] },
   chatChannel: { value: 'webchat' },
 }))
 vi.mock('../src/skillRoster.js', () => ({
@@ -40,6 +41,7 @@ vi.mock('../src/chatStore.js', () => ({
   setTotalTokenBudgetPerSession: vi.fn(),
   handleStateChange: vi.fn(),
   loadMessages: vi.fn(),
+  observeLiveChat: vi.fn(),
 }))
 
 import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout, getPendingStatus } from '../src/api.js'

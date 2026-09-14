@@ -544,6 +544,12 @@ still `None` short-circuits the whole expression to `false`; any other
 failure (e.g. an `env.<name>` never actually set) is logged and also
 treated as `false` — a trigger can never crash a turn.
 
+A `signal.<name>` matched against a literal no signal value can ever be —
+a string, a boolean, or a number outside 0–100 — is rejected at build
+time as well. Whatever the model answers is coerced to that domain
+before a trigger sees it (§3.1), so `signal.mood > 150` or
+`signal.mood == "alto"` has one fixed outcome whatever the turn does.
+
 **5.3 Memory, env, and the model.** Two stores live per user+project,
 with two different owners, and the names are load-bearing:
 
@@ -878,6 +884,9 @@ of how you're likely to hit them:
 - Every action's `target` (incl. `init-action`'s) names a real state (or is a self-loop).
 - Every action's `trigger`, if given: syntactically valid and every
   reference resolves (§5.2's rules per namespace).
+- Every action's `trigger` compares a `signal.<name>` only against a
+  number between 0 and 100 (§5.2) — the domain every signal value is
+  coerced to (§3.1).
 - Every action's `env`, if given: a mapping, each expression validated the same way as `trigger`.
 - Every action's `task`, if given: one `task.<name>(...)` call (or
   `name = <expr>` assignment — §5.4) per non-blank line, validated the

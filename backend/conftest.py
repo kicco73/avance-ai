@@ -529,7 +529,7 @@ def make_test_namespace_factory(
 ) -> TaskNamespaceFactory:
     """A real TaskNamespaceFactory, wired the same way main.py does. Shared
     by every fixture/helper across the test suite that needs to construct
-    a TrackingService/TurnService/WakeupService."""
+    a TrackingService or a TurnService."""
     scheduler_service = scheduler_service if scheduler_service is not None else make_test_scheduler_service(db)
     project_service = project_service if project_service is not None else ProjectService(db, AutomatonLoader(db), SessionManager(db))
     return TaskNamespaceFactory(db, scheduler_service, project_service, ai_service)
@@ -618,6 +618,8 @@ def app(
         "tracking_service": tracking_service,
         "scheduler_service": scheduler_service,
         "ai_test_service": fake_ai_service,
+        "ai_live_service": fake_ai_service,
+        "namespace_factory": namespace_factory,
         "progress_broadcaster": progress_broadcaster,
         "bus_channel": bus_channel,
         "apps_dir": tmp_path / "apps",
@@ -631,7 +633,6 @@ def app(
     fastapi_app.include_router(controller.router)
     for name, service in bus.collect(POINT_CORE_SERVICES, {}).items():
         setattr(fastapi_app.state, name, service)
-    fastapi_app.state.namespace_factory = namespace_factory
     return fastapi_app
 
 

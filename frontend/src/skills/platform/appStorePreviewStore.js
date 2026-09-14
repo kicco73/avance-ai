@@ -11,7 +11,6 @@ export const appStorePreviewStore = createChatStore({
   confirmNewSession: false,
   useAutoTracking: false,
   useActuatorsToggle: false,
-  subscribeToNotifications: false,
 })
 
 export const {

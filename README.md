@@ -86,7 +86,34 @@ npm run dev
 ```
 
 The frontend starts on `http://localhost:5173` (the backend only accepts
-CORS requests from this origin — see `main.py`).
+CORS requests from this origin — see `web.allowed-origins` below).
+
+## Comments: the stripper and the pre-commit hook
+
+The code in this repo carries no comments: why a change was made belongs in
+the commit message, a contract in `backend/src/docs/`, a behaviour in a test.
+`backend/bin/strip_comments.py` enforces that on the files you give it. It
+keeps only comments whose text starts with `XXX` or `FIXME`, plus what is not
+really a comment: a shebang, a coding declaration, and tool directives
+(`# noqa`, `# type: ignore`, `/* eslint-disable */`, ...). `--check` reports
+without writing.
+
+It reads **code only** — Python, JS/TS and a `.vue` `<script>` block.
+Stylesheets and markup are left alone unless asked for: `--styles` adds
+`.css/.scss/.less` and a `.vue` `<style>` block, `--markup` adds
+`.html/.xml/.svg` and a `.vue` `<template>` block. A skin's stylesheet under
+`backend/samples/` is authored prose, and the hook never passes either flag.
+
+`.githooks/pre-commit` runs it over the staged code files, on the staged content
+only: it rewrites the index, and touches the working copy just when it still
+matches what was staged — a peer's unstaged edits in the same file are never
+swept into your commit. Install it once per clone:
+
+```
+ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit
+```
+
+`SKIP_STRIP_COMMENTS=1 git commit` (or `--no-verify`) skips it.
 
 ## Getting started
 
@@ -112,6 +139,19 @@ From there:
 Copied from `backend/src/.config.example.yml`, gitignored (it holds
 secrets). Top-level sections:
 
+- **`web.allowed-origins`** — optional, defaults to
+  `http://localhost:5173` and `http://127.0.0.1:5173`: the browser
+  origins allowed to call this backend cross-origin. That default is the
+  frontend dev server (`frontend/vite.config.js`), so `npm run dev`
+  against `uvicorn` on :8000 works unconfigured. A deployed product is
+  same-origin — nginx serves the bundle and proxies `/api` to uvicorn,
+  and the bundle calls the relative `/api` — so it needs no entry at
+  all. Set this when the frontend is hosted on a different origin than
+  the API, or to lock the backend down to fewer origins: the list
+  replaces the default entirely, and an empty list allows no
+  cross-origin caller at all. A wildcard is not usable — the session
+  cookie makes every call credentialed, and browsers reject `*` on
+  those.
 - **`database.url`** — a Peewee connection URL. `sqlite:///avance.db` by
   default; anything else requires adding the matching driver to
   `requirements.txt` (not included).

@@ -2,8 +2,8 @@
 flipping broken<->healthy (see ProjectManager.recompute_availability,
 which is the only publisher of ProjectPublishedHealthChanged) — one log
 line, one SystemWarning row per admin, one best-effort
-bus.UI_SYSTEM_WARNING per admin for whatever interface is listening. Split into a job (same "sync event -> async work" bridge
-WakeupService uses for its own ws push) since publish() itself is
+bus.UI_SYSTEM_WARNING per admin for whatever interface is listening. Split into a job (the same "sync event -> async work" bridge any
+listener of a synchronous event needs) since publish() itself is
 synchronous and may run from a plain (threadpool-executed) route handler,
 where there is no running event loop to push over a websocket from directly."""
 from __future__ import annotations

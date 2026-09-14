@@ -1,13 +1,13 @@
 <script setup>
-import { computed, nextTick, ref, watch, onMounted } from 'vue'
-import { getProjectEnvKeys } from '../../api.js'
+import { nextTick, ref, watch } from 'vue'
 import { vAutosize } from '../../../../components/skillkit/textareaAutosize.js'
 import CardMenu from '../../../../components/skillkit/CardMenu.vue'
 import TriggerEditor from '../../../../components/skillkit/TriggerEditor.vue'
 import { handleEnterNext } from '../../../../components/skillkit/enterToNextField.js'
 
 const props = defineProps({
-  projectId: { type: String, required: true },
+  envKeys: { type: Array, required: true },
+  loading: { type: Boolean, default: false },
   recentlyAddedKey: { type: String, default: null }
 })
 
@@ -17,20 +17,17 @@ function handleDeleteEnvKey(name) {
   emit('delete', name)
 }
 
-const envKeysLoading = ref(true)
-const envKeys = ref([])
-
 const expandedName = ref(null)
 const editName = ref('')
 const editUiDescription = ref('')
 const editValue = ref('')
 const editAiDefinition = ref('')
 
-function resetEditBuffers(entry) {
-  editName.value = entry?.env_key.name ?? ''
-  editUiDescription.value = entry?.env_key.ui_description ?? ''
-  editValue.value = entry?.env_key.value ?? ''
-  editAiDefinition.value = entry?.env_key.ai_definition ?? ''
+function resetEditBuffers(envKey) {
+  editName.value = envKey?.name ?? ''
+  editUiDescription.value = envKey?.ui_description ?? ''
+  editValue.value = envKey?.value ?? ''
+  editAiDefinition.value = envKey?.ai_definition ?? ''
 }
 
 let nameInputEl = null
@@ -47,70 +44,57 @@ function isRecentlyAdded(name) {
   return props.recentlyAddedKey === `env-key:${name}`
 }
 
+watch(() => props.envKeys, (keys) => {
+  if (expandedName.value && !keys.some((k) => k.name === expandedName.value)) {
+    expandedName.value = null
+  }
+})
+
 watch(() => props.recentlyAddedKey, async (key) => {
   if (!key?.startsWith('env-key:')) return
   const name = key.slice('env-key:'.length)
-  const entry = envKeys.value.find((e) => e.env_key.name === name)
-  if (!entry) return
+  const envKey = props.envKeys.find((k) => k.name === name)
+  if (!envKey) return
   expandedName.value = name
-  resetEditBuffers(entry)
+  resetEditBuffers(envKey)
   await nextTick()
   blockRefs[name]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   nameInputEl?.focus()
   nameInputEl?.select()
 })
 
-function selectEnvKey(entry) {
-  const name = entry.env_key.name
-  if (expandedName.value === name) {
+function selectEnvKey(envKey) {
+  if (expandedName.value === envKey.name) {
     expandedName.value = null
   } else {
-    expandedName.value = name
-    resetEditBuffers(entry)
+    expandedName.value = envKey.name
+    resetEditBuffers(envKey)
   }
-  emit('jump-to-definition', { kind: 'env-key', envKeyName: name })
+  emit('jump-to-definition', { kind: 'env-key', envKeyName: envKey.name })
 }
 
 function commitField(field, currentValue, originalValue) {
   if (currentValue === originalValue) return
   emit('set-field', expandedName.value, field, currentValue)
 }
-
-async function loadEnvKeys() {
-  envKeysLoading.value = true
-  try {
-    envKeys.value = (await getProjectEnvKeys(props.projectId)).env_keys
-  } catch {} finally { envKeysLoading.value = false }
-  if (expandedName.value && !envKeys.value.some((e) => e.env_key.name === expandedName.value)) {
-    expandedName.value = null
-  }
-}
-
-async function refresh() {
-  await loadEnvKeys()
-}
-
-defineExpose({ loadEnvKeys, refresh })
-
-onMounted(loadEnvKeys)
 </script>
 
 <template>
-  <div class="inspector-signals-section">
-    <p v-if="envKeysLoading" class="signals-status">Loading…</p>
+  <div class="inspector-env-keys">
+    <p v-if="loading" class="signals-status">Loading…</p>
     <p v-else-if="!envKeys.length" class="signals-status">No env keys declared.</p>
     <div v-else class="inspector-signal-list">
       <div
-        v-for="entry in envKeys"
-        :key="entry.env_key.name"
-        :ref="(el) => setBlockRef(entry.env_key.name, el)"
+        v-for="envKey in envKeys"
+        :key="envKey.name"
+        :ref="(el) => setBlockRef(envKey.name, el)"
         class="inspector-signal-block inspector-signal-block-clickable"
-        :class="{ 'inspector-signal-block-flash': isRecentlyAdded(entry.env_key.name) }"
+        :class="{ 'inspector-signal-block-flash': isRecentlyAdded(envKey.name) }"
         title="Click to open"
-        @click="selectEnvKey(entry)"
+        @click="selectEnvKey(envKey)"
       >
         <Transition name="crossfade" mode="out-in">
-          <div v-if="expandedName === entry.env_key.name" key="edit" class="inspector-signal-form">
+          <div v-if="expandedName === envKey.name" key="edit" class="inspector-signal-form">
             <div class="inspector-signal-header">
               <span class="inspector-detail-badge inspector-detail-badge-env">Env</span>
               <input
@@ -119,11 +103,11 @@ onMounted(loadEnvKeys)
                 class="inspector-signal-label-input"
                 placeholder="Name"
                 @click.stop
-                @blur="commitField('name', editName, entry.env_key.name)"
+                @blur="commitField('name', editName, envKey.name)"
                 @keydown.enter.prevent="handleEnterNext"
               />
               <CardMenu>
-                <button type="button" class="card-menu-item-danger" @click="handleDeleteEnvKey(entry.env_key.name)">Delete</button>
+                <button type="button" class="card-menu-item-danger" @click="handleDeleteEnvKey(envKey.name)">Delete</button>
               </CardMenu>
             </div>
             <label class="inspector-signal-form-label">Description</label>
@@ -133,7 +117,7 @@ onMounted(loadEnvKeys)
               class="inspector-signal-textarea"
               rows="2"
               @click.stop
-              @blur="commitField('ui-description', editUiDescription, entry.env_key.ui_description ?? '')"
+              @blur="commitField('ui-description', editUiDescription, envKey.ui_description ?? '')"
             ></textarea>
             <label class="inspector-signal-form-label">
               <span class="inspector-ai-field-icon" title="Read by the AI">
@@ -148,7 +132,7 @@ onMounted(loadEnvKeys)
               rows="2"
               placeholder="What this variable means, written for the model. Required once some state lists it in its own input/output."
               @click.stop
-              @blur="commitField('ai-definition', editAiDefinition, entry.env_key.ai_definition ?? '')"
+              @blur="commitField('ai-definition', editAiDefinition, envKey.ai_definition ?? '')"
             ></textarea>
             <label class="inspector-signal-form-label" title="A Python expression, evaluated server-side">
               <span class="inspector-py-field-icon" title="Python expression">PY</span>
@@ -158,25 +142,25 @@ onMounted(loadEnvKeys)
               v-model="editValue"
               :exclude-namespaces="['task', 'chat']"
               @click.stop
-              @blur="commitField('value', editValue, entry.env_key.value ?? '')"
+              @blur="commitField('value', editValue, envKey.value ?? '')"
             />
           </div>
           <div v-else key="readonly" class="inspector-signal-readonly">
             <div class="inspector-signal-header">
               <span class="inspector-detail-badge inspector-detail-badge-env">Env</span>
-              <span class="inspector-signal-name">{{ entry.env_key.name }}</span>
+              <span class="inspector-signal-name">{{ envKey.name }}</span>
               <CardMenu>
-                <button type="button" class="card-menu-item-danger" @click="handleDeleteEnvKey(entry.env_key.name)">Delete</button>
+                <button type="button" class="card-menu-item-danger" @click="handleDeleteEnvKey(envKey.name)">Delete</button>
               </CardMenu>
             </div>
-            <span v-if="entry.env_key.ui_description" class="inspector-signal-ui_description">{{ entry.env_key.ui_description }}</span>
-            <span v-if="entry.env_key.ai_definition" class="inspector-signal-ai_definition">
+            <span v-if="envKey.ui_description" class="inspector-signal-ui_description">{{ envKey.ui_description }}</span>
+            <span v-if="envKey.ai_definition" class="inspector-signal-ai_definition">
               <span class="inspector-ai-field-icon" title="Read by the AI">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
               </span>
-              {{ entry.env_key.ai_definition }}
+              {{ envKey.ai_definition }}
             </span>
-            <code v-if="entry.env_key.value" class="inspector-detail-code">{{ entry.env_key.value }}</code>
+            <code v-if="envKey.value" class="inspector-detail-code">{{ envKey.value }}</code>
           </div>
         </Transition>
       </div>
@@ -186,7 +170,7 @@ onMounted(loadEnvKeys)
 </template>
 
 <style scoped>
-.inspector-signals-section { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.inspector-env-keys { display: flex; flex-direction: column; }
 .inspector-signals-add-btn { flex-shrink: 0; margin-top: 0.5rem; padding: 0.5rem; border-radius: 6px; border: 1px dashed #4a6fa5; background: white; color: #4a6fa5; font-size: 0.82rem; cursor: pointer; }
 .inspector-signals-add-btn:hover { background: #eef2f9; }
 .signals-status { margin: 0; color: #444; font-size: 0.9rem; }

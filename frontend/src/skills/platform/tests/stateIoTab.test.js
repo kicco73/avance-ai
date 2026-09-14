@@ -14,7 +14,7 @@ vi.mock('../api.js', () => ({
 
 const InspectorStateIOTab = (await import('../components/inspector/InspectorStateIOTab.vue')).default
 
-async function mount(stateKey, stateData, saveField = vi.fn()) {
+async function mount(stateKey, stateData, saveField = vi.fn(), listeners = {}) {
   const host = document.createElement('div')
   document.body.appendChild(host)
   const selection = ref({ stateKey, stateData })
@@ -24,6 +24,7 @@ async function mount(stateKey, stateData, saveField = vi.fn()) {
       stateKey: selection.value.stateKey,
       stateData: selection.value.stateData,
       saveField,
+      ...listeners,
     })
   })
   app.mount(host)
@@ -99,6 +100,37 @@ describe('the state I/O tab', () => {
     await nextTick()
 
     expect(box.checked).toBe(true)
+  })
+
+  it('declares env keys with no state selected', async () => {
+    const onAddEnvKey = vi.fn()
+    const { host } = await mount(null, null, vi.fn(), { onAddEnvKey })
+
+    expect([...host.querySelectorAll('.inspector-signal-name')].map((n) => n.textContent))
+      .toContain('alpha')
+
+    host.querySelector('.inspector-signals-add-btn').click()
+    expect(onAddEnvKey).toHaveBeenCalled()
+  })
+
+  it('renames an env key through the tab that owns the I/O', async () => {
+    const onSetEnvKeyField = vi.fn()
+    const { host } = await mount('s1', { input: [], output: [] }, vi.fn(), { onSetEnvKeyField })
+
+    const card = [...host.querySelectorAll('.inspector-signal-block')]
+      .find((b) => b.textContent.includes('alpha'))
+    vi.useFakeTimers()
+    card.click()
+    await vi.advanceTimersByTimeAsync(1000)
+    vi.useRealTimers()
+
+    const nameInput = host.querySelector('.inspector-signal-label-input')
+    nameInput.value = 'renamed'
+    nameInput.dispatchEvent(new Event('input'))
+    await nextTick()
+    nameInput.dispatchEvent(new Event('blur'))
+
+    expect(onSetEnvKeyField).toHaveBeenCalledWith('alpha', 'name', 'renamed')
   })
 
   it('refuses a variable the model could not be told about', async () => {

@@ -7,8 +7,8 @@ Needed anywhere a caller must stay pinned to a specific, non-active
 context: a test replaying an old revision (test/
 signal_sources.py, test/testing_service.py), a live
 turn's own already-resolved session automaton (tracking/
-tracking_processor.py), or a cross-project wake-up re-evaluating some
-other user's observer project (tracking/wakeup_service.py). None of
+tracking_processor.py), or a listener re-evaluating some other user's
+project outside any request of theirs. None of
 these may silently read the live active-project pointer instead — it
 could name a completely different project by the time these classes
 actually call it.

@@ -14,8 +14,17 @@ export const liveStore = createChatStore({
   getSessionsList: (includeImported, projectId) => getSessions(projectId, includeImported),
   confirmNewSession: true,
   useAutoTracking: false,
-  subscribeToNotifications: true,
 })
+
+export function observeLiveChat(observers) {
+  for (const observer of observers) {
+    try {
+      observer.liveChatOpened(liveStore)
+    } catch (err) {
+      console.error('a skill failed to watch the live conversation', err)
+    }
+  }
+}
 
 export const {
   state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,

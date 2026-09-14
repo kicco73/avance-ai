@@ -77,6 +77,7 @@ class AutomatonValidator:
             if read_on_a_source:
                 message += " — a whole-file read is attachment.read(name)'s job (task only), not source.*."
             raise ValueError(message)
+        cls.validate_expression_types(expression, context)
 
     @staticmethod
     def _validate_namespace_call_arity(expression: str, context: str, namespace: str, methods_class: type) -> None:
@@ -203,8 +204,11 @@ class AutomatonValidator:
             cls.validate_chat_arity(statement, line_context)
 
     @staticmethod
-    def validate_trigger_types(expression: str, context: str) -> None:
-        violations = TriggerExpressionAnalyzer.type_violations(expression)
+    def validate_expression_types(expression: str, context: str) -> None:
+        violations = (
+            TriggerExpressionAnalyzer.type_violations(expression)
+            + TriggerExpressionAnalyzer.signal_domain_violations(expression)
+        )
         if violations:
             raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
 
@@ -252,7 +256,6 @@ class AutomatonValidator:
                 self.validate_namespaced_expression(
                     action.trigger, f"{action_context}: trigger", registry_for_triggers, sources,
                 )
-                self.validate_trigger_types(action.trigger, f"{action_context}: trigger")
                 referenced_projects = TriggerExpressionAnalyzer.automaton_project_refs(action.trigger)
                 if referenced_projects and action.target != state.key:
                     raise ValueError(

@@ -18,7 +18,7 @@ from conftest import RecordedMessages, make_test_namespace_factory, make_test_sc
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
-from tracking.wakeup_service import WakeupService
+from event.event_service import EventService
 
 REACHES_INTO = {
     "_reevaluate_and_apply": "pre-existing; the public path needs the file-backed db fixture and a wait loop",
@@ -104,7 +104,7 @@ def _both_projects(db, project_service, *, observed_moved: bool = True) -> dict:
 
 
 def _wake(db, project_service, **kwargs) -> None:
-    service = WakeupService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db), **kwargs)
+    service = EventService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db), **kwargs)
     asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
 
@@ -143,9 +143,8 @@ class TestWakeupNotification:
     """A fired self-loop wake-up publishes a ui.notification (state/
     project_name) addressed to `username`, never keyed on project_id
     (which only rides along inside the body). The key is deliberately
-    still "project_name", not "project_id": chatClient.js (frontend,
-    off-limits) parses this exact message shape by that literal key name
-    — see WakeupService._reevaluate_and_apply's own comment."""
+    still "project_name", not "project_id": the frontend parses this exact
+    message shape by that literal key name."""
 
     def test_a_fired_self_loop_announces_the_state_and_project_name_but_never_its_task(self, db, project_service):
         _both_projects(db, project_service)
@@ -187,22 +186,24 @@ class TestWakeupNotification:
         assert db.get_signals(unconnected_session["id"])[-1]["new_state"] == "x"
 
 
+def _signals_once_woken(db, session_id: int, timeout: float = 2.0) -> list:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and not db.get_signals(session_id):
+        time.sleep(0.01)
+    return db.get_signals(session_id)
+
+
 def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app_db):
     db = app_db
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     watcher_session = _both_projects(db, project_service)
 
-    service = WakeupService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
+    service = EventService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
     service.register()
 
     publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
 
-    for _ in range(200):
-        if len(db.get_signals(watcher_session["id"])) > 0:
-            break
-        time.sleep(0.01)
-
-    rows = db.get_signals(watcher_session["id"])
+    rows = _signals_once_woken(db, watcher_session["id"])
     assert len(rows) == 1
     assert rows[0]["old_state"] == "x"
     assert rows[0]["new_state"] == "x"
@@ -215,9 +216,23 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
     _publish_project(db, project_service, "watcher", WATCHER_YML)
     db.create_chat_session(username=USERNAME, project_id="observed", revision=db.get_project_published_revision("observed"))
 
-    service = WakeupService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
+    service = EventService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
     service.register()
 
     publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
     time.sleep(0.1)
     assert db.get_observers("observed") == ["watcher"]
+
+
+def test_the_skill_is_what_puts_the_listener_there(app):
+    db = app.state.db
+    watcher_session = _both_projects(db, app.state.project_service)
+
+    app.state.scheduler_service.start()
+    try:
+        publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
+        rows = _signals_once_woken(db, watcher_session["id"])
+    finally:
+        app.state.scheduler_service.stop()
+
+    assert [(row["old_state"], row["new_state"], row["origin"]) for row in rows] == [("x", "x", "system")]

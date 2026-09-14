@@ -81,7 +81,7 @@ annotating one. Even reading a transcript opens nothing
 
 | Type | Body | Published by |
 | --- | --- | --- |
-| `ui.notification` | `dict` | `tracking/wakeup_service.py`, `tracking/actuators/action_task.py`, `tracking/actuators/chat_namespace.py` |
+| `ui.notification` | `dict` | `tracking/actuators/action_task.py`, `tracking/actuators/chat_namespace.py`, and any installed skill that moves a conversation nobody is speaking in |
 | `ui.system_warning` | `dict` | `project/health_notifications.py` |
 | `ui.progress` | `dict` | `system/broadcaster.py` |
 | `tool.send_mail` | `{to, subject, body_md}` | `tracking/actuators/actuator_set.py` |

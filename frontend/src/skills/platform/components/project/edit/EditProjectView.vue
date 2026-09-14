@@ -9,7 +9,6 @@ import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
 import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
-import InspectorEnvKeysTab from '../../inspector/InspectorEnvKeysTab.vue'
 import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
 import EditorStateTab from './EditorStateTab.vue'
 import ActionsOrderDialog from '../../inspector/ActionsOrderDialog.vue'
@@ -199,8 +198,7 @@ const inspectorTabs = computed(() => {
   return [
     { id: 'state', label: 'Info' },
     { id: 'signals', label: 'Signals' },
-    { id: 'output', label: 'I/O' },
-    { id: 'env-keys', label: 'Env' }
+    { id: 'output', label: 'I/O' }
   ]
 })
 const inspectorActiveTab = ref('states')
@@ -359,8 +357,10 @@ watch(turnCount, () => {
   selected.value = null
   refreshSignalsLog()
   if (!inspecting.value) return
-  inspectorRef.value?.refresh()
-  if (editorOpen.value) indexYmlEditorRef.value?.refresh(false)
+  nextTick(() => {
+    inspectorRef.value?.refresh()
+    if (editorOpen.value) indexYmlEditorRef.value?.refresh(false)
+  })
 })
 
 watch(selected, () => {
@@ -626,20 +626,13 @@ async function handleSetSessionComment(sessionId, comment) {
                 :project-id="projectId"
                 :state-key="selectedStateKey"
                 :state-data="selectedStateData"
+                :recently-added-key="recentlyAddedKey"
                 :save-field="(field, value) => handleSetStateField(selectedStateKey, field, value)"
                 @set-field="(field, value) => handleSetStateField(selectedStateKey, field, value)"
-                @jump-to-definition="jumpSilently"
-              />
-            </template>
-            <template #tab-env-keys="{ registerTab }">
-              <InspectorEnvKeysTab
-                :ref="registerTab('env-keys')"
-                :project-id="projectId"
-                :recently-added-key="recentlyAddedKey"
-                @jump-to-definition="jumpSilently"
-                @set-field="handleSetEnvKeyField"
+                @set-env-key-field="handleSetEnvKeyField"
                 @add-env-key="handleAddEnvKey"
-                @delete="handleDeleteEnvKey"
+                @delete-env-key="handleDeleteEnvKey"
+                @jump-to-definition="jumpSilently"
               />
             </template>
           </Inspector>

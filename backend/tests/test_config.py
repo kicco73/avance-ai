@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from config import (
-    AppConfig, ConfigError, optional_choice, optional_non_negative_int, optional_positive_int, optional_section,
+    DEFAULT_ALLOWED_ORIGINS, AppConfig, ConfigError, optional_choice, optional_non_negative_int, optional_positive_int, optional_section,
 )
 
 pytestmark = pytest.mark.contract
@@ -200,3 +200,22 @@ class TestAiServiceProvidersModes:
             _load(monkeypatch, tmp_path, _sole_provider_modes(modes))
 
 
+
+
+class TestAllowedOrigins:
+    def test_defaults_to_the_frontend_dev_server_when_the_section_is_absent(self, monkeypatch, tmp_path):
+        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG).allowed_origins == list(DEFAULT_ALLOWED_ORIGINS)
+
+    def test_a_configured_list_replaces_the_default_and_loses_its_trailing_slashes(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG + (
+            "\nweb:\n  allowed-origins:\n    - https://app.example.com/\n    -  https://admin.example.com \n"
+        ))
+        assert config.allowed_origins == ["https://app.example.com", "https://admin.example.com"]
+
+    @pytest.mark.parametrize("bad_value", ["https://app.example.com", "{origin: https://app.example.com}", "[1]", '[""]', "true"])
+    def test_rejects_anything_that_is_not_a_list_of_non_empty_strings(self, monkeypatch, tmp_path, bad_value):
+        with pytest.raises(ConfigError, match="allowed-origins"):
+            _load(monkeypatch, tmp_path, MINIMAL_CONFIG + f"\nweb:\n  allowed-origins: {bad_value}\n")
+
+    def test_an_explicitly_empty_list_allows_no_cross_origin_caller_at_all(self, monkeypatch, tmp_path):
+        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG + "\nweb:\n  allowed-origins: []\n").allowed_origins == []

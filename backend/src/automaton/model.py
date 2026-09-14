@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from typing import ClassVar
+
 from typing_extensions import TypedDict, Literal, Any
 
 class SourceDict(TypedDict):
@@ -68,6 +70,9 @@ class State:
 
 @dataclass
 class Signal:
+    MIN_VALUE: ClassVar[int] = 0
+    MAX_VALUE: ClassVar[int] = 100
+
     name: str
     ui_label: str
     definition: str
