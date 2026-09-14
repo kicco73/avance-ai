@@ -24,7 +24,6 @@ class AutomatonLoader(object):
         self._db = db
         self._session_manager = session_manager
         self._automaton_cache: dict[tuple[str, int], Automaton] = {}
-        self._declared_meta_cache: dict[tuple[str, int], tuple[str | None, str | None, frozenset[str]]] = {}
         self.__build_failures: dict[tuple[str, int], AutomatonBuildError] = {}
 
     @staticmethod
@@ -39,54 +38,6 @@ class AutomatonLoader(object):
             return False
         return Path(project_id).name == project_id
 
-    def known_projects_env_keys(self, project_id: str, family: str | None) -> dict[str, frozenset[str]]:
-        """Every *other* project's declared project.id mapped to its
-        declared env key names, for AutomatonBuilder.build's automaton.*
-        existence check — narrowed to projects declaring this exact same
-        `family` (never parsed, plain string equality): a project outside
-        it (or `family` itself being None) is invisible here, so an
-        out-of-family — or family-less — automaton.<id> reference fails
-        build validation exactly like referencing an id that doesn't
-        exist at all. `family` is `project_id`'s own declared family —
-        the caller peeks it (AutomatonBuilder.read_declared_env_keys) off
-        whatever index.yml it's about to build, since that project's own
-        Automaton doesn't exist yet at this point."""
-        if family is None:
-            return {}
-        known: dict[str, frozenset[str]] = {}
-        for other_id in self._db.list_projects():
-            if other_id == project_id:
-                continue
-            other_declared_id, other_family, env_keys = self._declared_meta(other_id)
-            if other_declared_id is not None and other_family == family:
-                known[other_declared_id] = env_keys
-        return known
-
-    def _declared_meta(self, project_id: str) -> tuple[str | None, str | None, frozenset[str]]:
-        """(declared_id, family, env_key_names) off `project_id`'s *current*
-        index.yml — cached per (project_id, current revision) so a family
-        scan across every project (see known_projects_env_keys) parses each
-        sibling's YAML at most once per revision. Resolving the current
-        revision is one cheap int lookup, still far short of the archive
-        fetch + full YAML parse it replaces on a cache hit."""
-        revision = self._db.get_project_revision(project_id)
-        cache_key = (project_id, revision)
-        cached = self._declared_meta_cache.get(cache_key)
-        if cached is not None:
-            return cached
-        archive = self._db.get_archive(project_id, "index.yml", revision=revision)
-        if archive is None:
-            return None, None, frozenset()
-        meta = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
-        self._declared_meta_cache[cache_key] = meta
-        return meta
-
-    def declared_family(self, project_id: str) -> str | None:
-        """`project_id`'s current declared project.family — cached, for
-        scanning every other project by family (e.g.
-        ProjectInspector.get_identifier_registry) without a full build."""
-        return self._declared_meta(project_id)[1]
-
     def invalidate_cache(self, project_id: str) -> None:
         """Drops every cached revision of `project_id` — both what it
         last built successfully and what it last failed to build — for
@@ -96,24 +47,8 @@ class AutomatonLoader(object):
         instead, which re-caches just one revision (see set_cached)."""
         for key in [k for k in self._automaton_cache if k[0] == project_id]:
             del self._automaton_cache[key]
-        for key in [k for k in self._declared_meta_cache if k[0] == project_id]:
-            del self._declared_meta_cache[key]
         for key in [k for k in self.__build_failures if k[0] == project_id]:
             del self.__build_failures[key]
-
-    def clear_all_build_failures(self) -> None:
-        """Drops every cached build failure, for every project — the
-        blunt fallback ProjectManager reaches for whenever some project's
-        own identity (id/family) just started existing or changed: a
-        project that failed to build only because it referenced that id/
-        family before it resolved to anything has no entry in the
-        observer index to find it by (a failed build never reaches
-        set_project_observers, see ProjectManager.finalize_update), so
-        there's no way to know *which* cached failures are now stale
-        without a full rescan. A rare event (create/import/rename), and
-        the cost of over-clearing is just a rebuild on the next check —
-        cheap next to leaving a now-fixable project paused until restart."""
-        self.__build_failures.clear()
 
     def invalidate(self, project_id: str, revision: int) -> None:
         """Same as invalidate_cache, narrowed to one exact revision —
@@ -124,14 +59,10 @@ class AutomatonLoader(object):
         it was cached for."""
         cache_key = (project_id, revision)
         self._automaton_cache.pop(cache_key, None)
-        self._declared_meta_cache.pop(cache_key, None)
         self.__build_failures.pop(cache_key, None)
 
     def set_cached(self, project_id: str, revision: int, automaton: Automaton) -> None:
         self._automaton_cache[(project_id, revision)] = automaton
-        self._declared_meta_cache[(project_id, revision)] = (
-            automaton.project_id, automaton.family, frozenset(env_key.name for env_key in automaton.env_keys)
-        )
         self.__build_failures.pop((project_id, revision), None)
 
     def load_at_revision(self, project_id: str, revision: int) -> Automaton:
@@ -154,21 +85,17 @@ class AutomatonLoader(object):
             raise  FileNotFoundError(f"Project '{project_id}' does not contain 'index.yml'.")
 
         decoded = ArchiveLayout.decode_text(archives)
-        _, family, _ = AutomatonBuilder.read_declared_env_keys(decoded['index.yml'])
-        known_projects = self.known_projects_env_keys(project_id, family)
         try:
-            automaton = AutomatonBuilder().build(
-                decoded, known_projects, legacy_project_id=project_id,
-            )
+            automaton = AutomatonBuilder().build(decoded, legacy_project_id=project_id)
         except AutomatonBuildError as refusal:
-            automaton = self._repaired(project_id, revision, decoded, known_projects, refusal)
+            automaton = self._repaired(project_id, revision, decoded, refusal)
         automaton.set_storage_location(revision)
         self.set_cached(project_id, revision, automaton)
         return automaton
 
-    def _repaired(self, project_id: str, revision: int, decoded: dict, known_projects, refusal):
+    def _repaired(self, project_id: str, revision: int, decoded: dict, refusal):
         try:
-            return StoredIndexYml(self._db, project_id, revision).rebuilt(decoded, known_projects, refusal)
+            return StoredIndexYml(self._db, project_id, revision).rebuilt(decoded, refusal)
         except AutomatonBuildError as exc:
             exc.project_id = exc.project_id or project_id
             exc.revision = revision

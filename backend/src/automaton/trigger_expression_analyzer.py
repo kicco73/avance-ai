@@ -5,6 +5,7 @@ comparison mixes incompatible static types. Used both by AutomatonBuilder
 from __future__ import annotations
 
 import ast
+from typing import Iterable
 
 from automaton.model import Signal
 
@@ -14,7 +15,7 @@ class TriggerExpressionAnalyzer:
     analyzed for, without evaluating it: which identifiers/namespaces it
     references, and whether an ordering comparison mixes incompatible types."""
     RESERVED_NAMESPACES = (
-        "signal", "env", "session", "user", "source", "task", "chat", "attachment", "metric", "automaton", "datetime",
+        "signal", "env", "session", "user", "source", "task", "chat", "attachment", "metric", "datetime",
     )
     NESTED_NAMESPACES = (("session", "metric"), ("datetime", "timezone"))
 
@@ -57,33 +58,23 @@ class TriggerExpressionAnalyzer:
         return cls.namespace_attrs(tree, "signal")
 
     @classmethod
-    def bare_names(cls, expression: str) -> set[str]:
+    def bare_names(cls, expression: str, namespaces: Iterable[str] = ()) -> set[str]:
         """Every identifier referenced *outside* one of the reserved
-        namespaces (see RESERVED_NAMESPACES) — in practice a core metric name.
+        namespaces (see RESERVED_NAMESPACES) or `namespaces` — in practice a core metric name.
         A nested-namespace root (see NESTED_NAMESPACES) is excluded too."""
         tree = ast.parse(expression, mode="eval")
+        reserved = set(cls.RESERVED_NAMESPACES) | set(namespaces)
         namespace_bases = {
             node.value.id for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in cls.RESERVED_NAMESPACES
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in reserved
         }
         return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - namespace_bases
-
-    @staticmethod
-    def automaton_project_refs(expression: str) -> set[str]:
-        """Every project name referenced as `automaton.<project>...` in
-        `expression`. Walks every Attribute node (not just maximal ones),
-        since a reference is meaningful at any depth in the chain."""
-        tree = ast.parse(expression, mode="eval").body
-        return {
-            node.attr for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "automaton"
-        }
 
     @staticmethod
     def source_refs(expression: str) -> dict[str, set[str]]:
         """Every `source.<name>.<method>` reference in `expression`,
         grouped by source name — `source.<name>` is a dynamic, per-project
-        namespace (like `automaton.<project>`, see automaton_project_refs)
+        namespace
         static-tuple matching (_namespace_path_of/_NAMESPACE_PATHS) can't
         express, so it's matched directly here instead."""
         tree = ast.parse(expression, mode="eval").body
@@ -95,25 +86,6 @@ class TriggerExpressionAnalyzer:
             if not isinstance(name_node.value, ast.Name) or name_node.value.id != "source":
                 continue
             refs.setdefault(name_node.attr, set()).add(node.attr)
-        return refs
-
-    @staticmethod
-    def automaton_env_refs(expression: str) -> dict[str, set[str]]:
-        """Every `automaton.<project>.env.<key>` reference in `expression`,
-        grouped by project. Only matches the specific 4-level chain, unlike
-        the broader automaton_project_refs."""
-        tree = ast.parse(expression, mode="eval").body
-        refs: dict[str, set[str]] = {}
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute)):
-                continue
-            env_node = node.value
-            if env_node.attr != "env" or not isinstance(env_node.value, ast.Attribute):
-                continue
-            project_node = env_node.value
-            if not isinstance(project_node.value, ast.Name) or project_node.value.id != "automaton":
-                continue
-            refs.setdefault(project_node.attr, set()).add(node.attr)
         return refs
 
     @classmethod

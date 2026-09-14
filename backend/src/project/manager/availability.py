@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from http import HTTPStatus
 
-from automaton.automaton import Automaton
-from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from db import Db
 from events import AvailabilityChanged, ProjectRevisionBuildFailed, publish, subscribe
 from system.logging_factory import LoggerFactory
@@ -38,24 +36,6 @@ class ProjectAvailability:
         self._automaton_loader = automaton_loader
         self._recomputing: set[str] = set()
 
-    @staticmethod
-    def automaton_project_refs(automaton: Automaton) -> set[str]:
-        refs: set[str] = set()
-        for state in automaton.states.values():
-            for action in state.actions:
-                if action.trigger and action.target == state.key:
-                    refs |= TriggerExpressionAnalyzer.automaton_project_refs(action.trigger)
-        return refs
-
-    def filter_resolvable_project_ids(self, project_ids: set[str]) -> set[str]:
-        return {project_id for project_id in project_ids if self._db.project_exists(project_id)}
-
-    def _dependency_unavailable(self, dep_id: str) -> tuple[bool, str]:
-        if not self._db.project_exists(dep_id):
-            return True, dep_id
-        is_paused, _ = self._db.get_project_availability(dep_id) or (True, None)
-        return is_paused, dep_id
-
     def recompute(self, project_id: str) -> None:
         self._recomputing.add(project_id)
         try:
@@ -67,11 +47,6 @@ class ProjectAvailability:
                 available, reason = False, health.published.error
             else:
                 available, reason = True, None
-                for dep_id in self._db.get_observed_projects(project_id):
-                    is_unavailable, label = self._dependency_unavailable(dep_id)
-                    if is_unavailable:
-                        available, reason = False, f"Depends on unavailable project '{label}'."
-                        break
 
             current = self._db.get_project_availability(project_id)
             if current is None:
@@ -100,43 +75,8 @@ class ProjectAvailability:
         if health.draft.error is not None:
             raise ProjectBroken(health.draft)
 
-    def recheck_dependents_of_changed_id(
-        self, project_id: str, old_project_id: str, new_project_id: str | None,
-    ) -> None:
-        self._automaton_loader.clear_all_build_failures()
-        affected: set[str] = set(self._db.get_observers(old_project_id))
-
-        if new_project_id is not None:
-            for other_id in self._db.list_projects():
-                if other_id == project_id:
-                    continue
-                try:
-                    other_automaton = self._automaton_loader.load(other_id)
-                except Exception:  # noqa: BLE001
-                    continue
-                other_refs = self.automaton_project_refs(other_automaton)
-                if new_project_id not in other_refs:
-                    continue
-                self._db.set_project_observers(other_id, self.filter_resolvable_project_ids(other_refs))
-                affected.add(other_id)
-
-        affected.discard(project_id)
-        for observer in affected:
-            self.recompute(observer)
-
     def register_cascade(self) -> None:
-        subscribe(AvailabilityChanged, self._on_availability_changed)
         subscribe(ProjectRevisionBuildFailed, self._on_revision_build_failed)
-
-    def _on_availability_changed(self, event: AvailabilityChanged) -> None:
-        try:
-            for observer in self._db.get_observers(event.project_id):
-                self.recompute(observer)
-        except Exception:
-            logger.exception(
-                "Availability cascade failed while reacting to '%s' (available=%s).",
-                event.project_id, event.available,
-            )
 
     def _on_revision_build_failed(self, event: ProjectRevisionBuildFailed) -> None:
         if event.project_id in self._recomputing:

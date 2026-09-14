@@ -1,8 +1,8 @@
 """Cross-project wake-up, end to end: a self-loop action in one project
-("watcher") references another ("observed") via automaton.*. A real
-transition in "observed" publishes `state.changed` on the Bus, the reverse index
-resolves it back to "watcher", and re-evaluating its triggers fires
-the self-loop, recording a new transition.
+("watcher") references another ("observed") via event.*. A real
+transition in "observed" publishes `state.changed` on the Bus, the
+watcher's own current state says it watches "observed", and re-evaluating
+its triggers fires the self-loop, recording a new transition.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from system import bus
-from system.bus import STATE_CHANGED, UI_NOTIFICATION, Message
+from system.bus import POINT_CORE_SERVICES, STATE_CHANGED, UI_NOTIFICATION, Message
 from conftest import RecordedMessages, make_test_namespace_factory, make_test_scheduler_service
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
@@ -50,14 +50,13 @@ states:
     actions:
       - name: notice
         target: x
-        trigger: "automaton.observed.state == 'b'"
+        trigger: "event.observed.state == 'b'"
 """
 
 
 def _publish_project(db, project_service: ProjectService, project_name: str, index_yml: str) -> None:
-    """A real save, through _finalize_project_update, so the reverse
-    index is actually refreshed, same as a real save (put_project/
-    put_project_file) does."""
+    """A real save, through finalize_update, same as a real save
+    (put_project/put_project_file) does."""
     if project_name.isidentifier() and "project:" not in index_yml:
         index_yml = f"project:\n  id: {project_name}\n  family: test\n{index_yml}"
     db.ensure_project(project_name)
@@ -88,10 +87,15 @@ class _FakeTrackingService:
 
 
 
+def _offer_core(db, project_service) -> None:
+    bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({"db": db, "project_service": project_service}))
+
+
 def _both_projects(db, project_service, *, observed_moved: bool = True) -> dict:
     """Publishes both projects, opens a session in each, and (by default)
     moves "observed" to state 'b' — the state the watcher's own self-loop
     trigger is actually watching for."""
+    _offer_core(db, project_service)
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
     db.create_chat_session(username=USERNAME, project_id="watcher", revision=db.get_project_published_revision("watcher"))
@@ -107,17 +111,6 @@ def _wake(db, project_service, **kwargs) -> None:
     service = EventService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db), **kwargs)
     asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
-
-def test_the_reverse_index_records_the_reference_and_is_cleared_once_it_is_removed(db, project_service):
-    _publish_project(db, project_service, "observed", OBSERVED_YML)
-    _publish_project(db, project_service, "watcher", WATCHER_YML)
-
-    assert db.get_observers("observed") == ["watcher"]
-    assert db.get_observed_projects("watcher") == ["observed"]
-
-    _publish_project(db, project_service, "watcher", OBSERVED_YML)
-
-    assert db.get_observers("observed") == []
 
 
 def test_reevaluating_fires_the_self_loop_only_once_the_observed_state_actually_matches(db, project_service):
@@ -225,10 +218,11 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
 
     service = EventService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
     service.register()
+    notified = RecordedMessages(UI_NOTIFICATION)
 
     _publish_state_changed()
     time.sleep(0.1)
-    assert db.get_observers("observed") == ["watcher"]
+    assert notified.messages == []
 
 
 def test_the_skill_is_what_puts_the_listener_there(app):

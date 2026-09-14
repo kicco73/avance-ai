@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
+from turn.sessions.env_for_session import env_for_session
 from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from system import bus
 from system.bus import SESSION_ENDED, Message
@@ -96,6 +97,9 @@ class SessionManager(object):
         )
         session = self._db.get_chat_session(session_id)
         assert session is not None
+        strategy.reset_env_for_new_session(
+            project_service.get_automaton_for_session(session_id), env_for_session(self._db, session),
+        )
         return session
 
     def discard_sessions_of_type(self, username: str, type: str) -> None:

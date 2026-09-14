@@ -7,6 +7,7 @@ from automaton.automaton import EnvKey, Source, State
 from automaton.builder.build_cursor import BuildCursor
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
+from automaton.trigger_namespaces import TriggerNamespaces
 from metrics.metrics_framework import metric_names
 from tracking.actuators import ChatNamespace, MAX_ATTACHMENT_READ_BYTES, TaskNamespace
 from tracking.sources import READ_METHOD, WRITE_METHOD, driver_class_for
@@ -50,11 +51,11 @@ class AutomatonValidator:
     @classmethod
     def validate_namespaced_expression(
         cls, expression: str, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
-        known_locals: frozenset[str] = frozenset(),
+        known_locals: frozenset[str] = frozenset(), namespaces: frozenset[str] = frozenset(),
     ) -> None:
         try:
             namespace_refs = TriggerExpressionAnalyzer.namespace_refs(expression)
-            bare_names = TriggerExpressionAnalyzer.bare_names(expression)
+            bare_names = TriggerExpressionAnalyzer.bare_names(expression, namespaces)
             source_refs = TriggerExpressionAnalyzer.source_refs(expression)
         except SyntaxError as exc:
             raise ValueError(f"{context} ('{expression}') is not a valid expression: {exc}") from exc
@@ -216,31 +217,10 @@ class AutomatonValidator:
         if violations:
             raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
 
-    @staticmethod
-    def validate_automaton_refs_exist(
-        expression: str, referenced_projects: set[str], known_projects: dict[str, frozenset[str]], context: str
-    ) -> None:
-        unknown_projects = referenced_projects - known_projects.keys()
-        if unknown_projects:
-            raise ValueError(
-                f"{context} references automaton.{', automaton.'.join(sorted(unknown_projects))} — "
-                "not a known project.id."
-            )
-        for project_id, env_keys in TriggerExpressionAnalyzer.automaton_env_refs(expression).items():
-            declared = known_projects.get(project_id)
-            if declared is None:
-                continue
-            unknown_keys = env_keys - declared
-            if unknown_keys:
-                raise ValueError(
-                    f"{context} references automaton.{project_id}.env.{', '.join(sorted(unknown_keys))} — "
-                    f"not declared in project '{project_id}''s own 'env' section."
-                )
-
     def check_state(
         self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]],
         env_keys: dict[str, EnvKey], sources: dict[str, Source], archives: ProjectArchives,
-        known_projects: dict[str, frozenset[str]] | None = None,
+        namespaces: TriggerNamespaces,
     ) -> None:
         registry_for_triggers = IdentifierRegistry.for_triggers(registry)
         registry_for_task = IdentifierRegistry.for_task(registry)
@@ -259,18 +239,9 @@ class AutomatonValidator:
             if action.trigger:
                 self.validate_namespaced_expression(
                     action.trigger, f"{action_context}: trigger", registry_for_triggers, sources,
+                    namespaces=namespaces.names,
                 )
-                referenced_projects = TriggerExpressionAnalyzer.automaton_project_refs(action.trigger)
-                if referenced_projects and action.target != state.key:
-                    raise ValueError(
-                        f"{action_context}: trigger references automaton.* but this "
-                        f"action isn't a self-loop (target '{action.target}' != state '{state.key}') — "
-                        "automaton.* is only ever allowed in a self-loop action's own trigger."
-                    )
-                if known_projects is not None and referenced_projects:
-                    self.validate_automaton_refs_exist(
-                        action.trigger, referenced_projects, known_projects, f"{action_context}: trigger",
-                    )
+                namespaces.check_action(state, action)
             if action.env:
                 for env_key, expression in action.env.items():
                     if env_key not in registry.get("env", {}):

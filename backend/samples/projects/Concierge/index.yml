@@ -13,7 +13,7 @@ states:
         ui-label: Send notification
         ui-description: Detects when TTM prototype enters a specific state and sends a user greeting.
         on-exit: chat.notify('From Concierge', 'TTM prototype told me you are doing great. Congrats! Come and see me these days.')
-        trigger: 'automaton.ttm_prototype.state == ''Contemplation'''
+        trigger: 'event.ttm_prototype.state == ''Contemplation'''
     ui-label: Hall
 env: {}
 project:

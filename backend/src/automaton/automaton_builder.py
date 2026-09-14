@@ -6,7 +6,8 @@ from automaton.builder.automaton_validator import AutomatonValidator, STATE_SOUR
 from automaton.builder.build_cursor import BuildCursor
 from automaton.build_error import AutomatonBuildError
 from automaton.identifier_registry import IdentifierRegistry
-from automaton.builder.project_metadata import ProjectMetadata, load_yaml, peek_declared_revision, read_declared_env_keys
+from automaton.builder.project_metadata import ProjectMetadata, load_yaml, peek_declared_revision, read_declared_project_id
+from automaton.trigger_namespaces import TriggerNamespaces
 from typing import Any
 from system.logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
@@ -312,19 +313,18 @@ class AutomatonBuilder(object):
         )
 
     @staticmethod
-    def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, str | None, frozenset[str]]:
-        return read_declared_env_keys(index_yml_text)
+    def read_declared_project_id(index_yml_text: str) -> str | None:
+        return read_declared_project_id(index_yml_text)
 
     @staticmethod
     def peek_declared_revision(index_yml_text: str) -> int | None:
         return peek_declared_revision(index_yml_text)
 
     def build(
-        self, contents: dict, known_projects: dict[str, frozenset[str]] | None = None, *,
-        legacy_project_id: str | None = None,
+        self, contents: dict, *, legacy_project_id: str | None = None,
     ) -> Automaton:
         try:
-            return self._build(contents, known_projects, legacy_project_id=legacy_project_id)
+            return self._build(contents, legacy_project_id=legacy_project_id)
         except AutomatonBuildError:
             raise
         except YAMLError as exc:
@@ -354,8 +354,7 @@ class AutomatonBuilder(object):
             names_by_ui_label[item.ui_label] = name
 
     def _build(
-        self, contents: dict, known_projects: dict[str, frozenset[str]] | None, *,
-        legacy_project_id: str | None,
+        self, contents: dict, *, legacy_project_id: str | None,
     ) -> Automaton:
         archives = ProjectArchives(contents)
 
@@ -446,10 +445,11 @@ class AutomatonBuilder(object):
             state_keys_by_ui_label[states[key].ui_label] = key
 
         registry = IdentifierRegistry.build(list(signals.values()), list(env_keys.values()))
+        namespaces = TriggerNamespaces.collect()
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
             self._validator.check_state(
-                context_key, state, set(raw_states.keys()), registry, env_keys, sources, archives, known_projects,
+                context_key, state, set(raw_states.keys()), registry, env_keys, sources, archives, namespaces,
             )
 
         general_attachments = archives.require(raw.get('attachments', []), for_field="global")

@@ -84,24 +84,19 @@ class ProjectMetadata:
         )
 
 
-def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, str | None, frozenset[str]]:
+def read_declared_project_id(index_yml_text: str) -> str | None:
     try:
         raw = load_yaml(index_yml_text)
     except Exception as exc:
-        logger.warning("Failed to parse index.yml for known_projects_env_keys: %s", exc)
-        return None, None, frozenset()
+        logger.warning("Failed to parse index.yml for read_declared_project_id: %s", exc)
+        return None
     if not isinstance(raw, dict):
-        return None, None, frozenset()
+        return None
     raw_project = raw.get("project")
     project_id = raw_project.get("id") if isinstance(raw_project, dict) else None
     if not isinstance(project_id, str) or not project_id.isidentifier():
-        project_id = None
-    family = raw_project.get("family") if isinstance(raw_project, dict) else None
-    if not isinstance(family, str) or not family:
-        family = None
-    raw_env = raw.get("env")
-    env_keys = frozenset(raw_env.keys()) if isinstance(raw_env, dict) else frozenset()
-    return project_id, family, env_keys
+        return None
+    return project_id
 
 
 def peek_declared_revision(index_yml_text: str) -> int | None:

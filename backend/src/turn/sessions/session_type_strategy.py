@@ -8,8 +8,35 @@ from system.web_session import WebSession
 
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
+    from automaton.model import State
+    from tracking.env import Env
     from turn.sessions.session_manager import SessionManager
     from project.project_service import ProjectService
+
+
+class ResumeNewSession:
+    def starting_state(self, automaton: "Automaton", state: "State") -> str:
+        return state.key
+
+    def task(self, automaton: "Automaton") -> dict | None:
+        return None
+
+    def reset_env(self, env: "Env") -> None:
+        return None
+
+
+class RestartNewSession:
+    def starting_state(self, automaton: "Automaton", state: "State") -> str:
+        return automaton.init_action.target
+
+    def task(self, automaton: "Automaton") -> dict | None:
+        return automaton.init_action.task
+
+    def reset_env(self, env: "Env") -> None:
+        env.clear()
+
+
+NEW_SESSION_POLICIES = {"resume": ResumeNewSession(), "restart": RestartNewSession()}
 
 
 class SessionTypeStrategy(ABC):
@@ -30,6 +57,8 @@ class SessionTypeStrategy(ABC):
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int: ...
     @abstractmethod
     def task_for_new_session(self, automaton: "Automaton") -> dict | None: ...
+    def reset_env_for_new_session(self, automaton: "Automaton", env: "Env") -> None:
+        return None
     def discard_superseded(self, session_manager: "SessionManager", username: str) -> None:
         return None
     @staticmethod
@@ -59,17 +88,16 @@ class LiveSessionStrategy(SessionTypeStrategy):
 
     def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
         automaton, state = project_service.get_automaton_and_state(project_id, type=self.type_name, username=username)
-        if automaton.new_session_strategy == "restart":
-            return self._init_action_start(automaton)[0]
-        return state.key
+        return NEW_SESSION_POLICIES[automaton.new_session_strategy].starting_state(automaton, state)
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         return project_service.get_published_revision(project_id)
 
     def task_for_new_session(self, automaton: "Automaton") -> dict | None:
-        if automaton.new_session_strategy == "restart":
-            return self._init_action_start(automaton)[1]
-        return None
+        return NEW_SESSION_POLICIES[automaton.new_session_strategy].task(automaton)
+
+    def reset_env_for_new_session(self, automaton: "Automaton", env: "Env") -> None:
+        NEW_SESSION_POLICIES[automaton.new_session_strategy].reset_env(env)
 
 
 class TestSessionStrategy(SessionTypeStrategy):

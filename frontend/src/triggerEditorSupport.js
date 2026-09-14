@@ -8,8 +8,8 @@ const CALL_PARAMS = {
   'chat.switch_to_human': ['user_id']
 }
 
-const AUTOMATON_EMPTY_HINT =
-  "No other project declares the same project.family — set it in this project's and a sibling's index.yml to reference automaton.<id>."
+const EVENT_EMPTY_HINT =
+  "No other project declares the same project.family — set it in this project's and a sibling's index.yml to reference event.<id>."
 
 export const NAMESPACE_COLORS = {
   signal: '#1565c0',
@@ -21,7 +21,7 @@ export const NAMESPACE_COLORS = {
   task: '#c62828',
   chat: '#f9a825',
   metric: '#2e7d32',
-  automaton: '#455a64',
+  event: '#455a64',
   datetime: '#00695c',
   'datetime.timezone': '#00897b'
 }
@@ -34,10 +34,10 @@ export function excludingNamespaces(registry, excluded) {
 
 export function isProxyNamespace(namespace) {
   return namespace !== 'signal' && namespace !== 'env' && namespace !== 'user' &&
-    namespace !== 'automaton' && namespace !== 'datetime.timezone' && !namespace.startsWith('automaton.')
+    namespace !== 'event' && namespace !== 'datetime.timezone' && !namespace.startsWith('event.')
 }
 
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|metric|automaton|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
+export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|metric|event|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
   const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)
@@ -111,14 +111,14 @@ export function completeIdentifiers(context, registry) {
       options.push({ label: child, type: 'namespace', apply: child })
     }
     if (!options.length) {
-      if (namespace !== 'automaton') return null
+      if (namespace !== 'event') return null
       return {
         from,
         options: [{
           label: '(no sibling project shares this family)',
           type: 'text',
           apply: () => {},
-          info: () => completionInfo('automaton', AUTOMATON_EMPTY_HINT, 'namespace')
+          info: () => completionInfo('event', EVENT_EMPTY_HINT, 'namespace')
         }]
       }
     }

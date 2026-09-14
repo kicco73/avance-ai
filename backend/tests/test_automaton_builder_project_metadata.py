@@ -3,7 +3,7 @@ ui-description/signal-tracking-on-ai-message, see
 AutomatonBuilder._build_project_metadata). `project:` and `project.id`
 are both mandatory; `id` must be a valid Python identifier;
 cross-project uniqueness is ProjectService's concern; `family` gates
-automaton.* visibility (see test_automaton_builder_automaton_namespace.py).
+what another project may read of this one.
 """
 from __future__ import annotations
 

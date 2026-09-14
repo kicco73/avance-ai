@@ -21,7 +21,6 @@ from system.bus import POINT_SESSION_SERVICES
 from tracking.session_services import SessionServices
 
 from tracking.actuators import TaskNamespace, TaskNamespaceFactory
-from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
@@ -74,7 +73,6 @@ class TurnService(object):
 		self._insights = SessionInsights(db, metric_service, tracking_service, self._ownership)
 		self._session_facts = SessionFacts(db, project_service)
 		self._user_facts = UserFacts(db)
-		self._automaton_namespace = AutomatonNamespace(db, project_service)
 
 		self._project_locks = project_locks or ProjectLocks()
 		self._session_locks = KeyedLockRegistry(asyncio.Lock)
@@ -97,7 +95,7 @@ class TurnService(object):
 		chat_namespace = self._namespace_factory.chat_for_session(session_id)
 		scope_builder = EvaluationScopeBuilder(
 			env, self.metric_service, session_facts, self._user_facts,
-			self._db, self._automaton_namespace, task_namespace, chat_namespace,
+			self._db, task_namespace, chat_namespace,
 			ai_service=self._ai_service_for_session(session_id),
 		)
 		return TrackingEngine(DbTrackingSink(self._db), env, scope_builder), task_namespace
@@ -111,7 +109,7 @@ class TurnService(object):
 			env = Env()
 			scope_builder = EvaluationScopeBuilder(
 				env, self.metric_service, self._session_facts, self._user_facts,
-				self._db, self._automaton_namespace, self._namespace_factory.fake(project_id=project_id),
+				self._db, self._namespace_factory.fake(project_id=project_id),
 				chat_namespace=self._namespace_factory.chat_fake(project_id=project_id),
 			)
 			tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)

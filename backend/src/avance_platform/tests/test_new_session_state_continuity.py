@@ -118,3 +118,43 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
     second = _info_of(create_chat(client, project_id, "test"))
     assert second["state"]["key"] == "a"
     assert [t["payload"]["script"].strip() for t in app_db.list_tasks()] == ["task.send_mail(user.email, 'hi')"] * 2
+
+
+RESTART_YML = (
+    "project:\n  id: proj\n  new-session-strategy: restart\n"
+    "env:\n  counter:\n    value: 0\n"
+    "init-action:\n  target: a\n  task: task.send_mail(user.email, 'hi')\n"
+    "states:\n"
+    "  a:\n"
+    "    contextual-prompt: hi\n"
+    "    actions:\n"
+    "      - name: go\n"
+    "        target: b\n"
+    "        env:\n"
+    "          counter: 5\n"
+    "  b:\n"
+    "    contextual-prompt: there\n"
+)
+
+
+def test_new_live_session_under_restart_opens_at_init_with_env_and_memory_wiped(client, app_db):
+    resp = client.post("/api/skills/platform/projects/upload", content=RESTART_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+    assert resp.status_code == 200, resp.text
+    project_id = parse_sse_result(resp)["project_id"]
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
+    assert resp.status_code == 200, resp.text
+
+    first = session_of(enter_chat(client, project_id))
+    assert chat_action(client, first, "go")["state"]["key"] == "b"
+    client.put(f"/api/skills/platform/sessions/{first}/env/note", json={"value": "the user likes tea"})
+    env = client.get(f"/api/skills/platform/sessions/{first}/env").json()
+    assert env["memory"] == {"note": "the user likes tea"}
+    assert env["action_set"]["counter"] == 5
+
+    created = _created(client, project_id)
+    assert created["state"]["key"] == "a"
+    env = client.get(f"/api/skills/platform/sessions/{created['session_id']}/env").json()
+    assert env["memory"] == {}
+    assert env["action_set"]["counter"] == 0
+    scripts = [t["payload"]["script"].strip() for t in app_db.list_tasks() if "script" in t["payload"]]
+    assert scripts == ["task.send_mail(user.email, 'hi')"]

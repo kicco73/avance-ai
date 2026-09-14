@@ -21,7 +21,6 @@ from ..archive.automaton_loader import AutomatonLoader
 from ..archive.layout import BUNDLE_FILE_NAMES, SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME
 from ..archive.zip_importer import ZipImporter
 from ..project_import_bundle_job import ProjectImportBundleJob
-from ..types import FAMILY_NOT_CHECKED
 
 if TYPE_CHECKING:
     from .project_manager import ProjectManager
@@ -91,15 +90,12 @@ class ProjectUploader:
                 editor.set_project_field("id", force_project_id)
                 files["index.yml"] = index_yml = editor.serialize()
             files["index.yml"] = index_yml = IndexYmlModernizer().modernize(index_yml).text
-            declared_id, declared_family, _ = AutomatonBuilder.read_declared_env_keys(index_yml)
-            if declared_id is None:
+            if AutomatonBuilder.read_declared_project_id(index_yml) is None:
                 raise ValueError(
                     "project.id is required and must be a valid identifier "
                     "(letters, digits, underscores, not starting with a digit)."
                 )
-            automaton = AutomatonBuilder().build(
-                files, self._automaton_loader.known_projects_env_keys(declared_id, declared_family)
-            )
+            automaton = AutomatonBuilder().build(files)
         except AutomatonBuildError:
             raise
         except (zipfile.BadZipFile, ValueError) as exc:
@@ -117,9 +113,6 @@ class ProjectUploader:
         existing_published = (
             self._db.get_project_published_revision(project_id) if self._db.project_exists(project_id) else None
         )
-        old_family = (
-            self._automaton_loader.declared_family(project_id) if existing_published is not None else FAMILY_NOT_CHECKED
-        )
         declared_revision = AutomatonBuilder.peek_declared_revision(files["index.yml"])
 
         if existing_published is not None:
@@ -134,13 +127,11 @@ class ProjectUploader:
 
         return await self._persist_uploaded_project(
             project_id, final_revision, automaton, files, sessions_to_import, tests_to_import,
-            old_family=old_family,
         )
 
     async def _persist_uploaded_project(
         self, project_id: str, revision: int, automaton: Automaton, files: dict[str, str | bytes],
         sessions_to_import: list[dict], tests_to_import: list[dict],
-        *, old_family: str | None | object = FAMILY_NOT_CHECKED,
     ) -> tuple[dict, ProjectImportBundleJob]:
         files_bytes = {
             name: value.encode("utf-8") if isinstance(value, str) else value
@@ -152,9 +143,7 @@ class ProjectUploader:
             self._db.reset_project(project_id)
         self._db.import_new_revision(project_id, revision, files_bytes, content_types)
         self._db.set_active_project_id(project_id, WebSession().user)
-        await self._manager.finalize_update(
-            project_id, automaton, is_new_project=is_new_project, old_family=old_family,
-        )
+        await self._manager.finalize_update(project_id, automaton, is_new_project=is_new_project)
         self._manager.publish_project(project_id)
 
         job = ProjectImportBundleJob(
@@ -173,7 +162,7 @@ class ProjectUploader:
 
     async def create_new_project(self, template: bytes) -> tuple[dict, ProjectImportBundleJob]:
         template_files, _, _ = self.extract_upload_files(template, "application/zip")
-        base_id, _, _ = AutomatonBuilder.read_declared_env_keys(template_files["index.yml"])
+        base_id = AutomatonBuilder.read_declared_project_id(template_files["index.yml"])
         project_id = self._unique_project_id(base_id or "hello_world")
         automaton, files, sessions_to_import, tests_to_import = self._build_from_upload(
             template, "application/zip", force_project_id=project_id,

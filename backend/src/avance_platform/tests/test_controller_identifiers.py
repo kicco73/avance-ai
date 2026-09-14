@@ -70,11 +70,10 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {
+    assert set(body) >= {
         "signal", "env", "session", "session.metric", "user", "source", "task", "chat", "attachment", "metric",
-        "automaton", "datetime", "datetime.timezone",
+        "datetime", "datetime.timezone",
     }
-    assert body["automaton"] == {}
     assert body["signal"] == {"myOwnSignal": "whatever this measures"}
     assert body["env"] == {"visits": "How many times this action has fired."}
     assert set(body["session"]) == {
@@ -111,37 +110,6 @@ def test_200_for_a_project_that_exists_but_has_never_been_published(client):
     assert response.status_code == 200
     assert response.json()["env"] == {"visits": "How many times this action has fired."}
 
-
-OTHER_PROJECT = """
-project:
-  id: other_proj
-  family: shared
-
-init-action:
-  target: x
-
-env:
-  budget:
-    ui-description: "Remaining shared budget."
-
-states:
-  x:
-    contextual-prompt: "hi"
-"""
-
-
-def test_automaton_namespace_lists_every_other_project_never_the_active_one(client):
-    other_id = _upload_and_activate(client, OTHER_PROJECT)
-    project_id = _upload_and_activate(client, PROJECT)
-
-    response = client.get(f"/api/core/projects/{project_id}/identifiers")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["automaton"] == {}
-    assert f"automaton.{project_id}" not in body
-    assert body[f"automaton.{other_id}"] == {"state": f"The '{other_id}' project's own current state."}
-    assert body[f"automaton.{other_id}.env"] == {"budget": "Remaining shared budget."}
 
 
 SOURCE_PROJECT = """

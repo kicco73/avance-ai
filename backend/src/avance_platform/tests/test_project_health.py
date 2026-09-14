@@ -193,67 +193,7 @@ def test_a_broken_published_revision_reports_where_it_broke(db, project_service)
     assert published.line == 0
 
 
-DEP_YML = """
-project:
-  id: dep
-  family: fam5
-env:
-  flag:
-    value: "'x'"
-init-action:
-  target: a
-states:
-  a:
-    ui-label: A
-    contextual-prompt: hi
-"""
 
-WATCHER_YML = """
-project:
-  id: watcher_a
-  family: fam5
-init-action:
-  target: a
-states:
-  a:
-    ui-label: A
-    contextual-prompt: hi
-    actions:
-      - name: notice
-        target: a
-        trigger: "automaton.dep.env.flag == 'x'"
-"""
-
-
-def test_a_stale_build_failure_that_depended_on_a_deleted_and_recreated_project_clears_itself(
-    db, project_service,
-):
-    """watcher_a's own self-loop trigger references automaton.dep.env.flag
-    — resolved at *build* time against whichever projects currently exist
-    in its own family (AutomatonLoader.known_projects_env_keys), not just
-    checked for runtime availability. Deleting 'dep' and forcing a fresh
-    build of watcher_a while it's gone makes that build genuinely fail
-    (not just "unavailable") — AutomatonLoader caches that failure per
-    (project_id, revision), keyed on watcher_a alone, with nothing
-    watching for 'dep' to come back. Recreating 'dep' must still heal
-    watcher_a without a restart (see ProjectManager._recheck_dependents_
-    of_changed_id's own clear_all_build_failures call)."""
-    _publish(db, project_service, "dep", DEP_YML)
-    _publish(db, project_service, "watcher_a", WATCHER_YML)
-    assert db.get_project_availability("watcher_a") == (False, None)
-
-
-    asyncio.run(project_service.manager.delete_project("dep"))
-    project_service.recompute_availability("watcher_a")
-    assert db.get_project_availability("watcher_a")[0] is True
-    project_service.automaton_loader.invalidate_cache("watcher_a")
-    rows = {row["id"]: row for row in PlatformService(project_service).get_runtime_status()}
-    assert "automaton.dep" in rows["watcher_a"]["broken"]["published"]
-
-    _publish(db, project_service, "dep", DEP_YML)
-    is_paused, reason = db.get_project_availability("watcher_a")
-    assert is_paused is False
-    assert reason is None
 
 
 

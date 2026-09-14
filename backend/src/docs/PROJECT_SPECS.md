@@ -121,13 +121,13 @@ project:
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `id` | **yes** | string, valid Python identifier | — | This project's own globally unique identity, and how *other* projects reach it via `automaton.<id>.*` (§5.2). Must satisfy `str.isidentifier()` — letters/digits/underscore, not starting with a digit; no dots/hyphens/spaces. |
-| `family` | no | string, free-form | `None` | Visibility scope for `automaton.<id>.*` — never parsed/validated for format. Two projects can observe each other only if they declare the **exact same** `family` string. Unset means neither observes nor is observed by anything, including itself. |
+| `id` | **yes** | string, valid Python identifier | — | This project's own globally unique identity, and the token another project names it by (§5.2). Must satisfy `str.isidentifier()` — letters/digits/underscore, not starting with a digit; no dots/hyphens/spaces. |
+| `family` | no | string, free-form | `None` | Visibility scope between projects — never parsed/validated for format. Two projects can observe each other only if they declare the **exact same** `family` string; what one reads of the other is a namespace an installed feature declares (§5.2). Unset means neither observes nor is observed by anything, including itself. |
 | `revision` | no | non-negative integer | `0` | This project's own revision number, auto-stamped on every publish — don't hand-edit it going in. |
 | `ui-label` | no | string | — | The only "name" ever shown to a user; `id` is never displayed. |
 | `ui-description` | no | string | — | Shown in the frontend. |
 | `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §3.2). |
-| `new-session-strategy` | no | `resume` \| `restart` | `resume` | Where a **new live session** of a returning user starts. `resume`: in the state the user's previous session left, and nothing fires. `restart`: in `init-action.target`, and `init-action`'s own `task` fires again (§7). Test and preview sessions always start from `init-action`, whatever this says. Env keys persist either way (§4.3): a restart that must also forget a previous case resets them in `init-action`'s own `env:`. |
+| `new-session-strategy` | no | `resume` \| `restart` | `resume` | What a **new live session** of a returning user inherits. `resume`: it opens in the state the previous session left, every env key and the model's own memory intact, and nothing fires. `restart`: it opens in `init-action.target` with the env keys and the model's memory wiped — the declared defaults and `init-action`'s own `env:` apply afresh, and its `task` fires again (§7). Test and preview sessions always start from `init-action`, whatever this says. |
 | `services` | no | mapping (service name → level) | `{}` | What this project asks of each platform service it can reach. §1.2. |
 
 ### 1.2 `project.services:`
@@ -428,23 +428,16 @@ user.role == "admin"
 | `session.<name>` | Engine fact about the current user+project session (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call**, e.g. `session.number_of_user_sessions()` |
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
 | `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select_rows_containing(...)`/`.update(...)` |
-| `automaton.<id>` | A different project's live state/env — below | `.state`, or `.env.<key>` |
 | `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `task.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
 
 A **bare** name is only ever a core metric (§2) — nothing else may appear
-unnamespaced. `task.<name>(...)` is reserved but only valid inside
+unnamespaced. An installed feature may declare one more namespace of its
+own for `trigger:` (its own section of this document says which, and what
+it holds); a build without that feature refuses the reference as an
+undefined name. `task.<name>(...)` is reserved but only valid inside
 `task:` (§5.4); `chat.<name>(...)` is reserved but only valid inside
 `on-exit:` (§5.3bis) — neither is available in `trigger:`/`env:`, and
 each is off-limits to the other's own script.
-
-**`automaton.<id>.*`** reads a different project's live state/env for the
-same logged-in user: `automaton.<id>.state` (current state key, or `None`
-with no session there) and `automaton.<id>.env.<key>` (that project's own
-action-set env value — `<key>` must be declared in *its* `env:`). `<id>`
-is a literal token, never an expression. Only reachable within the same
-`family`: mismatched/missing family or unknown id all resolve to `None`
-identically — indistinguishable by design. Enforced both at build time
-(the reference must name a same-family id) and at runtime.
 
 **Data sources.** A project declares its own named sources under a
 top-level `sources:` mapping — each one a handle a trigger/env
@@ -663,10 +656,10 @@ value. This is deliberate: the write was the model's decision on the
 user's message, not on its own discarded wording.
 
 **Persistence and reset.** Every env key persists per (project, user) —
-across sessions, and so does the state a live session was left in unless
-`project.new-session-strategy` is `restart` (§1.1). To start a case
-afresh, reset them on the initial action (`init-action`'s own `env:`, §7)
-or on the action that opens the case.
+across sessions, together with the state a live session was left in and
+the model's own memory. `project.new-session-strategy: restart` (§1.1)
+wipes all three when a new live session opens. Under `resume`, a case is
+started afresh by resetting its keys on the action that opens it.
 
 **Action `env`.**
 

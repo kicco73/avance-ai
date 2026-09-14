@@ -295,7 +295,6 @@ class ScopeHydrator(object):
         """Must be called under WebSession().impersonate(username): every
         live proxy below reads WebSession().user lazily."""
         from metrics.metric_service import MetricService
-        from tracking.automaton_namespace import AutomatonNamespace
         from tracking.env import Env
         from tracking.evaluation_scope import EvaluationScopeBuilder
         from tracking.fixed_project_context import FixedProjectContext
@@ -321,7 +320,7 @@ class ScopeHydrator(object):
         builder = EvaluationScopeBuilder(
             env, MetricService(self._db, context),
             SessionFacts(self._db, context), UserFacts(self._db), self._db,
-            AutomatonNamespace(self._db, self._project_service), task_namespace, chat_namespace,
+            task_namespace, chat_namespace,
             ai_service=self._ai_service,
         )
         snapshot = payload["snapshot"]

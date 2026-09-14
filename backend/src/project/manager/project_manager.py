@@ -27,7 +27,6 @@ from ..archive.layout import (
 from ..project_import_bundle_job import ProjectImportBundleJob
 from .availability import ProjectAvailability
 from .uploader import ProjectUploader
-from ..types import FAMILY_NOT_CHECKED
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -100,11 +99,8 @@ class ProjectManager:
         existing = ArchiveLayout.decode_text(self._db.get_archives(project_id))
         merged = {**existing, **files}
 
-        declared_id, declared_family, _ = AutomatonBuilder.read_declared_env_keys(merged["index.yml"])
         try:
-            automaton = AutomatonBuilder().build(
-                merged, self._automaton_loader.known_projects_env_keys(declared_id or project_id, declared_family)
-            )
+            automaton = AutomatonBuilder().build(merged)
         except AutomatonBuildError as exc:
             exc.project_id = exc.project_id or project_id
             exc.revision = self._db.get_project_revision(project_id)
@@ -125,8 +121,7 @@ class ProjectManager:
             )
 
     async def finalize_update(
-        self, project_id: str, automaton: Automaton, *,
-        is_new_project: bool = False, old_family: str | None | object = FAMILY_NOT_CHECKED,
+        self, project_id: str, automaton: Automaton, *, is_new_project: bool = False,
     ) -> str:
         if automaton.project_id != project_id:
             old_project_id = project_id
@@ -134,9 +129,6 @@ class ProjectManager:
             self._automaton_loader.invalidate_cache(old_project_id)
             PROJECT_FILE_CACHE.forget_project(old_project_id)
             project_id = automaton.project_id
-            self._availability.recheck_dependents_of_changed_id(project_id, old_project_id, project_id)
-        elif is_new_project or (old_family is not FAMILY_NOT_CHECKED and old_family != automaton.family):
-            self._availability.recheck_dependents_of_changed_id(project_id, project_id, project_id)
 
         self._db.set_project_metadata(project_id, automaton.project_ui_label, automaton.project_ui_description)
 
@@ -144,8 +136,6 @@ class ProjectManager:
         automaton.set_storage_location(revision)
         self._automaton_loader.set_cached(project_id, revision, automaton)
         PROJECT_FILE_CACHE.forget_project(project_id)
-        observed_project_ids = self._availability.filter_resolvable_project_ids(ProjectAvailability.automaton_project_refs(automaton))
-        self._db.set_project_observers(project_id, observed_project_ids)
         self._availability.recompute(project_id)
         if project_id == self._inspector.get_active_project_id():
             username = WebSession().user
@@ -264,7 +254,6 @@ class ProjectManager:
         self._db.delete_archives(project_id)
         self._automaton_loader.invalidate_cache(project_id)
         PROJECT_FILE_CACHE.forget_project(project_id)
-        self._availability.recheck_dependents_of_changed_id(project_id, project_id, None)
 
         if was_active:
             remaining = self._db.list_projects()

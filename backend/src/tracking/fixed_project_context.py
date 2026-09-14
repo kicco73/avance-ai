@@ -1,6 +1,6 @@
 """Duck-types just enough of ProjectService's interface
 (get_active_automaton/get_active_automaton_and_state/get_active_project_id) for Signals/
-PersistedEnv/SessionFacts/MetricService/AutomatonNamespace to resolve a
+PersistedEnv/SessionFacts/MetricService to resolve a
 FIXED automaton/project pair instead of whatever's live right now.
 
 Needed anywhere a caller must stay pinned to a specific, non-active

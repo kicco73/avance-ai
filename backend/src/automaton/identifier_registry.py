@@ -11,8 +11,8 @@ class IdentifierRegistry:
     """The {namespace: {identifier: description}} registry every
     trigger/env: expression can reference: a project's own declared
     signals/env keys merged with the platform's fixed session/
-    user/metric identifiers. `source.<name>.<method>` — like
-    `automaton.<project>.*` — is deliberately absent from `build()` below:
+    user/metric identifiers. `source.<name>.<method>` is deliberately
+    absent from `build()` below:
     it's a dynamic, per-project namespace, so both its offline validation
     (AutomatonBuilder._validate_namespaced_expression, via
     TriggerExpressionAnalyzer.source_refs) and its registry entries for

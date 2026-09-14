@@ -27,7 +27,7 @@ from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
     AiTokenUsage, Archive, CoreSession, EditHistory, File, Invite, Message,
-    Project, ProjectObserverIndex, Settings, User, StateRemap, SystemWarning, Task, Test,
+    Project, Settings, User, StateRemap, SystemWarning, Task, Test,
     TestAggregateResult, TestObservation, Tracking, UserProject,
     database,
 )
@@ -59,7 +59,7 @@ class Db(
     _MODELS = (
         Project, CoreSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SystemWarning,
-        ProjectObserverIndex, Settings, UserProject, Invite, AiTokenUsage, Task,
+        Settings, UserProject, Invite, AiTokenUsage, Task,
     )
 
     MIGRATION_STRATEGIES = ('stop', 'upgrade', 'drop')

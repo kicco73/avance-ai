@@ -304,7 +304,6 @@ class ProjectEditor:
             content_type = expected_content_type
             update_value = content
             to_save = content
-        old_family = self._automaton_loader.declared_family(project_id)
         try:
             new_automaton, to_persist = self._manager.prepare_update(project_id, {file_name: update_value})
         except AutomatonBuildError:
@@ -314,7 +313,7 @@ class ProjectEditor:
 
         if to_persist is not None:
             self._db.save_project_file(WebSession().user, project_id, file_name, to_save, content_type)
-        project_id = await self._manager.finalize_update(project_id, new_automaton, old_family=old_family)
+        project_id = await self._manager.finalize_update(project_id, new_automaton)
 
         return {"success": True, "project_id": project_id, **self.get_project_file(project_id, file_name)}
 
@@ -379,8 +378,7 @@ class ProjectEditor:
                 raise ValueError(f"index.css references missing file(s): {', '.join(sorted(missing))}.")
 
         try:
-            _, family, _ = AutomatonBuilder.read_declared_env_keys(archives["index.yml"])
-            new_automaton = AutomatonBuilder().build(archives, self._automaton_loader.known_projects_env_keys(project_id, family))
+            new_automaton = AutomatonBuilder().build(archives)
         except AutomatonBuildError:
             raise
         except Exception as exc:
@@ -722,8 +720,7 @@ class ProjectEditor:
             )
             for name in cascade_names:
                 del archives[name]
-            _, family, _ = AutomatonBuilder.read_declared_env_keys(archives["index.yml"])
-            new_automaton = AutomatonBuilder().build(archives, self._automaton_loader.known_projects_env_keys(project_id, family))
+            new_automaton = AutomatonBuilder().build(archives)
         except AutomatonBuildError:
             raise
         except Exception as exc:

@@ -24,7 +24,7 @@ def _unique_legacy_id(seed: str, used_ids: set[str]) -> str:
     every project.id that already existed). No family is assigned (project.
     family is a separate, independent opt-in — see automaton_builder.py):
     a project migrated this way behaves exactly as it always did, isolated
-    from automaton.* observation either way."""
+    from every other project either way."""
     base = _slugify(seed)
     candidate = base
     suffix = 2
@@ -132,7 +132,6 @@ class SchemaMigrator:
         ('TestAggregateResult', 'project_name', 'project_id'),
         ('SystemWarning', 'project_name', 'project_id'),
         ('EditHistory', 'project_name', 'project_id'),
-        ('ProjectObserverIndex', 'observer_project_name', 'observer_project_id'),
         ('User', 'active_project_id', 'active_project_id'),
     )
 

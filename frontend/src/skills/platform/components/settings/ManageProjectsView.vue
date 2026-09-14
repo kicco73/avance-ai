@@ -58,6 +58,10 @@ function selectProject(id) {
   selectedProjectId.value = id
 }
 
+function deselectProject() {
+  selectedProjectId.value = null
+}
+
 async function loadAppStoreApps() {
   try {
     const { apps } = await getAppStoreApps()
@@ -216,10 +220,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="manage-projects-overlay">
+  <div class="manage-projects-overlay" :class="{ 'manage-projects-detail-active': !!selectedProjectId }">
     <AppHeader ref="headerEl">
       <template #left>
         <div class="manage-projects-header-side" ref="headerLeftEl">
+          <button type="button" class="app-header-icon-btn manage-projects-back-list-btn" title="Back to list" @click="deselectProject">«</button>
           <SettingsMenu
             :role="role"
             @manage-users="emit('manage-users')"
@@ -560,5 +565,61 @@ onBeforeUnmount(() => {
   justify-content: flex-start;
   gap: 2px;
   width: 100%;
+}
+
+.manage-projects-back-list-btn {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .manage-projects-body {
+    position: relative;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  .manage-projects-list,
+  .manage-projects-preview {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 1rem 1rem calc(1rem + var(--safe-area-bottom));
+    box-sizing: border-box;
+    transition: transform 0.3s ease;
+  }
+
+  .manage-projects-list {
+    transform: translateX(0);
+  }
+
+  .manage-projects-preview {
+    transform: translateX(100%);
+  }
+
+  .manage-projects-detail-active .manage-projects-list {
+    transform: translateX(-100%);
+  }
+
+  .manage-projects-detail-active .manage-projects-preview {
+    transform: translateX(0);
+  }
+
+  .manage-projects-table {
+    width: 100%;
+  }
+
+  .manage-projects-col-name,
+  .manage-projects-table td.manage-projects-name {
+    width: auto;
+  }
+
+  .manage-projects-detail-active .manage-projects-back-list-btn {
+    display: inline-flex;
+  }
+
+  .manage-projects-detail-active .manage-projects-header-side > :not(.manage-projects-back-list-btn) {
+    display: none;
+  }
 }
 </style>

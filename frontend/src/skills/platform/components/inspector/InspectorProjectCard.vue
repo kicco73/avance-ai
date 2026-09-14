@@ -138,7 +138,7 @@ function toggleNewSessionStrategy() {
     <div class="inspector-detail-body">
       <Transition name="crossfade" mode="out-in">
         <div v-if="showEditForm" key="edit" class="inspector-detail-form">
-          <label class="inspector-detail-form-label" title="Referenced by other projects as automaton.<id>">
+          <label class="inspector-detail-form-label" title="Referenced by other projects as event.<id>">
             <span class="inspector-py-field-icon" title="Identifier">ID</span>
             Id
           </label>

@@ -12,7 +12,6 @@ from metrics.metric_service import MetricService
 from turn.sessions.env_for_session import env_for_session
 
 from .actuators import TaskNamespaceFactory
-from .automaton_namespace import AutomatonNamespace
 from .errors import TrackingServiceError
 from .fixed_project_context import FixedProjectContext
 from .turn_callbacks import OnMetadata
@@ -303,14 +302,13 @@ class TrackingService(object):
 		env = env_for_session(self._db, session)
 		session_facts = SessionFacts(self._db, fixed_context)
 		user_facts = UserFacts(self._db)
-		automaton_namespace = AutomatonNamespace(self._db, self._project_service)
 		task_namespace = self._namespace_factory.for_session(session_id)
 		chat_namespace = self._namespace_factory.chat_for_session(session_id)
 		metrics = MetricService(
 			self._db, fixed_context, max_session_duration_in_minutes=self._metrics.max_session_duration_in_minutes
 		)
 		scope_builder = EvaluationScopeBuilder(
-			env, metrics, session_facts, user_facts, self._db, automaton_namespace, task_namespace, chat_namespace,
+			env, metrics, session_facts, user_facts, self._db, task_namespace, chat_namespace,
 			ai_service=ai_service,
 		)
 		tracking_processor = TrackingProcessor(

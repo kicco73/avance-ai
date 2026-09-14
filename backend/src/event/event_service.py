@@ -1,7 +1,8 @@
 """Cross-project wake-up: when a project's state/env changes for a user,
-every OTHER project referencing it via automaton.* that the same user has
-ever talked to gets a chance to re-evaluate its triggers. One handler
-serves both message types — neither carries anything the other doesn't."""
+every OTHER project whose current state watches it via event.* and that
+the same user has a conversation in gets a chance to re-evaluate its
+triggers. One handler serves both message types — neither carries
+anything the other doesn't."""
 from __future__ import annotations
 
 from ai import AiService
@@ -16,7 +17,6 @@ from project.project_service import ProjectService
 from scheduler import SchedulerService
 from system.web_session import WebSession
 from tracking.actuators import TaskNamespaceFactory
-from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
@@ -24,6 +24,8 @@ from tracking.session_facts import SessionFacts
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.tracking_service import TrackingService
 from tracking.user_facts import UserFacts
+
+from event.event_namespace import watched_from
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -76,18 +78,26 @@ class EventService:
         if message.username is None or message.project_id is None:
             logger.debug("%s carries no user or no project — nobody to wake.", message.type)
             return
-        try:
-            for observer_project_id in self._db.get_observers(message.project_id):
-                if self._db.get_latest_chat_session(message.username, observer_project_id) is not None:
+        for observer_project_id in self._db.list_projects():
+            try:
+                if self._watches(message.username, observer_project_id, message.project_id):
                     self._wake(message.username, observer_project_id)
-        except Exception:
-            logger.exception(
-                "Wake-up dispatch failed for %s in project '%s'.", message.type, message.project_id
-            )
+            except Exception:
+                logger.exception(
+                    "Wake-up dispatch failed for %s in project '%s' towards '%s'.",
+                    message.type, message.project_id, observer_project_id,
+                )
+
+    def _watches(self, username: str, observer_project_id: str, watched_project_id: str) -> bool:
+        session = self._db.get_latest_chat_session(username, observer_project_id)
+        if session is None:
+            return False
+        automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
+        return watched_project_id in watched_from(automaton, state.key)
 
     async def _reevaluate_and_apply(self, username: str, observer_project_id: str) -> None:
         """Re-derives `observer_project_id`'s own current scope from
-        scratch — a fresh Env/MetricService/SessionFacts/UserFacts/AutomatonNamespace
+        scratch — a fresh Env/MetricService/SessionFacts/UserFacts
         bound to this (username, observer_project_id) pair — then applies a self-loop transition if one fires."""
         session = self._db.get_latest_chat_session(username, observer_project_id)
         if session is None:
@@ -100,9 +110,8 @@ class EventService:
             metrics = MetricService(self._db, project_context)
             session_facts = SessionFacts(self._db, project_context)
             user_facts = UserFacts(self._db)
-            automaton_namespace = AutomatonNamespace(self._db, self._project_service)
             scope_builder = EvaluationScopeBuilder(
-                env, metrics, session_facts, user_facts, self._db, automaton_namespace,
+                env, metrics, session_facts, user_facts, self._db,
                 self._namespace_factory.live(project_id=observer_project_id),
                 chat_namespace=self._namespace_factory.chat_live(project_id=observer_project_id),
                 ai_service=self._ai_service,

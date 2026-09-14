@@ -262,8 +262,6 @@ def _prune_database_to_project(db_path: Path, keep_project_id: str) -> None:
             ("Test", "project_id"),
             ("TestAggregateResult", "project_id"),
             ("SystemWarning", "project_id"),
-            ("ProjectObserverIndex", "project_id"),
-            ("ProjectObserverIndex", "observer_project_id"),
         ):
             connection.execute(f"DELETE FROM {table} WHERE {column} IN ({placeholders})", other_ids)
         connection.commit()

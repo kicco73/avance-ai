@@ -4,5 +4,5 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 cd src
-uvicorn main:app --reload
+uvicorn main:app --reload --reload-exclude "*/tests/*"
 

@@ -94,7 +94,6 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "project_draft_edit_count INTEGER, kind TEXT, target TEXT, strategy TEXT, results TEXT, created_at TEXT)",
         "CREATE TABLE SystemWarning (id INTEGER PRIMARY KEY, user_id TEXT, project_id TEXT, kind TEXT, "
         "message TEXT, timestamp TEXT)",
-        "CREATE TABLE ProjectObserverIndex (id INTEGER PRIMARY KEY, project_id TEXT, observer_project_id TEXT)",
         "CREATE TABLE Settings (key TEXT PRIMARY KEY, value TEXT)",
         "CREATE TABLE Task (id INTEGER PRIMARY KEY, key TEXT, type TEXT, user_id TEXT, project_id TEXT, run_at TEXT, "
         "payload TEXT, ui_label TEXT, ui_description TEXT, status TEXT, error TEXT, created_at TEXT, dispatched_at TEXT, "

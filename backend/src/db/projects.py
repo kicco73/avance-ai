@@ -5,7 +5,7 @@ from typing import Any
 from peewee import Expression
 
 from .models import (
-    Archive, CoreSession, EditHistory, File, Invite, Message, Project, ProjectObserverIndex, StateRemap,
+    Archive, CoreSession, EditHistory, File, Invite, Message, Project, StateRemap,
     SystemWarning, Test, TestAggregateResult, Tracking, User, UserProject, database,
 )
 
@@ -23,18 +23,7 @@ class ProjectMixin:
         column must move together with Project.id in one transaction,
         foreign_keys off for its duration — same technique
         SchemaMigrator.migrate_legacy_project_identity uses for the
-        one-off historical merge, just live and single-project here).
-
-        Deliberately leaves ProjectObserverIndex.project_id (the
-        *observed* side) untouched: those rows are a cache of what some
-        *other* project's own raw trigger text currently says, recomputed
-        from scratch on that other project's own next build (see
-        set_project_observers) — silently rewriting them here would erase
-        the very signal ProjectManager._recheck_dependents_of_changed_id
-        relies on to find and pause whoever's left pointing at the now-
-        stale old id. observer_project_id (this project's *own* side, as
-        an observer of something else) is this project's own data and
-        does need to move with it."""
+        one-off historical merge, just live and single-project here)."""
         database.execute_sql('PRAGMA foreign_keys = OFF')
         try:
             with database.atomic():
@@ -49,7 +38,6 @@ class ProjectMixin:
                 TestAggregateResult.update(project_id=new_id).where(TestAggregateResult.project_id == old_id).execute()
                 SystemWarning.update(project_id=new_id).where(SystemWarning.project_id == old_id).execute()
                 EditHistory.update(project_id=new_id).where(EditHistory.project_id == old_id).execute()
-                ProjectObserverIndex.update(observer_project_id=new_id).where(ProjectObserverIndex.observer_project_id == old_id).execute()
         finally:
             database.execute_sql('PRAGMA foreign_keys = ON')
 

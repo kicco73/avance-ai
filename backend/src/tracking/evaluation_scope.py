@@ -13,6 +13,7 @@ from simpleeval import ModuleWrapper
 
 from automaton.automaton import Automaton
 from automaton.scope import EvaluationScope
+from automaton.trigger_namespaces import TriggerNamespaces
 from db import Db
 from metrics.metric_service import MetricService
 from tracking.actuators import AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, TaskNamespace
@@ -25,7 +26,6 @@ from tracking.sources.websearch import websearch_archive_for
 from tracking.user_facts import UserFacts
 
 if TYPE_CHECKING:
-    from tracking.automaton_namespace import AutomatonNamespace
     from ai import AiService
 
 
@@ -37,7 +37,6 @@ class EvaluationScopeBuilder(object):
         session: SessionFacts,
         user: UserFacts,
         db: Db,
-        automaton_namespace: "AutomatonNamespace | None" = None,
         task_namespace: TaskNamespace | None = None,
         chat_namespace: ChatNamespace | None = None,
         ai_service: "AiService | None" = None,
@@ -47,7 +46,6 @@ class EvaluationScopeBuilder(object):
         self._session = session
         self._user = user
         self._db = db
-        self._automaton_namespace = automaton_namespace
         self._task_namespace = task_namespace if task_namespace is not None else FakeTaskNamespace()
         self._chat_namespace = chat_namespace if chat_namespace is not None else FakeChatNamespace()
         self._ai_service = ai_service
@@ -97,8 +95,7 @@ class EvaluationScopeBuilder(object):
             # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its
             "datetime": ModuleWrapper(datetime, allowed_attrs={"datetime", "timedelta", "timezone"}),
         }
-        if self._automaton_namespace is not None:
-            scope["automaton"] = self._automaton_namespace.scoped_to(automaton.family)
+        scope.update(TriggerNamespaces.collect().scope(automaton))
         scope["chat"] = self._chat_namespace
         task_namespace = self._task_namespace.with_services(automaton.services).with_websearch_archive(
             websearch_archive_for(self._db, automaton)

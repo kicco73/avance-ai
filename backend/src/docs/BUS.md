@@ -281,6 +281,7 @@ written here.
 | `project.published` | the report a publish answers with, once whoever can turn a revision into a package has added what it made of this one | the publishing service |
 | `turn.spoken_reply` | `SpokenReply` — `want()` from whoever runs the interface, `ask()` from whoever can speak | `tracking/tracking_processor.py` |
 | `session.services` | `SessionServices` — `offers(name, installed)`: what each service can do for **one** conversation. The session's own project can only narrow the server's switch | `turn/turn_service.py` |
+| `trigger.namespaces` | `TriggerNamespaces` — `declare(namespace)`: one more root name a `trigger:` may reference, with what it checks at build time, what it resolves to at run time and what the editor lists for it (`automaton/trigger_namespaces.py`) | `automaton/automaton_builder.py`, `tracking/evaluation_scope.py`, `project/inspector.py` |
 
 ## Queued work
 

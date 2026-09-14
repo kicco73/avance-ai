@@ -230,9 +230,9 @@ class TestAggregateResult(BaseModel):
         )
 
 class SystemWarning(BaseModel):
-    """A cross-project reference (automaton.<project>.state/env.<key>)
-    that resolved to None at runtime instead of raising — one of three
-    failure kinds ('project_not_found', 'no_session', 'env_key_not_declared')."""
+    """Something that resolved to None at runtime instead of raising —
+    a cross-project reference nobody could answer, a project that stopped
+    building — kept for the person to read."""
     id = AutoField()
     user_id = ForeignKeyField(User, field='id', backref='system_warnings', on_delete='CASCADE')
     project_id = CharField(index=True)
@@ -261,20 +261,6 @@ class AiTokenUsage(BaseModel):
 
     class Meta:
         table_name = 'AiTokenUsage'
-
-class ProjectObserverIndex(BaseModel):
-    """Reverse index of automaton.* cross-project references, rebuilt
-    from scratch for `observer_project_id` on every index.yml build.
-    Queried both as "who observes me" and "who do I depend on". Keyed by
-    project_id (the stable token an automaton.<id> reference names) on
-    both sides now that project identity is unified."""
-    id = AutoField()
-    project_id = CharField(index=True)
-    observer_project_id = CharField(index=True)
-
-    class Meta:
-        table_name = 'ProjectObserverIndex'
-        indexes = ((('project_id', 'observer_project_id'), True),)
 
 class EditHistory(BaseModel):
     """Per-(user, project, file) undo/redo trail for the project editor —

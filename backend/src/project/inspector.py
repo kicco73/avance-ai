@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
 from automaton.identifier_registry import IdentifierRegistry
+from automaton.trigger_namespaces import TriggerNamespaces
 from db import Db
 from system.web_session import WebSession
 from tracking.sources import driver_class_for
@@ -226,11 +227,10 @@ class ProjectInspector:
 
     def get_identifier_registry(self, project_id: str) -> dict[str, dict[str, str]]:
         """Every identifier a trigger/`env:` expression can reference:
-        signals, env keys, `source.<name>`, and `automaton.<id>`/`.env`
-        for sibling same-family projects. Reads the unpublished draft."""
+        signals, env keys, `source.<name>`, and whatever namespace an
+        installed contributor declares. Reads the unpublished draft."""
         automaton = self._automaton_loader.load(project_id)
         registry = IdentifierRegistry.build(automaton.signals, automaton.env_keys)
-        registry["automaton"] = {}
         registry["source"] = {}
         for source in automaton.sources:
             try:
@@ -238,21 +238,7 @@ class ProjectInspector:
             except (ValueError, KeyError):
                 descriptions = {}
             registry[f"source.{source.name}"] = dict(descriptions)
-        if automaton.family is None:
-            return registry
-        for other_id in self._db.list_projects():
-            if other_id == project_id:
-                continue
-            if self._automaton_loader.declared_family(other_id) != automaton.family:
-                continue
-            registry[f"automaton.{other_id}"] = {"state": f"The '{other_id}' project's own current state."}
-            try:
-                other_automaton = self._automaton_loader.load(other_id)
-            except Exception:  # noqa: BLE001 — still offerable via .state, just without its own env keys
-                env_keys = {}
-            else:
-                env_keys = {env_key.name: env_key.ui_description or "" for env_key in other_automaton.env_keys}
-            registry[f"automaton.{other_id}.env"] = env_keys
+        registry.update(TriggerNamespaces.collect().identifiers(automaton))
         return registry
 
     def get_project_states(self, project_id: str) -> list[str]:

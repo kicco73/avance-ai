@@ -28,14 +28,13 @@ class StoredIndexYml:
         self._project_id = project_id
         self._revision = revision
 
-    def rebuilt(self, contents: dict, known_projects, refusal: AutomatonBuildError):
+    def rebuilt(self, contents: dict, refusal: AutomatonBuildError):
         repaired = IndexYmlModernizer().modernize(contents["index.yml"])
         if not repaired.fixes:
             raise refusal
         try:
             automaton = AutomatonBuilder().build(
-                {**contents, "index.yml": repaired.text}, known_projects,
-                legacy_project_id=self._project_id,
+                {**contents, "index.yml": repaired.text}, legacy_project_id=self._project_id,
             )
         except AutomatonBuildError:
             raise refusal from None
