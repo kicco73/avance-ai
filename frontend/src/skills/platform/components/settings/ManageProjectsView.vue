@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
+import { getAppStoreApps, getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog, customDialog } from '../../../../dialogStore.js'
 import { setCanvasColor, restoreCanvasColor } from '../../../../canvasColor.js'
 import { findIconFile } from '../../../../projectIcon.js'
@@ -49,24 +49,21 @@ const metadataById = ref({})
 const iconFileById = ref({})
 const iconFailedById = ref({})
 
+const appStoreAppById = ref({})
 const selectedProjectId = ref(null)
+const selectedAppStoreApp = computed(() => appStoreAppById.value[selectedProjectId.value] ?? null)
 const selectedRow = computed(() => rows.value.find((row) => row.id === selectedProjectId.value) ?? null)
-
-const selectedPanelProps = computed(() => {
-  const row = selectedRow.value
-  if (!row) return null
-  return {
-    projectId: row.id,
-    title: projectTitle(row.id),
-    description: projectDescription(row.id),
-    broken: row.broken ?? null,
-    publishedRevision: row.published_revision ?? null,
-    revision: row.revision ?? null,
-  }
-})
 
 function selectProject(id) {
   selectedProjectId.value = id
+}
+
+async function loadAppStoreApps() {
+  try {
+    const { apps } = await getAppStoreApps()
+    appStoreAppById.value = Object.fromEntries(apps.map((app) => [app.id, app]))
+  } catch {
+  }
 }
 
 const headerEl = ref(null)
@@ -98,6 +95,7 @@ async function load() {
     rows.value = res.projects
     loadMetadata(rows.value.map((row) => row.id))
     loadIcons(rows.value.map((row) => row.id))
+    loadAppStoreApps()
   } catch {
   } finally {
     loading.value = false
@@ -319,9 +317,13 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="manage-projects-preview">
-        <div v-if="selectedPanelProps" :key="selectedRow.id" class="manage-projects-detail">
+        <Transition name="manage-projects-detail">
           <ProjectDetailPanel
-            v-bind="selectedPanelProps"
+            v-if="selectedAppStoreApp"
+            :key="selectedAppStoreApp.id"
+            :app="selectedAppStoreApp"
+            :published-revision="selectedRow?.published_revision ?? null"
+            :revision="selectedRow?.revision ?? null"
             @edit="selectEdit"
             @label="selectLabelSessions"
             @download="selectDownload"
@@ -330,8 +332,9 @@ onBeforeUnmount(() => {
             @publish="selectPublish"
             @open-skill-view="selectSkillView"
           />
-        </div>
-        <p v-else class="manage-projects-status">Select a project to see its details.</p>
+          <p v-else-if="selectedProjectId" key="unpublished" class="manage-projects-status">This project hasn't been published yet — no preview available.</p>
+          <p v-else key="nothing-selected" class="manage-projects-status">Select a project to see its details.</p>
+        </Transition>
       </div>
     </div>
   </div>
@@ -490,12 +493,20 @@ onBeforeUnmount(() => {
   padding: 20px 0 var(--safe-area-bottom);
 }
 
-.manage-projects-detail {
-  flex: 1 0 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+.manage-projects-detail-enter-active,
+.manage-projects-detail-leave-active {
+  transition: opacity 0.12s ease;
+}
+
+.manage-projects-detail-enter-from,
+.manage-projects-detail-leave-to {
+  opacity: 0;
+}
+
+.manage-projects-detail-leave-active {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .manage-projects-status {
