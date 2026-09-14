@@ -29,7 +29,7 @@ from system import bus
 from system.bus import (
     INPUT_TEXT, INPUT_BUTTON, INPUT_REACTION, OUTPUT_ERROR, SESSION_BLOCKED,
     SESSION_ENTER, SESSION_CREATE, SESSION_OPENED, SESSION_RECALL,
-    SESSION_TERMINATE, SESSION_SPEAK, Message,
+    SESSION_TERMINATE, SESSION_SPEAK, SESSION_EXHAUSTED, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
@@ -53,6 +53,7 @@ class TurnInput(object):
         bus.subscribe(SESSION_CREATE, self._entering)
         bus.subscribe(SESSION_RECALL, self._recalled)
         bus.subscribe(SESSION_TERMINATE, self._terminated)
+        bus.subscribe(SESSION_EXHAUSTED, self._exhausted)
         bus.subscribe(SESSION_SPEAK, self._speaking)
         bus.subscribe(INPUT_REACTION, self._reacted)
 
@@ -108,6 +109,9 @@ class TurnInput(object):
 
     async def _terminated(self, message: Message) -> None:
         await self._answering(message, lambda outbound: None, self._turn_service.close_session)
+
+    async def _exhausted(self, message: Message) -> None:
+        await self._turn_service.close_exhausted_session(message.session_id)
 
     async def _speaking(self, message: Message) -> None:
         enabled = bool((message.body or {}).get("enabled"))
@@ -184,9 +188,7 @@ class TurnInput(object):
 
     async def _run(self, message: Message, accepted: list[int], prepared: list[dict]) -> None:
         async with publishing(message, self._db) as outbound:
-            result = await self._turn(message, accepted, prepared, outbound)
-        for _ in filter(None, [(result or {}).get("state_changed")]):
-            await self._turn_service.end_session_at_final_state(message.session_id)
+            await self._turn(message, accepted, prepared, outbound)
 
     async def _turn(
         self, message: Message, accepted: list[int], prepared: list[dict], outbound: "Outbound",

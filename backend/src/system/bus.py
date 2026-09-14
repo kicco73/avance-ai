@@ -58,6 +58,7 @@ SESSION_OPENED = "session.opened"
 
 SESSION_TERMINATE = "session.terminate"
 SESSION_ENDED = "session.ended"
+SESSION_EXHAUSTED = "session.exhausted"
 SESSION_BLOCKED = "session.blocked"
 SESSION_SPEAK = "session.speak"
 SESSION_TAKEN_OVER = "session.taken_over"

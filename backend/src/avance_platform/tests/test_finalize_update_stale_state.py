@@ -22,6 +22,9 @@ TWO_STATE_YML = (
     "        target: b\n"
     "  b:\n"
     "    contextual-prompt: there\n"
+    "    actions:\n"
+    "      - name: back\n"
+    "        target: a\n"
 )
 
 YML_WITHOUT_B = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"

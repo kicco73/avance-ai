@@ -28,6 +28,9 @@ YML = (
     "        on-exit: chat.celebrate()\n"
     "  b:\n"
     "    contextual-prompt: there\n"
+    "    actions:\n"
+    "      - name: back\n"
+    "        target: a\n"
 )
 
 

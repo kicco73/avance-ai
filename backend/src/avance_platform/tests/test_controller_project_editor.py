@@ -11,10 +11,14 @@ import zipfile
 
 import pytest
 
+from avance_platform.settings_controller import NEW_PROJECT_TEMPLATE
 from conftest import parse_sse_result
 from tracking.sources.websearch import WebSearchArchive
 
 pytestmark = pytest.mark.contract
+
+TEMPLATE_YML = zipfile.ZipFile(NEW_PROJECT_TEMPLATE).read("index.yml").decode()
+TEMPLATE_SELF_LOOP = "again"
 
 WEBSEARCH_CSV = "name,district\nDr. Nuria,Eixample\n"
 
@@ -109,7 +113,7 @@ class TestPutActionField:
         response = client.put(f"{base}/trigger", json={"value": ""})
         assert response.status_code == 200
         assert response.json()["has_trigger"] is False
-        assert "trigger" not in _index_yml(client, hello_project)
+        assert _index_yml(client, hello_project).count("trigger") == TEMPLATE_YML.count("trigger")
 
     def test_an_invalid_trigger_returns_structured_error_fields(self, client, hello_project):
         """See AutomatonBuildError — CodeEditor.vue's own jump-to-error
@@ -237,7 +241,7 @@ class TestReorderActions:
 
         response = client.put(f"{base}/{second['name']}/order", json={"value": 0})
         assert response.status_code == 200
-        assert [a["name"] for a in response.json()] == [second["name"], first["name"]]
+        assert [a["name"] for a in response.json()] == [second["name"], TEMPLATE_SELF_LOOP, first["name"]]
 
         assert client.put(f"{base}/{first['name']}/order", json={"value": 99}).status_code == 400
 

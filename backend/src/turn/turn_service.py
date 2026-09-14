@@ -366,13 +366,9 @@ class TurnService(object):
 		EphemeralEnvRegistry().discard(session_id)
 		return self._reloaded_session_payload(session_id)
 
-	async def end_session_at_final_state(self, session_id: int) -> None:
+	async def close_exhausted_session(self, session_id: int) -> None:
 		session = self._db.get_chat_session(session_id)
-		if session is None or session["closed_at"] is not None:
-			return
-		_, state = self.__project_service.get_automaton_and_state_for_session(session_id)
-		if not state.final:
-			return
+		assert session is not None
 		async with self._session_lifecycle_scope(session["username"], session["project_id"]):
 			self.__session_manager.close_session(session, "final-state")
 		EphemeralEnvRegistry().discard(session_id)

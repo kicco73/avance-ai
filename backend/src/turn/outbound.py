@@ -14,7 +14,8 @@ from contextlib import asynccontextmanager
 from system import bus
 from system.bus import (
     OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    STATE_CHANGED, ENV_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES, Message,
+    STATE_CHANGED, ENV_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES, SESSION_EXHAUSTED,
+    Message,
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
@@ -135,6 +136,10 @@ class Outbound(object):
         state either: this message is the only place the choices are."""
         self.put(STATE_BUTTONS, {"actions": buttons or []})
 
+    def exhausted(self, result: dict) -> None:
+        for _ in filter(None, [(result.get("state") or {}).get("final")]):
+            self.put(SESSION_EXHAUSTED, {})
+
     def ran(self, result: dict | None) -> None:
         for turn in filter(None, [result]):
             self.reacted(turn)
@@ -142,6 +147,7 @@ class Outbound(object):
             self.wrote(turn)
             self.offered(turn.get("buttons"))
             self.said(turn["reply"])
+            self.exhausted(turn)
 
     def failed(self, exc: ServiceError, prepared: list[dict]) -> None:
         """What the state owed is owed either way: it was written before

@@ -68,18 +68,16 @@ def whatsapp(client, hello_project) -> _Channel:
 async def test_nothing_is_sent_until_the_person_writes(whatsapp: _Channel):
     """A conversation opened here says nothing on its own: what a browser
     is greeted with on entering (`session.opened`) has no answer on this
-    channel. What the state owed is still owed, and goes out with the
-    answer to the first thing the person actually said."""
+    channel. The first thing said is the answer to the first thing the
+    person actually said."""
     assert whatsapp.api.sent == []
 
     await whatsapp.arrives(_payload(text="hola"))
 
-    assert whatsapp.api.bodies == [REPLY_TEXT, REPLY_TEXT]
+    assert whatsapp.api.bodies == [REPLY_TEXT]
     assert {to for to, _ in whatsapp.api.sent} == {LINKED_NUMBER}
     assert whatsapp.session()["channel"] == "whatsapp"
-    assert whatsapp.transcript() == [
-        ("assistant", REPLY_TEXT), ("user", "hola"), ("assistant", REPLY_TEXT),
-    ]
+    assert whatsapp.transcript() == [("user", "hola"), ("assistant", REPLY_TEXT)]
 
 
 async def test_the_second_message_continues_the_same_conversation_and_is_answered_once(whatsapp: _Channel):
@@ -102,12 +100,10 @@ async def test_a_voice_note_is_decoded_runs_the_same_turn_and_comes_back_spoken(
     await whatsapp.arrives(_payload(mtype="audio"))
 
     assert decoder.heard == [VOICE_NOTE]
-    assert whatsapp.transcript() == [
-        ("assistant", REPLY_TEXT), ("user", TRANSCRIPT), ("assistant", REPLY_TEXT),
-    ]
-    assert speaker.spoken == [SPOKEN_REPLY, SPOKEN_REPLY]
-    assert [mime for _, mime in whatsapp.api.uploaded] == [WHATSAPP_AUDIO_MIME, WHATSAPP_AUDIO_MIME]
-    assert whatsapp.api.audio_sent == [(LINKED_NUMBER, "media-1"), (LINKED_NUMBER, "media-2")]
+    assert whatsapp.transcript() == [("user", TRANSCRIPT), ("assistant", REPLY_TEXT)]
+    assert speaker.spoken == [SPOKEN_REPLY]
+    assert [mime for _, mime in whatsapp.api.uploaded] == [WHATSAPP_AUDIO_MIME]
+    assert whatsapp.api.audio_sent == [(LINKED_NUMBER, "media-1")]
     assert whatsapp.api.sent == []
 
 
@@ -119,7 +115,5 @@ async def test_a_whatsapp_native_account_gets_its_reply_once(client, hello_proje
 
     await channel.arrives(_payload(text="hola"))
 
-    assert channel.api.bodies == [REPLY_TEXT, REPLY_TEXT]
-    assert channel.transcript(LINKED_NUMBER) == [
-        ("assistant", REPLY_TEXT), ("user", "hola"), ("assistant", REPLY_TEXT),
-    ]
+    assert channel.api.bodies == [REPLY_TEXT]
+    assert channel.transcript(LINKED_NUMBER) == [("user", "hola"), ("assistant", REPLY_TEXT)]
