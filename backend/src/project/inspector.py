@@ -137,22 +137,15 @@ class ProjectInspector:
             raise FileNotFoundError("No project is currently active.")
         return project_id
 
-    def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
-        """Applies a manual (button) action and returns the destination
-        state's payload, the Action that fired, and the source state's
-        key (e.g. to detect a self-loop)."""
+    def resolve_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
+        """Resolves a manual (button) action against the session's current
+        state and returns the destination state's payload, the Action, and
+        the source state's key (e.g. to detect a self-loop). Nothing is
+        recorded here: the transition lands through TrackingEngine, the
+        same way a triggered one does."""
         automaton, state = self.get_automaton_and_state_for_session(session_id)
         action = automaton.move(state.key, action_name)
-        new_state = automaton.get_state(action.target)
-        self._db.save_transition(
-            state.key,
-            action_name,
-            new_state.key,
-            session_id,
-            transition_log_level=new_state.transition_log_level,
-            origin='manual',
-        )
-        return automaton.get_state_payload(new_state), action, state.key
+        return automaton.get_state_payload(automaton.get_state(action.target)), action, state.key
 
     def get_active_state_payload(self) -> StatePayload:
         automaton, state = self.get_active_automaton_and_state()
@@ -280,6 +273,7 @@ class ProjectInspector:
                 "reactions_enabled": state.reactions_enabled,
                 "transition_log_level": state.transition_log_level,
                 "signal_tracking_strategy": state.signal_tracking_strategy,
+                "ai_memory_strategy": state.ai_memory_strategy,
                 "attachments": list(state.attachments),
                 "contextual_prompt": state.contextual_prompt,
             }

@@ -31,7 +31,7 @@ object. Every session of the project is included, whether it was a real
 | `labeled`      | `boolean`        | Whether a reviewer has marked this session "done" (the Mark done button).                                                                                                                 |
 | `comment`      | `string \| null` | Reviewer's free-text note about the whole session.                                                                                                                                        |
 | `closed_at`    | `string \| null` | When the session was explicitly closed, ISO 8601 UTC — `null` for a session still open, or one that only ever expired by its open window.                                                 |
-| `close_reason` | `string \| null` | Why the session was explicitly closed — one of `"channel-switch"`, `"force-new-session"`, `"manual-user"`, `"manual-assistant"`. Always `null` when `closed_at` is `null`.                |
+| `close_reason` | `string \| null` | Why the session was explicitly closed — one of `"channel-switch"`, `"force-new-session"`, `"manual-user"`, `"manual-assistant"`, `"revision-invalid"`, `"final-state"`. Always `null` when `closed_at` is `null`.                |
 | `messages`     | `array`          | The session's messages, in chronological order. See below.                                                                                                                                |
 
 ## Message object

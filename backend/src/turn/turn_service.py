@@ -366,6 +366,17 @@ class TurnService(object):
 		EphemeralEnvRegistry().discard(session_id)
 		return self._reloaded_session_payload(session_id)
 
+	async def end_session_at_final_state(self, session_id: int) -> None:
+		session = self._db.get_chat_session(session_id)
+		if session is None or session["closed_at"] is not None:
+			return
+		_, state = self.__project_service.get_automaton_and_state_for_session(session_id)
+		if not state.final:
+			return
+		async with self._session_lifecycle_scope(session["username"], session["project_id"]):
+			self.__session_manager.close_session(session, "final-state")
+		EphemeralEnvRegistry().discard(session_id)
+
 	def _reloaded_session_payload(self, session_id: int) -> dict:
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
@@ -692,17 +703,17 @@ class TurnService(object):
 				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
 			)
 		async with self._session_scope(project_id, session_id):
-			_, source_state = self.__project_service.get_automaton_and_state_for_session(session_id)
+			automaton, source_state = self.__project_service.get_automaton_and_state_for_session(session_id)
 			session = self._require_active_session(session_id, project_id, source_state.key)
-			state_payload, action, source_state_key = self.__project_service.apply_manual_action(
+			state_payload, action, source_state_key = self.__project_service.resolve_manual_action(
 				action_name, session["id"]
 			)
-			automaton, state = self.__project_service.get_automaton_and_state_for_session(session["id"])
 			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
-			env_changed = tracking_engine.apply_action_env(
-				automaton, action, {}, source_state_key, username=WebSession().user, project_id=project_id,
-				session_id=session["id"],
+			_, env_changed = tracking_engine.apply_transition(
+				automaton, source_state, action, None, session["id"],
+				origin='manual', username=WebSession().user, project_id=project_id,
 			)
+			automaton, state = self.__project_service.get_automaton_and_state_for_session(session["id"])
 			reply, fresh_state_payload = await self._messages_for_transition(session["id"], on_metadata=on_metadata)
 			self.__session_manager.touch_session(session["id"], state.key)
 			fresh = fresh_state_payload if fresh_state_payload is not None else state_payload

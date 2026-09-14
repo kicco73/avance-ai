@@ -98,8 +98,11 @@ class Env(object):
             return
         self._write_action_set(remaining)
 
-    def clear(self) -> None:
+    def clear_memory(self) -> None:
         self._write_memory({})
+
+    def clear(self) -> None:
+        self.clear_memory()
         self._write_action_set({})
 
     def get(self, key: str, default: Any = None) -> Any:

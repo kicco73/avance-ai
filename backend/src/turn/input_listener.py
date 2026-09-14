@@ -184,14 +184,15 @@ class TurnInput(object):
 
     async def _run(self, message: Message, accepted: list[int], prepared: list[dict]) -> None:
         async with publishing(message, self._db) as outbound:
-            await self._turn(message, accepted, prepared, outbound)
+            result = await self._turn(message, accepted, prepared, outbound)
+        for _ in filter(None, [(result or {}).get("state_changed")]):
+            await self._turn_service.end_session_at_final_state(message.session_id)
 
     async def _turn(
         self, message: Message, accepted: list[int], prepared: list[dict], outbound: "Outbound",
-    ) -> None:
+    ) -> dict | None:
         for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
-            await self._take_action(message, outbound)
-            return
+            return await self._take_action(message, outbound)
         session_id = message.session_id
         text = str((message.body or {}).get("text") or "").strip()
         try:
@@ -201,15 +202,17 @@ class TurnInput(object):
             for _ in filter(None, [not result.get("moved_before_reply")]):
                 outbound.said(prepared)
             outbound.ran(result)
+            return result
         except ServiceError as exc:
             outbound.failed(exc, prepared)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Unexpected error while processing a turn: %s", exc)
             outbound.said(prepared)
             outbound.put(OUTPUT_ERROR, {"message": "Unexpected server error.", "detail": str(exc)})
+        return None
 
 
-    async def _take_action(self, message: Message, outbound: "Outbound") -> None:
+    async def _take_action(self, message: Message, outbound: "Outbound") -> dict | None:
         """One of the choices the state offered, taken. It produces what
         the new state has to say and what it offers next — the same
         messages an answer produces, because to whoever is reading there
@@ -222,11 +225,12 @@ class TurnInput(object):
         except ValueError as exc:
             logger.info("Action %r refused for session %s: %s", action, message.session_id, exc)
             outbound.put(OUTPUT_ERROR, {"code": "action_unavailable", "message": str(exc), "detail": ""})
-            return
+            return None
         except ServiceError as exc:
             outbound.failed(exc, [])
-            return
+            return None
         outbound.ran(result)
+        return result
 
 
 @dataclass

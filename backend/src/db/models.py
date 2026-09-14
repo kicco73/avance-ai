@@ -49,7 +49,7 @@ class User(BaseModel):
         indexes = ((('provider', 'provider_user_id'), True),)
 
 SESSION_CLOSE_REASONS = (
-    'channel-switch', 'force-new-session', 'manual-user', 'manual-assistant',
+    'channel-switch', 'force-new-session', 'manual-user', 'manual-assistant', 'final-state',
     'revision-invalid',
 )
 

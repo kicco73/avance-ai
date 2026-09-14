@@ -170,6 +170,19 @@ states:
 """
 
 
+def test_a_compiled_state_keeps_its_ai_memory_strategy(db, tmp_path):
+    index = ALL_SIGNALS_INDEX.replace("    signal-tracking-strategy: all\n", "    ai-memory-strategy: clear\n")
+    revision = _publish(db, index)
+    _compile_into(tmp_path, revision, index=index)
+
+    compiled = _loader(db, tmp_path).load_at_revision(PROJECT_ID, revision)
+    interpreted = AutomatonLoader(db).load_at_revision(PROJECT_ID, revision)
+
+    assert compiled.states["start"] == interpreted.states["start"]
+    assert compiled.states["start"].ai_memory_strategy == "clear"
+    assert compiled.states["end"].ai_memory_strategy == "keep"
+
+
 def test_a_compiled_state_keeps_its_signal_tracking_strategy_and_tracks_the_same_signals(db, tmp_path):
     revision = _publish(db, ALL_SIGNALS_INDEX)
     _compile_into(tmp_path, revision, index=ALL_SIGNALS_INDEX)

@@ -235,6 +235,7 @@ states:
     history-cutoff: false
     transition-log-level: WARNING
     signal-tracking-strategy: relevant
+    ai-memory-strategy: keep
     attachments: []
     actions: [ ... ]   # see §5
 ```
@@ -245,11 +246,12 @@ states:
 | `fixed-message` | conditionally | string | — | Returned verbatim-in-meaning, translated to the user's language, instead of a free-form reply — §4.1. Mutually exclusive with `contextual-prompt`. |
 | `ui-label` | no | string | the state's key | Shown in the frontend. |
 | `ui-description` | no | string | `None` | Shown in the frontend; omitted entirely when absent. |
-| `actions` | no | list of actions | `[]` | Outgoing actions — §5. **No actions ⇒ automatically `final`** (derived, never declared). |
+| `actions` | no | list of actions | `[]` | Outgoing actions — §5. **No actions ⇒ automatically `final`** (derived, never declared). A transition into a final state closes the session once the turn that made it is out (`session.ended`, reason `final-state`): nothing more is accepted on it. A conversation that starts in one (a one-state project) stays open. |
 | `chat-enabled` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation, and the chat shows no text input line. Independent of `final`/`fixed-message`. |
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
 | `signal-tracking-strategy` | no | `relevant` \| `all` | `relevant` | Which signals a turn in this state computes (§3.1). `relevant`: only the ones this state's own actions read — in a `trigger`, an `env:` expression or an `on-exit` assignment. `all`: every declared signal, whether or not anything here reads it — for a state whose signals feed a later state, a metric, or a report rather than its own triggers. |
+| `ai-memory-strategy` | no | `keep` \| `clear` | `keep` | What happens to the model's own memory (§5.3) when a transition lands on this state. `keep`: nothing — the notes collected so far stay. `clear`: the memory is wiped as the transition lands (a self-loop counts as landing again, as for `history-cutoff`), and the model starts collecting afresh from its first reply here; the automaton's `env:` keys are untouched. Whatever the transition's own turn reports in its `memory` field is merged after the wipe, so it is the first thing this state collects. |
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
 | `ai-must-read-sources` | no | list of source names | `[]` | Same, but the read is forced once per entry into this state — §4.2. A source name can appear in at most one of the two read fields. |
@@ -659,7 +661,9 @@ user's message, not on its own discarded wording.
 across sessions, together with the state a live session was left in and
 the model's own memory. `project.new-session-strategy: restart` (§1.1)
 wipes all three when a new live session opens. Under `resume`, a case is
-started afresh by resetting its keys on the action that opens it.
+started afresh by resetting its keys on the action that opens it. The
+model's memory alone is also wiped by landing on a state whose
+`ai-memory-strategy` is `clear` (§4) — env keys stay.
 
 **Action `env`.**
 
@@ -940,6 +944,7 @@ of how you're likely to hit them:
 - Every state has **exactly one** of `contextual-prompt` / `fixed-message`.
 - Every state's `transition-log-level`, if given, is a valid level.
 - Every state's `signal-tracking-strategy`, if given, is `relevant` or `all`.
+- Every state's `ai-memory-strategy`, if given, is `keep` or `clear`.
 - Every action's `target` (incl. `init-action`'s) names a real state (or is a self-loop).
 - Every action's `trigger`, if given: syntactically valid and every
   reference resolves (§5.2's rules per namespace).

@@ -32,6 +32,9 @@ states:
     ui-label: B
     contextual-prompt: bye
     chat-enabled: false
+    actions:
+      - name: back
+        target: a
 """
 
 MINIMAL_YML = (

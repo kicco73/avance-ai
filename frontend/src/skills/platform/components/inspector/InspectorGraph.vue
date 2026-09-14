@@ -46,7 +46,7 @@ function destroyGraph() {
   cyGraph = null
 }
 
-function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chatEnabled: n.state.chat_enabled, historyCutoff: n.history_cutoff, reactionsEnabled: n.reactions_enabled, hasReactions: (n.state.reactions?.length ?? 0) > 0, transitionLogLevel: n.transition_log_level, signalTrackingStrategy: n.signal_tracking_strategy, attachments: n.attachments, contextualPrompt: n.contextual_prompt, aiMayReadSources: n.state.ai_may_read_sources ?? [], aiMustReadSources: n.state.ai_must_read_sources ?? [], aiMayWriteSources: n.state.ai_may_write_sources ?? [], input: n.state.input ?? [], output: n.state.output ?? [] } }
+function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chatEnabled: n.state.chat_enabled, historyCutoff: n.history_cutoff, reactionsEnabled: n.reactions_enabled, hasReactions: (n.state.reactions?.length ?? 0) > 0, transitionLogLevel: n.transition_log_level, signalTrackingStrategy: n.signal_tracking_strategy, aiMemoryStrategy: n.ai_memory_strategy, attachments: n.attachments, contextualPrompt: n.contextual_prompt, aiMayReadSources: n.state.ai_may_read_sources ?? [], aiMustReadSources: n.state.ai_must_read_sources ?? [], aiMayWriteSources: n.state.ai_may_write_sources ?? [], input: n.state.input ?? [], output: n.state.output ?? [] } }
 function edgeToCyData(e, id) {
   const isInitEdge = e.source === ''
   return {

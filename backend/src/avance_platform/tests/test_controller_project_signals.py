@@ -164,6 +164,25 @@ def test_a_state_tracking_all_signals_reports_every_one_relevant_and_leaves_the_
     assert by_name["unusedSignal"]["relevant"] is True
 
 
+def test_ai_memory_strategy_is_a_state_field_the_editor_sets_and_the_graph_reports(client):
+    project_id = _upload(client, "ai_memory_strategy_edit_test", TWO_STATE_PROJECT)
+
+    def strategy_of(state_key):
+        nodes = client.get(f"/api/skills/platform/projects/{project_id}/graph").json()["nodes"]
+        return next(n["ai_memory_strategy"] for n in nodes if n["state"]["key"] == state_key)
+
+    assert strategy_of("b") == "keep"
+
+    response = client.put(f"/api/skills/platform/projects/{project_id}/states/b/ai-memory-strategy", json={"value": "clear"})
+    assert response.status_code == 200, response.text
+    assert strategy_of("b") == "clear"
+    assert "ai-memory-strategy: clear" in client.get(f"/api/skills/platform/projects/{project_id}/files/index.yml").json()["content"]
+
+    response = client.put(f"/api/skills/platform/projects/{project_id}/states/b/ai-memory-strategy", json={"value": "wipe"})
+    assert response.status_code == 400
+    assert strategy_of("b") == "clear"
+
+
 def test_signal_tracking_strategy_is_a_state_field_the_editor_sets_and_the_graph_reports(client):
     project_id = _upload(client, "signal_tracking_strategy_edit_test", TWO_STATE_PROJECT)
 

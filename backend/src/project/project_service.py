@@ -98,8 +98,8 @@ class ProjectService(object):
     ) -> tuple[Automaton, State] | None:
         return self.inspector.get_automaton_and_state_for_observer(project_id, username)
 
-    def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
-        return self.inspector.apply_manual_action(action_name, session_id)
+    def resolve_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
+        return self.inspector.resolve_manual_action(action_name, session_id)
 
     def get_project_availability(self, project_id: str) -> tuple[bool, str | None]:
         return self.manager.get_project_availability(project_id)

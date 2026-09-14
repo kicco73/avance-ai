@@ -38,6 +38,7 @@ const {
   draft,
   currentSessionId,
   selectedSessionActive,
+  sessionEndReason,
   conversationElsewhere,
   handleNewSession,
   handleCloseSession,
@@ -72,6 +73,7 @@ const chatDisabledReason = computed(() => {
   if (!selectedSessionActive.value) {
     if (currentSessionId.value == null) return 'No active session for this project yet.'
     if (conversationElsewhere.value) return 'This conversation is continuing on another channel.'
+    if (sessionEndReason.value === 'final-state') return 'This conversation has ended.'
     return 'This session is no longer active.'
   }
   return null

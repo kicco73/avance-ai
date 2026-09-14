@@ -47,6 +47,7 @@ export function createChatStore({
   const currentSessionId = ref(null)
   watch(currentSessionId, (now, before) => watchSession(now, before))
   const selectedSessionActive = ref(false)
+  const sessionEndReason = ref(null)
   const sessionChannel = ref(null)
   const conversationElsewhere = computed(() => {
     const mine = unref(channel)
@@ -70,6 +71,10 @@ export function createChatStore({
   const actuatorsLoading = ref(false)
   const draft = ref('')
   const buttons = ref([])
+  function showButtons(actions) {
+    buttons.value = actions
+    actionLoading.value = false
+  }
   const turnCount = ref(0)
   let nextMessageId = 0
 
@@ -109,6 +114,7 @@ export function createChatStore({
     currentSessionId.value = frame.session_id
     currentProjectId.value = frame.project_id ?? currentProjectId.value
     selectedSessionActive.value = frame.current ?? true
+    sessionEndReason.value = null
     sessionChannel.value = frame.channel ?? null
     state.value = frame.state
     audioEnabled.value = !!frame.audio
@@ -130,7 +136,7 @@ export function createChatStore({
     currentSessionId.value = null
     state.value = null
     messages.value = []
-    buttons.value = []
+    showButtons([])
     blockedReason.value = frame.reason || 'no_project'
     blockedDetail.value = frame.detail || ''
     settleHistory()
@@ -139,12 +145,13 @@ export function createChatStore({
   busChannel.subscribe('session.ended', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
     selectedSessionActive.value = false
+    sessionEndReason.value = frame.reason ?? null
     if (sessionsPanelOpen.value) loadSessions()
   })
 
   busChannel.subscribe('state.buttons', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
-    buttons.value = frame.actions || []
+    showButtons(frame.actions || [])
   })
 
   busChannel.subscribe('output.text_stream', (frame) => {
@@ -178,7 +185,7 @@ export function createChatStore({
 
   busChannel.subscribe('state.changed', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
-    buttons.value = []
+    showButtons([])
     handleStateChange(frame.state ?? {})
   })
 
@@ -567,17 +574,16 @@ export function createChatStore({
 
   function handleAction(actionName) {
     clearApiError()
-    actionLoading.value = true
     const taken = busChannel.send({
       type: 'input.button', session_id: currentSessionId.value, id: actionName,
     })
-    actionLoading.value = false
+    actionLoading.value = taken
     if (!taken) setApiError('Nothing was sent.', 'The chat is not connected.')
   }
 
   function clearChatUi() {
     messages.value = []
-    buttons.value = []
+    showButtons([])
     clearApiError()
     chatStatus.value = ''
     autoTrackingEnabled.value = true
@@ -622,7 +628,7 @@ export function createChatStore({
     }
     clearApiError()
     messages.value = []
-    buttons.value = []
+    showButtons([])
     historyLoaded.value = false
     sessionsPanelOpen.value = true
     enterSession('session.create')
@@ -636,7 +642,7 @@ export function createChatStore({
 
   return {
     abandonOpenReplies,
-    state, currentSessionId, selectedSessionActive, sessionChannel, conversationElsewhere,
+    state, currentSessionId, selectedSessionActive, sessionEndReason, sessionChannel, conversationElsewhere,
     blockedReason, blockedDetail,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,

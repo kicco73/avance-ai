@@ -21,7 +21,9 @@ pytestmark = pytest.mark.regression
 PROJECT_ID = "proj"
 
 
-def _automaton(action_env: dict, target: str = "b", model_reads_env: bool = False) -> Automaton:
+def _automaton(
+    action_env: dict, target: str = "b", model_reads_env: bool = False, target_memory: str = "keep",
+) -> Automaton:
     """`model_reads_env`: declares every written key as the destination
     state's own `input` — the one configuration under which an env value
     ever reaches the model's prompt (see tracking.env_prompt_block); a
@@ -35,6 +37,7 @@ def _automaton(action_env: dict, target: str = "b", model_reads_env: bool = Fals
     state_b = State(
         key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[],
         input=input_names if target == "b" else (),
+        ai_memory_strategy=target_memory,
     )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
@@ -85,6 +88,20 @@ async def test_a_manually_fired_actions_env_is_persisted(db):
     env = _env_for(db)
     assert env.action_set() == {"reset_counter": True}
     assert env.memory() == {}
+
+
+async def test_a_manually_fired_action_lands_through_the_same_transition_as_a_triggered_one(db):
+    turn_service, _ = _turn_service(db, _automaton({"reset_counter": "True"}, target_memory="clear"))
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
+    env = _env_for(db, session["id"])
+    env.update({"note": "remembered"})
+
+    await turn_service.apply_manual_action("advance", session["id"])
+
+    assert env.memory() == {}
+    assert env.action_set() == {"reset_counter": True}
+    landed = [row for row in db.get_signals(session["id"]) if row["new_state"] == "b"]
+    assert [(row["old_state"], row["action"], row["origin"]) for row in landed] == [("a", "advance", "manual")]
 
 
 async def test_an_action_with_no_env_field_never_touches_env(db):

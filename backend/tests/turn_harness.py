@@ -62,7 +62,7 @@ class FakeProjectService:
     def get_project_availability(self, project_id: str):
         return (False, None)
 
-    def apply_manual_action(self, action_name: str, session_id: int):
+    def resolve_manual_action(self, action_name: str, session_id: int):
         action = self._automaton.move(self._state_key, action_name)
         source_key, self._state_key = self._state_key, action.target
         state = self._automaton.states[self._state_key]

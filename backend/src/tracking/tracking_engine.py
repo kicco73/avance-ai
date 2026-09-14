@@ -107,6 +107,19 @@ class TestObservationSink:
         return row.id
 
 
+class KeepAiMemory:
+    def on_entry(self, env: Env) -> None:
+        return None
+
+
+class ClearAiMemory:
+    def on_entry(self, env: Env) -> None:
+        env.clear_memory()
+
+
+AI_MEMORY_STRATEGIES = {"keep": KeepAiMemory(), "clear": ClearAiMemory()}
+
+
 class TrackingEngine:
     """Trigger evaluation + transition/env application. No temporal ("as
     of when") concept passes through these methods — the injected
@@ -197,6 +210,7 @@ class TrackingEngine:
             origin=origin,
             output_values=output_values,
         )
+        AI_MEMORY_STRATEGIES[automaton.get_state(action.target).ai_memory_strategy].on_entry(self._env)
         return tracking_id
 
     def apply_action_env(

@@ -52,6 +52,7 @@ export function createSampleChatStore({ stateKey = ref(''), appId = ref(null) } 
     draft: ref(''),
     currentSessionId: ref(null),
     selectedSessionActive: ref(true),
+    sessionEndReason: ref(null),
     conversationElsewhere: ref(false),
     blockedReason: ref(null),
     blockedDetail: ref(''),

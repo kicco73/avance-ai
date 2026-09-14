@@ -42,11 +42,34 @@ function boxes(host, field) {
   }))
 }
 
+function segments(host) {
+  return [...host.querySelectorAll('.segmented-control-option')].map((button) => ({
+    label: button.textContent,
+    active: button.classList.contains('segmented-control-option-active'),
+  }))
+}
+
 describe('the state I/O tab', () => {
   it('shows nothing to tick until a state is selected', async () => {
     const { host } = await mount(null, null)
 
     expect(host.querySelectorAll('input[type=checkbox]').length).toBe(0)
+    expect(segments(host)).toEqual([])
+  })
+
+  it('shows the AI memory control before the I/O, on the selected state, and writes the state field', async () => {
+    const saveField = vi.fn()
+    const { host, selection } = await mount('s1', { input: [], output: [], aiMemoryStrategy: 'keep' }, saveField)
+
+    expect(host.firstElementChild.firstElementChild.className).toBe('inspector-io-strategy')
+    expect(segments(host)).toEqual([{ label: 'Keep', active: true }, { label: 'Clear', active: false }])
+
+    host.querySelectorAll('.segmented-control-option')[1].click()
+    expect(saveField).toHaveBeenCalledWith('ai-memory-strategy', 'clear')
+
+    selection.value = { stateKey: 's1', stateData: { input: [], output: [], aiMemoryStrategy: 'clear' } }
+    await nextTick()
+    expect(segments(host).map((s) => s.active)).toEqual([false, true])
   })
 
   it('follows the selection: a new state key and data re-tick every box', async () => {

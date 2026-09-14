@@ -2,6 +2,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { getProjectEnvKeys } from '../../api.js'
 import InspectorEnvKeysList from './InspectorEnvKeysList.vue'
+import SegmentedControl from '../../../../components/skillkit/SegmentedControl.vue'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -33,6 +34,11 @@ defineExpose({ loadEnvKeys, refresh })
 
 onMounted(refresh)
 
+const AI_MEMORY_STRATEGIES = [
+  { id: 'keep', label: 'Keep', title: 'The notes the model has collected so far stay when a transition lands here' },
+  { id: 'clear', label: 'Clear', title: 'The model\'s memory is wiped when a transition lands here; it collects afresh until it leaves' }
+]
+
 const IO_FIELDS = [
   { name: 'input', label: 'Input', caption: 'What this state reads', badgeClass: 'inspector-detail-badge-env' },
   { name: 'output', label: 'Output', caption: 'What this state produces', badgeClass: 'inspector-detail-badge-output' },
@@ -60,6 +66,14 @@ function jumpToEnvKey(name) {
 <template>
   <div class="inspector-signals-section">
     <template v-if="stateKey != null">
+      <div class="inspector-io-strategy">
+        <span class="inspector-io-strategy-label">AI memory</span>
+        <SegmentedControl
+          :model-value="stateData?.aiMemoryStrategy ?? 'keep'"
+          :options="AI_MEMORY_STRATEGIES"
+          @update:model-value="(strategy) => saveField('ai-memory-strategy', strategy)"
+        />
+      </div>
       <p v-if="envKeysLoading" class="signals-status">Loading…</p>
       <p v-else-if="!envKeys.length" class="signals-status">No env keys declared yet — declare one with nothing selected.</p>
       <template v-else>
@@ -111,6 +125,8 @@ function jumpToEnvKey(name) {
 <style scoped>
 .inspector-signals-section { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.8rem; }
 .signals-status { margin: 0; color: #444; font-size: 0.9rem; }
+.inspector-io-strategy { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-shrink: 0; }
+.inspector-io-strategy-label { font-size: 0.78rem; color: #555; }
 .inspector-io-block { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
 .inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.2rem; }
 .inspector-io-section-header { display: flex; align-items: center; gap: 0.4rem; }
