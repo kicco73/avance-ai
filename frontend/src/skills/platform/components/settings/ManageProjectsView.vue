@@ -317,24 +317,22 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="manage-projects-preview">
-        <Transition name="manage-projects-detail">
-          <div v-if="selectedAppStoreApp" :key="selectedAppStoreApp.id" class="manage-projects-detail">
-            <ProjectDetailPanel
-              :app="selectedAppStoreApp"
-              :published-revision="selectedRow?.published_revision ?? null"
-              :revision="selectedRow?.revision ?? null"
-              @edit="selectEdit"
-              @label="selectLabelSessions"
-              @download="selectDownload"
-              @share="selectShare"
-              @delete="selectDelete"
-              @publish="selectPublish"
-              @open-skill-view="selectSkillView"
-            />
-          </div>
-          <p v-else-if="selectedProjectId" key="unpublished" class="manage-projects-status">This project hasn't been published yet — no preview available.</p>
-          <p v-else key="nothing-selected" class="manage-projects-status">Select a project to see its details.</p>
-        </Transition>
+        <div v-if="selectedAppStoreApp" :key="selectedAppStoreApp.id" class="manage-projects-detail">
+          <ProjectDetailPanel
+            :app="selectedAppStoreApp"
+            :published-revision="selectedRow?.published_revision ?? null"
+            :revision="selectedRow?.revision ?? null"
+            @edit="selectEdit"
+            @label="selectLabelSessions"
+            @download="selectDownload"
+            @share="selectShare"
+            @delete="selectDelete"
+            @publish="selectPublish"
+            @open-skill-view="selectSkillView"
+          />
+        </div>
+        <p v-else-if="selectedProjectId" class="manage-projects-status">This project hasn't been published yet — no preview available.</p>
+        <p v-else class="manage-projects-status">Select a project to see its details.</p>
       </div>
     </div>
   </div>
@@ -499,22 +497,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-}
-
-.manage-projects-detail-enter-active,
-.manage-projects-detail-leave-active {
-  transition: opacity 0.12s ease;
-}
-
-.manage-projects-detail-enter-from,
-.manage-projects-detail-leave-to {
-  opacity: 0;
-}
-
-.manage-projects-detail-leave-active {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
 }
 
 .manage-projects-status {
