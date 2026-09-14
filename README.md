@@ -104,16 +104,22 @@ Stylesheets and markup are left alone unless asked for: `--styles` adds
 `.html/.xml/.svg` and a `.vue` `<template>` block. A skin's stylesheet under
 `backend/samples/` is authored prose, and the hook never passes either flag.
 
-`.githooks/pre-commit` runs it over the staged code files, on the staged content
-only: it rewrites the index, and touches the working copy just when it still
-matches what was staged — a peer's unstaged edits in the same file are never
-swept into your commit. Install it once per clone:
+`backend/bin/strip_staged.py` runs it over the staged code files, on the staged
+content only: it rewrites the index, and touches the working copy just when it
+still matches what was staged — a peer's unstaged edits in the same file are
+never swept into your commit.
+
+`backend/bin/bump_version.py` increments the last number of the
+`__version__ = "x.y.z"` line in `backend/src/main.py` and stages it, so every
+commit carries a version of its own.
+
+`.githooks/pre-commit` runs those two. Install it once per clone:
 
 ```
 ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit
 ```
 
-`SKIP_STRIP_COMMENTS=1 git commit` (or `--no-verify`) skips it.
+`git commit --no-verify` skips it.
 
 ## Getting started
 

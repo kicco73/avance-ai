@@ -9,7 +9,6 @@ const envKeys = [
 
 vi.mock('../api.js', () => ({
   getProjectEnvKeys: async () => ({ env_keys: envKeys }),
-  getProjectSources: async () => ({ sources: [] }),
 }))
 
 const InspectorStateIOTab = (await import('../components/inspector/InspectorStateIOTab.vue')).default
@@ -44,10 +43,9 @@ function boxes(host, field) {
 }
 
 describe('the state I/O tab', () => {
-  it('shows nothing to edit until a state is selected', async () => {
+  it('shows nothing to tick until a state is selected', async () => {
     const { host } = await mount(null, null)
 
-    expect(host.textContent).toContain('Select a state in the graph')
     expect(host.querySelectorAll('input[type=checkbox]').length).toBe(0)
   })
 
@@ -102,6 +100,12 @@ describe('the state I/O tab', () => {
     expect(box.checked).toBe(true)
   })
 
+  it('hides the env declarations while a state is selected', async () => {
+    const { host } = await mount('s1', { input: [], output: [] })
+
+    expect(host.querySelector('.inspector-env-keys')).toBe(null)
+  })
+
   it('declares env keys with no state selected', async () => {
     const onAddEnvKey = vi.fn()
     const { host } = await mount(null, null, vi.fn(), { onAddEnvKey })
@@ -115,7 +119,7 @@ describe('the state I/O tab', () => {
 
   it('renames an env key through the tab that owns the I/O', async () => {
     const onSetEnvKeyField = vi.fn()
-    const { host } = await mount('s1', { input: [], output: [] }, vi.fn(), { onSetEnvKeyField })
+    const { host } = await mount(null, null, vi.fn(), { onSetEnvKeyField })
 
     const card = [...host.querySelectorAll('.inspector-signal-block')]
       .find((b) => b.textContent.includes('alpha'))

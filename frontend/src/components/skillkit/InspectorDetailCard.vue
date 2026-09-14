@@ -7,7 +7,6 @@ import { handleEnterNext } from './enterToNextField.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import { customDialog } from '../../dialogStore.js'
 import { useTokensBar } from '../../composables/useTokensBar.js'
-import { identifierRegistry } from '../../identifierRegistry.js'
 
 const props = defineProps({
   selectedElement: { type: Object, default: null },
@@ -25,7 +24,7 @@ const props = defineProps({
   saveField: { type: Function, default: null }
 })
 
-const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open', 'open-actions-order'])
+const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open', 'open-actions-order', 'open-sources'])
 
 const showEditForm = computed(() => props.editable && props.open)
 
@@ -105,35 +104,10 @@ function commitBoolField(field, value) {
   emit('set-field', field, value)
 }
 
-const availableSourceNames = computed(() => Object.keys(identifierRegistry.value.source ?? {}))
-function sourceSupportsWrite(name) {
-  return 'update' in (identifierRegistry.value[`source.${name}`] ?? {})
-}
-function toolState(name) {
-  if ((props.selectedElement?.data.aiMustReadSources ?? []).includes(name)) return 'must'
-  if ((props.selectedElement?.data.aiMayReadSources ?? []).includes(name)) return 'may'
-  return 'off'
-}
-function cycleTool(name) {
-  const may = props.selectedElement?.data.aiMayReadSources ?? []
-  const must = props.selectedElement?.data.aiMustReadSources ?? []
-  const current = toolState(name)
-  if (current === 'off') {
-    emit('set-field', 'ai-may-read-sources', [...may, name])
-  } else if (current === 'may') {
-    emit('set-field', 'ai-may-read-sources', may.filter((t) => t !== name))
-    emit('set-field', 'ai-must-read-sources', [...must, name])
-  } else {
-    emit('set-field', 'ai-must-read-sources', must.filter((t) => t !== name))
-  }
-}
-function writeState(name) {
-  return (props.selectedElement?.data.aiMayWriteSources ?? []).includes(name)
-}
-function toggleWrite(name) {
-  const write = props.selectedElement?.data.aiMayWriteSources ?? []
-  emit('set-field', 'ai-may-write-sources', writeState(name) ? write.filter((t) => t !== name) : [...write, name])
-}
+const hasConfiguredSources = computed(() => {
+  const d = props.selectedElement?.data
+  return (d?.aiMayReadSources?.length ?? 0) + (d?.aiMustReadSources?.length ?? 0) + (d?.aiMayWriteSources?.length ?? 0) > 0
+})
 
 const isDeleteDisabled = computed(() => {
   const d = props.selectedElement?.data
@@ -177,7 +151,7 @@ const hasSelectedElementBadges = computed(() => {
     if (showEditForm.value) return true
     const d = props.selectedElement.data
     return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chatEnabled || d.historyCutoff ||
-      (d.reactionsEnabled && d.hasReactions) || (d.aiMayQuerySources?.length > 0) || (d.aiMustQuerySources?.length > 0)
+      (d.reactionsEnabled && d.hasReactions) || hasConfiguredSources.value
   }
   if (showEditForm.value) return true
   const d = props.selectedElement.data
@@ -259,55 +233,21 @@ function selectAttachment(fileName) {
               :title="selectedElement.data.hasReactions ? 'Click to toggle' : 'This project declares no reactions — add one in the Reactions tab first.'"
               @click.stop="selectedElement.data.hasReactions && commitBoolField('reactions-enabled', !selectedElement.data.reactionsEnabled)"
             >Reactions</span>
-            <span
-              v-for="name in availableSourceNames" :key="'tool-' + name"
-              class="inspector-detail-badge inspector-detail-badge-toggle"
-              :class="{
-                'inspector-detail-badge-toggle-off': toolState(name) === 'off',
-                'inspector-detail-badge-toggle-on': toolState(name) === 'may',
-                'inspector-detail-badge-toggle-required': toolState(name) === 'must'
-              }"
-              :title="
-                toolState(name) === 'must'
-                  ? `Forced: the model must read source.${name} once per entry into this state — click to turn off`
-                  : toolState(name) === 'may'
-                    ? `The model may read source.${name} — click to force it (ai-must-read-sources)`
-                    : `Click to let the model read source.${name} while replying in this state`
-              "
-              @click.stop="cycleTool(name)"
-            >{{ name }}</span>
-            <span
-              v-for="name in availableSourceNames.filter(sourceSupportsWrite)" :key="'tool-write-' + name"
-              class="inspector-detail-badge inspector-detail-badge-toggle"
-              :class="writeState(name) ? 'inspector-detail-badge-toggle-write' : 'inspector-detail-badge-toggle-off'"
-              :title="
-                writeState(name)
-                  ? `The model may write source.${name} (update) in this state — click to turn off`
-                  : `Click to let the model write source.${name} (update) while replying in this state`
-              "
-              @click.stop="toggleWrite(name)"
-            >{{ name }} ✎</span>
           </template>
           <template v-else>
             <span v-if="!selectedElement.data.chatEnabled" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
             <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
             <span v-if="selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
-            <span
-              v-for="name in (selectedElement.data.aiMayReadSources || [])" :key="'tool-ro-may-' + name"
-              class="inspector-detail-badge inspector-detail-badge-neutral"
-              :title="`Readable by the model as source.${name} (its own choice)`"
-            >{{ name }}</span>
-            <span
-              v-for="name in (selectedElement.data.aiMustReadSources || [])" :key="'tool-ro-must-' + name"
-              class="inspector-detail-badge inspector-detail-badge-toggle-required"
-              :title="`Forced: the model must read source.${name} once per entry into this state`"
-            >{{ name }}</span>
-            <span
-              v-for="name in (selectedElement.data.aiMayWriteSources || [])" :key="'tool-ro-write-' + name"
-              class="inspector-detail-badge inspector-detail-badge-toggle-write"
-              :title="`Writable by the model as source.${name} (update)`"
-            >{{ name }} ✎</span>
           </template>
+          <button
+            v-if="showEditForm || hasConfiguredSources"
+            type="button"
+            class="inspector-detail-badge inspector-detail-badge-toggle inspector-sources-badge-btn"
+            :class="hasConfiguredSources ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+            :disabled="!editable"
+            title="What this state may access"
+            @click.stop="emit('open-sources')"
+          >Sources</button>
         </template>
         <template v-else>
           <button
@@ -486,10 +426,9 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-manual { background: #00695c; }
 .inspector-detail-badge-neutral { background: #4a6fa5; }
 .inspector-detail-badge-toggle { cursor: pointer; }
+.inspector-sources-badge-btn { border: none; font-family: inherit; }
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
 .inspector-detail-badge-toggle-on { background: #4a6fa5; }
-.inspector-detail-badge-toggle-required { background: #c2410c; }
-.inspector-detail-badge-toggle-write { background: #6d28d9; }
 .inspector-detail-badge-toggle-locked { cursor: not-allowed; opacity: 0.5; }
 .inspector-detail-badge-trigger-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
 .inspector-detail-badge-trigger-btn:disabled { cursor: not-allowed; opacity: 0.6; }

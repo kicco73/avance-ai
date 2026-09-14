@@ -20,7 +20,7 @@ class AutomatonValidator:
     def __init__(self, cursor: BuildCursor) -> None:
         self._cursor = cursor
 
-    def validate_env_key_default_order(self, env_keys: dict[str, EnvKey], raw_env_keys) -> None:
+    def validate_env_key_defaults(self, env_keys: dict[str, EnvKey], raw_env_keys) -> None:
         all_names = set(env_keys.keys())
         declared_so_far: set[str] = set()
         for name, env_key in env_keys.items():
@@ -37,6 +37,7 @@ class AutomatonValidator:
                         f"{', '.join(f'env.{ref}' for ref in sorted(forward))} before it's declared — "
                         "an env key's own default may only reference an earlier env key, never itself or a later one."
                     )
+                self.validate_expression_types(env_key.value, f"env key '{name}': default value")
             declared_so_far.add(name)
 
     @staticmethod
@@ -205,10 +206,13 @@ class AutomatonValidator:
 
     @staticmethod
     def validate_expression_types(expression: str, context: str) -> None:
-        violations = (
-            TriggerExpressionAnalyzer.type_violations(expression)
-            + TriggerExpressionAnalyzer.signal_domain_violations(expression)
-        )
+        try:
+            violations = (
+                TriggerExpressionAnalyzer.type_violations(expression)
+                + TriggerExpressionAnalyzer.signal_domain_violations(expression)
+            )
+        except SyntaxError:
+            return
         if violations:
             raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
 

@@ -2,6 +2,8 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import InspectorGraph from './InspectorGraph.vue'
 import InspectorDetailCard from '../../../../components/skillkit/InspectorDetailCard.vue'
+import SourcesEditDialog from './SourcesEditDialog.vue'
+import { customDialog } from '../../../../dialogStore.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -9,6 +11,7 @@ const props = defineProps({
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   firedActionEdge: { type: Object, default: null },
   editableFiles: { type: Array, default: null },
+  sources: { type: Array, default: () => [] },
   annotatable: { type: Boolean, default: false },
   expectedState: { type: String, default: null },
   imported: { type: Boolean, default: false },
@@ -28,6 +31,17 @@ const emit = defineEmits([
 const graphRef = ref(null)
 const selectedElement = ref(null)
 const open = ref(false)
+
+function openSourcesDialog() {
+  customDialog({
+    component: SourcesEditDialog,
+    props: {
+      sources: props.sources.map((entry) => entry.source),
+      stateData: selectedElement.value.data,
+      onSetField: (field, value) => emit('set-field', field, value)
+    }
+  })
+}
 
 const elementIdentity = computed(() => {
   const el = selectedElement.value
@@ -106,6 +120,7 @@ defineExpose({ loadGraph, resize, fit, refresh, stateElementFor })
       @set-field="(field, value) => emit('set-field', field, value)"
       @delete="emit('delete', selectedElement)"
       @open-actions-order="emit('open-actions-order', selectedElement)"
+      @open-sources="openSourcesDialog"
       @close="closeDetail"
     />
   </div>

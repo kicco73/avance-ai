@@ -347,7 +347,7 @@ class AutomatonBuilder(object):
         for name, raw_source in raw_sources.items():
             self._at(self._line_of(raw_sources, name), f"sources.{name}")
             sources[name] = self._build_source(name, raw_source, archives)
-        self._validator.validate_env_key_default_order(env_keys, raw_env_keys)
+        self._validator.validate_env_key_defaults(env_keys, raw_env_keys)
 
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):

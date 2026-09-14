@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import InspectorDetailCard from '../../../../components/skillkit/InspectorDetailCard.vue'
 import InspectorSourceCard from './InspectorSourceCard.vue'
+import SourcesEditDialog from './SourcesEditDialog.vue'
+import { customDialog } from '../../../../dialogStore.js'
 import SessionDetailCard from '../../../../components/skillkit/SessionDetailCard.vue'
 
 const props = defineProps({
@@ -14,6 +16,7 @@ const props = defineProps({
   saveField: { type: Function, default: null },
   recentlyAddedKey: { type: String, default: null },
   currentFileName: { type: String, default: null },
+  sources: { type: Array, default: () => [] },
   selectedSource: { type: Object, default: null },
   deletingSource: { type: String, default: null },
   sourcesRootSelected: { type: Boolean, default: false },
@@ -46,6 +49,17 @@ const elementIdentity = computed(() => {
   if (!el) return null
   return el.kind === 'state' ? `state:${el.data.id}` : `action:${el.data.matchStateKey}/${el.data.actionName}`
 })
+
+function openSourcesDialog() {
+  customDialog({
+    component: SourcesEditDialog,
+    props: {
+      sources: props.sources.map((entry) => entry.source),
+      stateData: props.selectedElement.data,
+      onSetField: (field, value) => emit('set-field', field, value)
+    }
+  })
+}
 
 const open = ref(false)
 watch(elementIdentity, (identity) => {
@@ -104,6 +118,7 @@ watch(elementIdentity, (identity) => {
       @set-field="(field, value) => emit('set-field', field, value)"
       @delete="emit('delete', selectedElement)"
       @open-actions-order="emit('open-actions-order', selectedElement)"
+      @open-sources="openSourcesDialog"
     />
     <div v-if="isBehaviorContext && selectedElement?.kind !== 'action'" class="inspector-state-tab-add-row">
       <button v-if="!selectedElement" class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>
