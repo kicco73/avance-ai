@@ -111,9 +111,6 @@ class Outbound(object):
             })
 
     def wrote(self, result: dict) -> None:
-        """One message per env key an action wrote this turn. Said for
-        the key, not for the turn: whoever listens for a key cares that
-        it moved, never how many others moved with it."""
         for key, value in (result.get("env_changed") or {}).items():
             self.put(ENV_CHANGED, {"key": key, "value": value})
 

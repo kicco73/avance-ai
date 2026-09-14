@@ -17,6 +17,7 @@ from system.bus import TOOL_SEND_MAIL, OUTPUT_TEXT, Message
 from system.logging_factory import LoggerFactory
 from scheduler import SchedulerService
 from system.web_session import WebSession
+from tracking.sources.websearch import NoWebSearchArchive, WebSearchArchive
 from websearch import WebCrawler, WebSearch
 
 from .action_task import AnnouncedActionTask, ScopeHydrator
@@ -73,6 +74,7 @@ class TaskNamespace(ABC):
         self._crawler = crawler
         self._session_id: int | None = None
         self._services = ProjectServices()
+        self._websearch_archive: WebSearchArchive = NoWebSearchArchive()
 
     def schedule_task(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
         """Runs `action.task` as an ActionTask due now (see
@@ -99,17 +101,12 @@ class TaskNamespace(ABC):
         return _run_sync(self._ai_service.prompt(prompt, **kwargs))
 
     def websearch(self, query: str) -> str:
-        """Searches the web for `query` and returns what the pages it
-        finds say, as CSV — the same WebSearch the Source card's own AI
-        Web Import runs (see websearch/search.py), minus the step-by-step
-        progress and the archive write: here the CSV is the return
-        value, for a later statement in the same script to use. Returns
-        "" (logged) wherever no AI service is bound, exactly as `prompt`
-        does."""
         if self._ai_service is None:
             logger.warning("task.websearch() called with no AI service bound — returning ''.")
             return ""
-        return _run_sync(WebSearch(self._ai_service, self._crawler).csv_for(query))
+        csv_text = _run_sync(WebSearch(self._ai_service, self._crawler).csv_for(query))
+        self._websearch_archive.write(csv_text)
+        return csv_text
 
     def with_ai_service(self, ai_service: "AiService", tool_set: "ToolSet | None" = None) -> "TaskNamespace":
         """A copy of this namespace bound to `ai_service` (and,
@@ -128,6 +125,11 @@ class TaskNamespace(ABC):
         with_ai_service above (see EvaluationScopeBuilder.build)."""
         bound = copy.copy(self)
         bound._services = services
+        return bound
+
+    def with_websearch_archive(self, archive: WebSearchArchive) -> "TaskNamespace":
+        bound = copy.copy(self)
+        bound._websearch_archive = archive
         return bound
 
     def with_session(self, session_id: int) -> "TaskNamespace":

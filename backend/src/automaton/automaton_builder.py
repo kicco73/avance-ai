@@ -12,6 +12,7 @@ from system.logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
 from tracking.sources import SOURCE_DRIVERS
 from tracking.sources.url import parse_source_url
+from tracking.sources.websearch import SCHEME as WEBSEARCH_SCHEME, USER_SCOPE
 
 from ruamel.yaml.error import YAMLError
 
@@ -117,6 +118,11 @@ class AutomatonBuilder(object):
                 )
             if scheme == "avance" and archives.find(path, f"source '{name}'") is None:
                 archives.declare_missing(path)
+            if scheme == WEBSEARCH_SCHEME and path != USER_SCOPE:
+                raise ValueError(
+                    f"Source '{name}': url '{url}' must be '{WEBSEARCH_SCHEME}:{USER_SCOPE}' — this driver "
+                    "reads whatever task.websearch(...) last stored for the user now talking."
+                )
         raw_ai_definition = raw_source.get("ai-definition")
         return Source(
             name=name,

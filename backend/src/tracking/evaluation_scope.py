@@ -21,6 +21,7 @@ from tracking.project_files import project_files_for
 from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
 from tracking.sources import SourceNamespace
+from tracking.sources.websearch import websearch_archive_for
 from tracking.user_facts import UserFacts
 
 if TYPE_CHECKING:
@@ -99,7 +100,9 @@ class EvaluationScopeBuilder(object):
         if self._automaton_namespace is not None:
             scope["automaton"] = self._automaton_namespace.scoped_to(automaton.family)
         scope["chat"] = self._chat_namespace
-        task_namespace = self._task_namespace.with_services(automaton.services)
+        task_namespace = self._task_namespace.with_services(automaton.services).with_websearch_archive(
+            websearch_archive_for(self._db, automaton)
+        )
         if self._ai_service is not None:
             tool_set = (
                 source_namespace.tool_set(

@@ -22,8 +22,10 @@ from .avance_archive import SCHEME as AVANCE_SCHEME, AvanceArchiveSource
 from .base import SourceContext, SourceDriver
 from .comparison import OPERATORS
 from .url import parse_source_url
+from .websearch import SCHEME as WEBSEARCH_SCHEME, WebSearchSource
 SOURCE_DRIVERS: dict[str, type[SourceDriver]] = {
     AVANCE_SCHEME: AvanceArchiveSource,
+    WEBSEARCH_SCHEME: WebSearchSource,
 }
 
 

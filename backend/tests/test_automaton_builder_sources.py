@@ -60,7 +60,8 @@ def test_a_declared_source_is_parsed_with_ui_label_defaulting_to_its_name_and_an
     ("sources:\n  pino:\n    url: flights.csv\n", None, "not a valid source url"),
     ("sources:\n  pino:\n    url: s3:flights.csv\n", None, "url scheme 's3' must be one of"),
     ("sources:\n  pino:\n    ui-label: Flights\n", "source.pino.select_rows_containing('x') != 'x'", r"undefined name\(s\).*source.pino.select"),
-], ids=["not-a-mapping", "no-scheme", "unknown-scheme", "referenced-without-url"])
+    ("sources:\n  pino:\n    url: websearch:flights.csv\n", None, "must be 'websearch:user'"),
+], ids=["not-a-mapping", "no-scheme", "unknown-scheme", "referenced-without-url", "websearch-path-is-not-a-scope"])
 def test_build_rejects_a_malformed_sources_section_a_bad_url_or_a_reference_to_a_source_with_no_url_yet(sources_yaml, trigger, match):
     with pytest.raises(ValueError, match=match):
         _build(sources_yaml, trigger=trigger)
@@ -75,6 +76,14 @@ def test_an_avance_url_is_provisioned_empty_when_never_seen_and_a_trigger_may_ca
 
     seeded = _build(_PINO_FLIGHTS, trigger="source.pino.select_rows_containing('x') != 'nope'", contents=_FLIGHTS)
     assert seeded.sources[0].name == "pino"
+
+
+def test_a_websearch_url_builds_on_the_user_scope_alone_and_supports_the_same_reads_as_an_archive():
+    built = _build(
+        "sources:\n  web:\n    url: websearch:user\n",
+        trigger="source.web.select_rows_containing('x') == 'x'",
+    )
+    assert built.sources[0].url == "websearch:user"
 
 
 @pytest.mark.parametrize(("sources_yaml", "trigger", "match"), [

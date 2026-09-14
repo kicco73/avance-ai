@@ -525,7 +525,7 @@ exception. Every driver implements `select_rows_containing`; the
 column-filtered reads, `value` and `update` only where they make sense
 for that driver (its own `SUPPORTED_METHODS`).
 
-One driver exists today, under the scheme `avance`:
+Two drivers exist today, under the schemes `avance` and `websearch`:
 
 **`avance:<path>` — an archive file.** Read-only access to one of this
 project's own files, addressed by `url`'s own path (exact path or unique
@@ -537,6 +537,18 @@ detected). Implements every `select_rows_*` read and `value` — never
 `update`, read-only. A
 whole-file read is `attachment.read(name)`'s job (task only), not a
 `source.*` capability.
+
+**`websearch:user` — the last web search this user ran.** The same reads
+as `avance:` above, over the CSV `task.websearch(...)` (§5.4) last
+brought back for whoever is talking now, rather than over a file the
+project ships. It is kept in this project's own cache namespace, one
+entry per user (`cache/websearch/<project id>/<user id>`), so nothing
+is shared between two people in the same project and a new search
+replaces the previous one. `user` is the only path the scheme takes —
+the scope of the result, not a file name — and any other is a build
+error. Reading before any search has run is an error text naming
+`task.websearch`, not an empty table: `""` means "this search found no
+such row," and the two must not read alike.
 
 The automaton's own `env:` keys are never reached through a `sources:`
 driver — the model reads/sets them through a state's own `input`/`output`
@@ -856,8 +868,12 @@ have anything left to tunnel to the browser synchronously.)
   ```
 
   This is the same search the Source card's own **AI Web Import** runs,
-  with its result returned instead of written into a source's archive:
-  nothing is stored, and the project's own `sources:` are untouched.
+  minus its step-by-step progress: the CSV is the return value, and the
+  project's own `sources:` files are untouched. The same CSV is also kept
+  for the user now talking, under `cache/websearch/<project id>/<user
+  id>`, which is what a source declared `url: websearch:user` (§5.2)
+  reads — so a later turn, a trigger, or the model itself can query the
+  table the script found, and a second search replaces the first.
   Read-only, like `prompt` — it always runs, actuators on or off.
 
 **No `task.*` call tunnels anything to the browser.** Every member

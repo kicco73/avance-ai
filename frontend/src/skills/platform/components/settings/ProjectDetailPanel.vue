@@ -9,7 +9,10 @@ import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSessi
 import { projectActions } from '../../../registry.js'
 
 const props = defineProps({
-  app: { type: Object, required: true },
+  projectId: { type: String, required: true },
+  title: { type: String, required: true },
+  description: { type: String, default: null },
+  broken: { type: Object, default: null },
   publishedRevision: { type: Number, default: null },
   revision: { type: Number, default: null }
 })
@@ -18,9 +21,11 @@ const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'publi
 
 const previewing = ref(false)
 
-function appTitle(app) {
-  return app?.ui_label || app?.id || ''
-}
+const untestableReason = computed(() => {
+  if (props.broken?.published) return `Its published revision no longer builds:\n\n${props.broken.published}`
+  if (props.publishedRevision == null) return "This project hasn't been published yet — publish it to test it here."
+  return null
+})
 
 const deleteMenuOpen = ref(false)
 const deleteMenuRootEl = ref(null)
@@ -31,7 +36,7 @@ function toggleDeleteMenu() {
 
 function selectDeleteFromMenu() {
   deleteMenuOpen.value = false
-  emit('delete', props.app.id)
+  emit('delete', props.projectId)
 }
 
 function handleDeleteMenuDocumentClick(event) {
@@ -42,7 +47,7 @@ function handleDeleteMenuDocumentClick(event) {
 
 document.addEventListener('click', handleDeleteMenuDocumentClick, true)
 
-const releaseSkin = holdSkin(new ProjectSkinSource(computed(() => props.app?.id ?? null)))
+const releaseSkin = holdSkin(new ProjectSkinSource(computed(() => props.projectId)))
 
 async function quitPreview() {
   if (!previewing.value) return
@@ -51,7 +56,7 @@ async function quitPreview() {
 }
 
 async function startPreview() {
-  setPreviewApp(props.app.id)
+  setPreviewApp(props.projectId)
   previewing.value = true
   await appStorePreviewStore.handleNewSession()
 }
@@ -70,7 +75,7 @@ onBeforeUnmount(async () => {
 <template>
   <div class="project-detail-header-row">
     <div class="project-detail-title-row">
-      <h2 class="project-detail-title">{{ appTitle(app) }}</h2>
+      <h2 class="project-detail-title">{{ title }}</h2>
       <span v-if="publishedRevision != null" class="project-detail-rev">rev. {{ publishedRevision }}</span>
     </div>
     <div class="project-detail-menu" ref="deleteMenuRootEl">
@@ -85,44 +90,45 @@ onBeforeUnmount(async () => {
     </div>
   </div>
   <div class="project-detail-badges">
-    <span class="project-detail-badge">MULTILINGUAL</span>
-    <span v-if="app.reactions_enabled" class="project-detail-badge">REACTIONS</span>
-    <span v-if="app.compiled" class="project-detail-badge">COMPILED</span>
+    <span v-if="broken?.published" class="project-detail-badge project-detail-badge-broken" :title="broken.published">BROKEN</span>
+    <span v-if="broken?.draft" class="project-detail-badge project-detail-badge-draft-broken" :title="broken.draft">DRAFT BROKEN</span>
   </div>
-  <p class="project-detail-desc">{{ app.ui_description }}</p>
+  <p class="project-detail-desc">{{ description }}</p>
 
   <div class="project-detail-actions">
     <button
       type="button"
       class="project-detail-try-btn"
       :class="{ 'project-detail-try-btn-active': previewing }"
+      :disabled="untestableReason !== null"
+      :title="untestableReason ?? ''"
       @click="previewing ? quitPreview() : startPreview()"
     >{{ previewing ? 'Quit' : 'Test' }}</button>
     <button v-if="previewing" type="button" class="project-detail-secondary-btn" :disabled="!historyLoaded" @click="restartPreview">Restart</button>
-    <button type="button" class="project-detail-secondary-btn" @click="emit('edit', app.id)">Edit</button>
-    <button type="button" class="project-detail-secondary-btn" @click="emit('label', app.id)">Label</button>
-    <button type="button" class="project-detail-secondary-btn" @click="emit('download', app.id)">Export</button>
-    <button type="button" class="project-detail-secondary-btn" @click="emit('share', app.id)">Invite</button>
+    <button type="button" class="project-detail-secondary-btn" @click="emit('edit', projectId)">Edit</button>
+    <button type="button" class="project-detail-secondary-btn" @click="emit('label', projectId)">Label</button>
+    <button type="button" class="project-detail-secondary-btn" @click="emit('download', projectId)">Export</button>
+    <button type="button" class="project-detail-secondary-btn" @click="emit('share', projectId)">Invite</button>
     <button
-      v-if="!app.compiled"
       type="button"
       class="project-detail-secondary-btn"
       title="Publish this project's current revision, then compile it if this backend can"
-      @click="emit('publish', app.id)"
+      @click="emit('publish', projectId)"
     >Publish</button>
     <component
       v-for="action in projectActions"
       :is="action.component"
       :key="action.id"
-      :project-id="app.id"
+      :project-id="projectId"
       :published-revision="publishedRevision"
       :revision="revision"
-      @activate="emit('open-skill-view', action.opens, app.id)"
+      @activate="emit('open-skill-view', action.opens, projectId)"
     />
   </div>
 
   <div class="project-detail-try-panel">
-    <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" />
+    <p v-if="untestableReason" class="project-detail-untestable">{{ untestableReason }}</p>
+    <AppStoreFrozenPreview v-else-if="!previewing || !historyLoaded" :app-id="projectId" />
     <ChatView v-if="previewing && historyLoaded" hide-sessions-panel :store="appStorePreviewStore" />
     <ChatWaitingPanel v-if="previewing && !historyLoaded" />
   </div>
@@ -241,6 +247,17 @@ onBeforeUnmount(async () => {
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  cursor: help;
+}
+
+.project-detail-badge-broken {
+  background: #fdecea;
+  color: #c0392b;
+}
+
+.project-detail-badge-draft-broken {
+  background: #fdf1e3;
+  color: #b06a00;
 }
 
 .project-detail-desc {
@@ -281,6 +298,28 @@ onBeforeUnmount(async () => {
 .project-detail-try-btn-active {
   border-color: #c62828;
   background: #c62828;
+}
+
+.project-detail-try-btn:disabled {
+  border-color: #ccc;
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.project-detail-untestable {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 1.5rem;
+  border: 1px dashed #ddd;
+  border-radius: 10px;
+  background: #fafafa;
+  color: #777;
+  font-size: 0.9rem;
+  text-align: center;
+  white-space: pre-wrap;
 }
 
 .project-detail-secondary-btn {

@@ -37,7 +37,7 @@ from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 
-__version__ = "2.0.12"
+__version__ = "2.0.13"
 
 logger = LoggerFactory.get_logger(__name__)
 

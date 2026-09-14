@@ -10,7 +10,15 @@ import json
 
 import pytest
 
+from automaton.automaton import Action, Automaton, Source, State
+from metrics.metric_service import MetricService
+from system.web_session import WebSession
 from tracking.actuators.actuator_set import FakeTaskNamespace, LiveTaskNamespace
+from tracking.env import Env
+from tracking.evaluation_scope import EvaluationScopeBuilder
+from tracking.fixed_project_context import FixedProjectContext
+from tracking.session_facts import SessionFacts
+from tracking.user_facts import UserFacts
 from websearch import CrawledPage, WebSearch, resolve_result_url
 
 pytestmark = pytest.mark.contract
@@ -106,3 +114,58 @@ def test_task_websearch_hands_the_script_the_csv_and_runs_suppressed_or_not():
 
 def test_task_websearch_returns_empty_string_with_no_ai_service_bound():
     assert FakeTaskNamespace(crawler=FakeCrawler(PAGES)).websearch("dentists") == ""
+
+
+PROJECT_ID = "proj"
+WEB_SOURCE = Source(name="web", url="websearch:user", ui_label="Web")
+
+
+def _automaton(db) -> Automaton:
+    db.ensure_project(PROJECT_ID)
+    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
+    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a")
+    automaton = Automaton(
+        init_action=init_action,
+        states={
+            "": State(key="", ui_label="", final=False, actions=[init_action]),
+            "a": State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action]),
+        },
+        general_prompt="", signals=[], general_attachments={},
+        autotracking_on_ai_message=False, project_id=PROJECT_ID, sources=[WEB_SOURCE],
+    )
+    automaton.set_storage_location(db.get_project_revision(PROJECT_ID))
+    return automaton
+
+
+def _scope(db, automaton: Automaton):
+    context = FixedProjectContext(automaton=automaton, project_id=PROJECT_ID)
+    builder = EvaluationScopeBuilder(
+        Env(), MetricService(db, context), SessionFacts(db, context), UserFacts(db), db,
+        task_namespace=FakeTaskNamespace(crawler=FakeCrawler(PAGES)),
+    )
+    return builder.build(automaton, "a", {})
+
+
+def test_what_task_websearch_found_is_kept_for_this_user_and_read_back_through_a_websearch_source(db):
+    automaton = _automaton(db)
+    scope = _scope(db, automaton)
+
+    found = scope["task"].with_ai_service(FakeWebSearchAi(COLUMNS, MODEL_CSV)).websearch("dentists in Barcelona")
+
+    assert found == MODEL_CSV
+    assert db.get_archive(PROJECT_ID, "cache/websearch/proj/user", revision=automaton.revision) == MODEL_CSV.encode()
+    assert scope["source"].web.select_rows_containing("Gracia") == "name,district,rating\nDr. Pau,Gracia,4.6\n"
+    assert scope["source"].web.value("Gracia", key="rating") == "4.6"
+
+
+def test_a_websearch_source_says_no_search_has_run_rather_than_reading_another_users_results(db):
+    scope = _scope(db, _automaton(db))
+
+    with pytest.raises(ValueError, match="no web search results"):
+        scope["source"].web.select_rows_containing("Gracia")
+
+    scope["task"].with_ai_service(FakeWebSearchAi(COLUMNS, MODEL_CSV)).websearch("dentists in Barcelona")
+    assert scope["source"].web.select_rows_containing("Gracia") != ""
+    with WebSession().impersonate("somebody-else"):
+        with pytest.raises(ValueError, match="no web search results"):
+            scope["source"].web.select_rows_containing("Gracia")

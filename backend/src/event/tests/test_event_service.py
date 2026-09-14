@@ -194,8 +194,6 @@ def _signals_once_woken(db, session_id: int, timeout: float = 2.0) -> list:
 
 
 def _publish_state_changed() -> None:
-    """The frame a turn in "observed" puts on the Bus (see
-    turn/outbound.py), with the envelope that names who it happened to."""
     asyncio.run(bus.publish(Message(
         type=STATE_CHANGED, username=USERNAME, project_id="observed",
         body={"state": None, "from_state": "a", "new_state": "b", "triggered_action": "go"},
