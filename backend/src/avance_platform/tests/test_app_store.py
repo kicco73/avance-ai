@@ -9,6 +9,7 @@ from avance_platform.platform_service import PlatformService
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
 from project.project_service import ProjectService
+from conftest import rewrite_archive_content
 
 pytestmark = pytest.mark.contract
 
@@ -131,3 +132,40 @@ def test_get_first_imported_session_returns_the_earliest_one_or_none(db, publish
     assert result is not None
     assert result["id"] == first
     assert result["id"] != second
+
+
+BROKEN_YML = b"not: [valid, yaml: at all"
+
+HEALTHY_YML = """project:
+  id: {project_id}
+init-action:
+  target: a
+states:
+  a:
+    ui-label: A
+    contextual-prompt: hi
+"""
+
+
+def _publish_buildable(db, project_id: str) -> None:
+    db.ensure_project(project_id)
+    index_yml = HEALTHY_YML.format(project_id=project_id).encode("utf-8")
+    db.save_project_files(project_id, {"index.yml": index_yml}, {"index.yml": "text/yaml"})
+    db.publish_project(project_id)
+
+
+def _break_published_revision(db, service: ProjectService, project_id: str) -> None:
+    rewrite_archive_content(project_id, "index.yml", db.get_project_published_revision(project_id), BROKEN_YML)
+    service.automaton_loader.invalidate_cache(project_id)
+
+
+def test_a_project_whose_published_revision_no_longer_builds_leaves_the_rest_of_the_catalogue_listed(db):
+    service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
+    _publish_buildable(db, "healthy")
+    _publish_buildable(db, "rotten")
+    _break_published_revision(db, service, "rotten")
+
+    apps = PlatformService(service).list_app_store_apps("user")
+
+    assert [app["id"] for app in apps] == ["healthy"]
+    assert apps[0]["compiled"] is False

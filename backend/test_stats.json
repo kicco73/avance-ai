@@ -312,10 +312,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T09:15:19+00:00",
     "last_seconds": 0.129,
-    "runs": 14,
-    "seconds": 0.445,
+    "runs": 16,
+    "seconds": 0.488,
     "skips": 0
   },
   "src/avance_platform/tests/test_app_store.py::TestInstallUninstallProject::test_uninstalling_an_app_erases_that_users_own_sessions_for_it_and_nobody_elses": {
@@ -323,10 +323,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T09:15:19+00:00",
     "last_seconds": 0.146,
-    "runs": 14,
-    "seconds": 0.553,
+    "runs": 16,
+    "seconds": 0.607,
     "skips": 0
   },
   "src/avance_platform/tests/test_app_store.py::TestListProjectsForAppStore::test_lists_only_published_projects_with_a_per_user_installed_flag": {
@@ -334,10 +334,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T09:15:19+00:00",
     "last_seconds": 0.092,
-    "runs": 14,
-    "seconds": 0.442,
+    "runs": 16,
+    "seconds": 0.496,
     "skips": 0
   },
   "src/avance_platform/tests/test_app_store.py::TestListProjectsForAppStore::test_search_matches_a_case_insensitive_substring_of_the_ui_label_or_description": {
@@ -345,10 +345,20 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T09:15:19+00:00",
     "last_seconds": 0.089,
-    "runs": 14,
-    "seconds": 0.393,
+    "runs": 16,
+    "seconds": 0.434,
+    "skips": 0
+  },
+  "src/avance_platform/tests/test_app_store.py::test_a_project_whose_published_revision_no_longer_builds_leaves_the_rest_of_the_catalogue_listed": {
+    "failures": 2,
+    "first_run": "2026-09-14T09:14:45+00:00",
+    "last_failed": "2026-09-14T09:14:53+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-14T09:15:19+00:00",
+    "runs": 3,
+    "seconds": 0.124,
     "skips": 0
   },
   "src/avance_platform/tests/test_app_store.py::test_delete_sessions_by_username_and_type_covers_every_project_but_only_that_user_and_type": {
@@ -356,10 +366,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T09:15:19+00:00",
     "last_seconds": 0.125,
-    "runs": 14,
-    "seconds": 0.604,
+    "runs": 16,
+    "seconds": 0.666,
     "skips": 0
   },
   "src/avance_platform/tests/test_app_store.py::test_get_first_imported_session_returns_the_earliest_one_or_none": {
@@ -367,10 +377,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T09:15:19+00:00",
     "last_seconds": 0.097,
-    "runs": 14,
-    "seconds": 0.463,
+    "runs": 16,
+    "seconds": 0.567,
     "skips": 0
   },
   "src/avance_platform/tests/test_app_store.py::test_session_summaries_list_most_recently_closed_first_omitting_sessions_with_no_summary": {
@@ -378,10 +388,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T08:15:21+00:00",
+    "last_run": "2026-09-14T09:15:19+00:00",
     "last_seconds": 0.148,
-    "runs": 14,
-    "seconds": 0.507,
+    "runs": 16,
+    "seconds": 0.554,
     "skips": 0
   },
   "src/avance_platform/tests/test_automaton_loader_invalidation_integration.py::test_a_family_only_edit_via_put_project_file_clears_a_dependents_stale_failure": {
