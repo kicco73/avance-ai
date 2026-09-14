@@ -102,6 +102,7 @@ function toggleBranch(key) {
 }
 
 function selectSourcesRoot() {
+  expanded.value.behavior = true
   expanded.value.sources = true
   emit('select-sources-root')
 }
@@ -116,7 +117,7 @@ watch(
 
 watch(
   () => props.currentSourceName,
-  (name) => { if (name != null) expanded.value.sources = true }
+  (name) => { if (name != null) { expanded.value.behavior = true; expanded.value.sources = true } }
 )
 </script>
 
@@ -182,6 +183,37 @@ watch(
               </button>
               <span v-if="isModified(name)" class="file-explorer-modified-dot" title="Modified in this revision"></span>
             </li>
+            <li v-if="showSourcesBranch" class="file-explorer-branch file-explorer-branch-nested">
+              <div class="file-explorer-node-row">
+                <button class="file-explorer-caret" :class="{ 'file-explorer-caret-open': expanded.sources }" title="Toggle" @click="toggleBranch('sources')">▸</button>
+                <span class="file-explorer-source-icon" title="Sources">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </span>
+                <button
+                  class="file-explorer-item"
+                  :class="{ 'file-explorer-item-active': sourcesRootSelected }"
+                  title="Sources"
+                  @click="selectSourcesRoot"
+                >
+                  Sources
+                </button>
+              </div>
+              <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.sources }">
+                <ul class="file-explorer-children">
+                  <li v-for="source in declaredSources" :key="source.name" class="file-explorer-row">
+                    <button
+                      class="file-explorer-item file-explorer-item-child"
+                      :class="{ 'file-explorer-item-active': source.name === currentSourceName }"
+                      :title="source.ui_label || source.name"
+                      @click="emit('select-source', source.name)"
+                    >
+                      {{ source.ui_label || source.name }}
+                    </button>
+                    <span v-if="isModified(sourceArchiveName(source.name))" class="file-explorer-modified-dot" title="Modified in this revision"></span>
+                  </li>
+                </ul>
+              </div>
+            </li>
           </ul>
         </div>
       </li>
@@ -212,35 +244,6 @@ watch(
                 {{ basename(name) }}
               </button>
               <span v-if="isModified(name)" class="file-explorer-modified-dot" title="Modified in this revision"></span>
-            </li>
-          </ul>
-        </div>
-      </li>
-
-      <li v-if="showSourcesBranch" class="file-explorer-branch">
-        <div class="file-explorer-node-row">
-          <button class="file-explorer-caret" :class="{ 'file-explorer-caret-open': expanded.sources }" title="Toggle" @click="toggleBranch('sources')">▸</button>
-          <button
-            class="file-explorer-item"
-            :class="{ 'file-explorer-item-active': sourcesRootSelected }"
-            title="Sources"
-            @click="selectSourcesRoot"
-          >
-            Sources
-          </button>
-        </div>
-        <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.sources }">
-          <ul class="file-explorer-children">
-            <li v-for="source in declaredSources" :key="source.name" class="file-explorer-row">
-              <button
-                class="file-explorer-item file-explorer-item-child"
-                :class="{ 'file-explorer-item-active': source.name === currentSourceName }"
-                :title="source.ui_label || source.name"
-                @click="emit('select-source', source.name)"
-              >
-                {{ source.ui_label || source.name }}
-              </button>
-              <span v-if="isModified(sourceArchiveName(source.name))" class="file-explorer-modified-dot" title="Modified in this revision"></span>
             </li>
           </ul>
         </div>
@@ -294,6 +297,7 @@ watch(
 .file-explorer-status { margin: 0; padding: 0.6rem; font-size: 0.85rem; color: #444; }
 .file-explorer-tree { list-style: none; margin: 0; padding: 0.3rem; overflow-y: auto; flex: 1; }
 .file-explorer-branch + .file-explorer-branch { margin-top: 0.2rem; }
+.file-explorer-branch-nested { margin-top: 0.2rem; }
 .file-explorer-node-row { display: flex; align-items: center; gap: 0.1rem; }
 .file-explorer-caret { flex-shrink: 0; width: 1.2rem; height: 1.6rem; display: flex; align-items: center; justify-content: center; border: none; background: none; cursor: pointer; font-size: 0.7rem; color: #777; padding: 0; transform: rotate(0deg); transition: transform 0.18s ease; }
 .file-explorer-caret-open { transform: rotate(90deg); }
@@ -304,6 +308,7 @@ watch(
 .file-explorer-empty { padding: 0.3rem 0.5rem; font-size: 0.78rem; color: #999; font-style: italic; }
 .file-explorer-row { display: flex; align-items: center; gap: 0.2rem; }
 .file-explorer-ai-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; margin-left: 0.3rem; }
+.file-explorer-source-icon { display: inline-flex; flex-shrink: 0; color: #4a6fa5; margin-left: 0.1rem; }
 .file-explorer-modified-dot { flex-shrink: 0; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #f5a623; margin: 0 0.5rem 0 0.1rem; }
 .file-explorer-item { flex: 1; min-width: 0; display: block; text-align: left; padding: 0.4rem 0.5rem; border: none; border-radius: 6px; background: none; cursor: pointer; font-size: 0.85rem; color: #333; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .file-explorer-item-child { font-size: 0.82rem; color: #555; }

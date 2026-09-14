@@ -4,7 +4,7 @@ import FileExplorer from './FileExplorer.vue'
 import CodeEditor from '../../../../CodeEditor.vue'
 import IndexYmlEditorPanel from './IndexYmlEditorPanel.vue'
 import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
-import MdEditorPanel from './MdEditorPanel.vue'
+import MarkdownEditor from '../../../../MarkdownEditor.vue'
 import SourceContentPanel from './SourceContentPanel.vue'
 import WebSearchSourcePanel from './WebSearchSourcePanel.vue'
 import { projectFileContentUrl } from '../../../../api.js'
@@ -17,7 +17,6 @@ const props = defineProps({
   files: { type: Array, default: () => [] },
   filesLoading: { type: Boolean, default: true },
   currentFileName: { type: String, default: null },
-  justAddedFileName: { type: String, default: null },
   uploading: { type: Boolean, default: false },
   creatingFile: { type: Boolean, default: false },
   explorerWidth: { type: Number, required: true },
@@ -142,13 +141,12 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
         :file-name="currentFileName"
         :content-url="projectFileContentUrl(projectId, currentFileName)"
       />
-      <MdEditorPanel
+      <MarkdownEditor
         v-else-if="noSourceSelection && currentFileIsMarkdown"
         :key="currentFileName"
         ref="mdEditorRef"
         :project-id="projectId"
         :file-name="currentFileName"
-        :initial-segment="currentFileName === justAddedFileName ? 'edit' : 'preview'"
         @saved="emit('saved', $event)"
         @renamed="emit('renamed', $event)"
       />

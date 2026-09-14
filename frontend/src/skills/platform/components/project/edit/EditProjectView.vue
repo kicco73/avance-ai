@@ -53,7 +53,7 @@ const props = defineProps({
 const emit = defineEmits(['saved', 'renamed', 'back', 'home', 'profile', 'logout'])
 
 const {
-  filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
+  filesLoading, files, currentFileName, uploading, creatingFile, deletingFile, renamingFile,
   designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
   currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
   activeEditorIsDirty, activeEditor,
@@ -490,7 +490,6 @@ async function handleSetSessionComment(sessionId, comment) {
           :files="files"
           :files-loading="filesLoading"
           :current-file-name="currentFileName"
-          :just-added-file-name="justAddedFileName"
           :uploading="uploading"
           :creating-file="creatingFile"
           :explorer-width="explorerWidth"

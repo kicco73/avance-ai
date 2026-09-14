@@ -21,7 +21,6 @@ export function useProjectFiles(projectId, emit) {
   const filesLoading = ref(true)
   const files = ref([])
   const currentFileName = ref('index.yml')
-  const justAddedFileName = ref(null)
 
   const uploading = ref(false)
   const creatingFile = ref(false)
@@ -70,7 +69,6 @@ export function useProjectFiles(projectId, emit) {
 
   function switchFile(fileName) {
     currentFileName.value = fileName
-    if (fileName !== justAddedFileName.value) justAddedFileName.value = null
   }
 
   function guardedAction(label, run) {
@@ -182,7 +180,6 @@ export function useProjectFiles(projectId, emit) {
       }
       await loadFiles()
       const lastUploadedName = fileTypes.canonicalUploadName(uploadedFiles[uploadedFiles.length - 1].name)
-      justAddedFileName.value = lastUploadedName
       await selectFile(lastUploadedName)
     } catch {
     } finally {
@@ -200,7 +197,6 @@ export function useProjectFiles(projectId, emit) {
     try {
       await putProjectFile(projectId, name, content)
       await loadFiles()
-      justAddedFileName.value = name
       await selectFile(name)
     } catch {
     } finally {
@@ -237,7 +233,6 @@ export function useProjectFiles(projectId, emit) {
     try {
       await postAddLegalTerms(projectId)
       await loadFiles()
-      justAddedFileName.value = LEGAL_TERMS_FILE_NAME
       await selectFile(LEGAL_TERMS_FILE_NAME)
     } catch {
     } finally {
@@ -306,7 +301,7 @@ export function useProjectFiles(projectId, emit) {
   }
 
   return {
-    filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile, renamingFile,
+    filesLoading, files, currentFileName, uploading, creatingFile, deletingFile, renamingFile,
     designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
     currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
     activeEditorIsDirty, activeEditor,
