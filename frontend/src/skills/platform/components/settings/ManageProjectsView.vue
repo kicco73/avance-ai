@@ -6,7 +6,7 @@ import { setCanvasColor, restoreCanvasColor } from '../../../../canvasColor.js'
 import { findIconFile } from '../../../../projectIcon.js'
 import { ensureProjectFileTypes } from '../../../../projectFileTypes.js'
 import { useHeaderLogoFit } from '../../../../composables/useHeaderLogoFit.js'
-import { onProjectsChanged } from '../../../../projectChangeEvents.js'
+import { onProjectChanged, onProjectsChanged } from '../../../../projectChangeEvents.js'
 import { familySections } from '../../familySections.js'
 import SettingsMenu from './SettingsMenu.vue'
 import StatusToggleButton from '../../../../components/services/StatusToggleButton.vue'
@@ -212,6 +212,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(onProjectsChanged(load))
+onBeforeUnmount(onProjectChanged(load))
 
 onBeforeUnmount(() => {
   restoreCanvasColor(previousCanvasColor)
@@ -269,8 +270,8 @@ onBeforeUnmount(() => {
 
           <table v-else class="manage-projects-table">
             <colgroup>
-              <col class="manage-projects-col-status" />
               <col class="manage-projects-col-name" />
+              <col class="manage-projects-col-status" />
             </colgroup>
             <tbody v-for="section in sections" :key="section.key">
               <tr>
@@ -284,6 +285,15 @@ onBeforeUnmount(() => {
                 @click="selectProject(row.id)"
                 @dblclick="selectEdit(row.id)"
               >
+                <td class="manage-projects-name">
+                  <ProjectRowCard
+                    :row="row"
+                    :title="projectTitle(row.id)"
+                    :description="projectDescription(row.id)"
+                    :icon-src="iconSrcFor(row.id)"
+                    @icon-error="iconFailedById[row.id] = true"
+                  />
+                </td>
                 <td class="manage-projects-col-status-actions">
                   <div class="manage-projects-status-actions-row">
                     <StatusToggleButton
@@ -294,20 +304,10 @@ onBeforeUnmount(() => {
                     />
                   </div>
                 </td>
-                <td class="manage-projects-name">
-                  <ProjectRowCard
-                    :row="row"
-                    :title="projectTitle(row.id)"
-                    :description="projectDescription(row.id)"
-                    :icon-src="iconSrcFor(row.id)"
-                    @icon-error="iconFailedById[row.id] = true"
-                  />
-                </td>
               </tr>
             </tbody>
             <tbody>
               <tr v-if="uploading">
-                <td class="manage-projects-col-status-actions"></td>
                 <td class="manage-projects-name">
                   <UploadPlaceholderCard
                     :upload-progress="uploadProgress"
@@ -315,6 +315,7 @@ onBeforeUnmount(() => {
                     :upload-icon-ready="uploadIconReady"
                   />
                 </td>
+                <td class="manage-projects-col-status-actions"></td>
               </tr>
             </tbody>
           </table>
@@ -528,16 +529,16 @@ onBeforeUnmount(() => {
 }
 
 .manage-projects-col-status {
-  width: 2.88rem;
+  width: 4.38rem;
 }
 
 .manage-projects-col-name {
   width: 320px;
 }
 
-.manage-projects-name {
+.manage-projects-table td.manage-projects-name {
   width: 320px;
-  padding: 0 0.75rem 0 0;
+  padding: 0 0 0 0.75rem;
 }
 
 .manage-projects-table td {
@@ -559,16 +560,10 @@ onBeforeUnmount(() => {
   text-align: left;
 }
 
-.manage-projects-col-status-actions {
-  width: 2.88rem;
-  padding-left: 0;
-  padding-right: 0;
-}
-
 .manage-projects-status-actions-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 2px;
   width: 100%;
 }

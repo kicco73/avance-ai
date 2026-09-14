@@ -42,8 +42,9 @@ def _go(task_yaml: str = "") -> str:
 
 def test_task_belongs_to_the_action_not_its_target_state_and_is_none_when_absent():
     """Two paths into the same state don't have to agree on whether
-    entering it emails; a stray task under a state is inert dead
-    data like any unrecognized key."""
+    entering it emails; a task written under the state itself is not one
+    of its fields, and is rejected rather than quietly never running
+    (see test_automaton_builder_strict_fields.py)."""
     quiet, loud = _build(_two_states(
         "      - name: go-quiet\n        target: b\n      - name: go-loud\n        target: b\n"
         "        task: task.send_mail(user.email, 'hi')\n"
@@ -51,7 +52,8 @@ def test_task_belongs_to_the_action_not_its_target_state_and_is_none_when_absent
     assert quiet.task is None
     assert loud.task == "task.send_mail(user.email, 'hi')"
 
-    stray = _build("""
+    with pytest.raises(ValueError, match="'task' is not a field a state has"):
+        _build("""
 project:
   id: proj
 init-action:
@@ -61,7 +63,6 @@ states:
     contextual-prompt: hi
     task: task.send_mail(user.email, 'hi')
 """)
-    assert not hasattr(stray.states["a"], "task")
 
     automaton = _build(_go("        task: task.send_mail(user.email, 'hi')\n"))
     payload = automaton.get_state_payload(automaton.states["a"])

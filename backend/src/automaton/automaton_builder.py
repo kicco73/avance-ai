@@ -24,11 +24,37 @@ ACTION_FIELDS = {
     "target", "trigger", "task", "on-exit", "env",
 }
 
+INIT_ACTION_FIELDS = ACTION_FIELDS - {"name", "trigger", "ui-button"}
+
 LEGACY_STATE_SOURCE_FIELDS = {
     "tools": "ai-may-read-sources",
     "ai-may-query-sources": "ai-may-read-sources",
     "ai-must-query-sources": "ai-must-read-sources",
 }
+
+STATE_FIELDS = {
+    "ui-label", "ui-description", "contextual-prompt", "fixed-message", "actions",
+    "attachments", "chat-enabled", "history-cutoff", "reactions-enabled",
+    "transition-log-level", "input", "output",
+} | {field for field, _ in STATE_SOURCE_FIELDS} | set(LEGACY_STATE_SOURCE_FIELDS)
+
+STATE_SUGGESTED_FIELDS = STATE_FIELDS - set(LEGACY_STATE_SOURCE_FIELDS)
+
+SIGNAL_FIELDS = {"ui-label", "ui-description", "definition", "attachments"}
+REACTION_FIELDS = {"ui-label", "ui-description", "definition"}
+ENV_KEY_FIELDS = {"ui-description", "value", "ai-definition"}
+SOURCE_FIELDS = {"ui-label", "ui-description", "url", "ai-definition"}
+TOP_LEVEL_FIELDS = {
+    "avance-version", "project", "init-action", "states", "signals", "reactions",
+    "env", "sources", "general-prompt", "attachments", "actions",
+}
+
+UNKNOWN_FIELD = (
+    "{noun} '{name}': '{field}' is not a field {article} {thing} has — expected one of {fields}."
+)
+UNKNOWN_TOP_LEVEL_FIELD = (
+    "'{field}' is not a top-level field — expected one of {fields}."
+)
 
 
 class AutomatonBuilder(object):
@@ -44,6 +70,7 @@ class AutomatonBuilder(object):
         return BuildCursor.line_of(parent, key)
 
     def _build_signal(self, name, raw_signal: dict, archives: ProjectArchives) -> Signal:
+        self._check_fields(raw_signal, SIGNAL_FIELDS, "Signal", name)
         return Signal(
             name=name,
             ui_label=raw_signal.get("ui-label", name),
@@ -52,8 +79,8 @@ class AutomatonBuilder(object):
             attachments=archives.require(raw_signal.get("attachments", []), f"signal '{name}'"),
         )
 
-    @staticmethod
-    def _build_reaction(name: str, raw_reaction: dict) -> Reaction:
+    def _build_reaction(self, name: str, raw_reaction: dict) -> Reaction:
+        self._check_fields(raw_reaction, REACTION_FIELDS, "Reaction", name)
         return Reaction(
             name=name,
             ui_label=raw_reaction.get("ui-label", name),
@@ -61,9 +88,9 @@ class AutomatonBuilder(object):
             definition=raw_reaction["definition"].strip(),
         )
 
-    @staticmethod
-    def _build_env_key(name: str, raw_env_key: dict) -> EnvKey:
+    def _build_env_key(self, name: str, raw_env_key: dict) -> EnvKey:
         raw_env_key = raw_env_key or {}
+        self._check_fields(raw_env_key, ENV_KEY_FIELDS, "Env key", name)
         raw_value = raw_env_key.get("value", "")
         value = raw_value if isinstance(raw_value, str) else str(raw_value)
         raw_description = raw_env_key.get("ui-description")
@@ -77,6 +104,7 @@ class AutomatonBuilder(object):
 
     def _build_source(self, name: str, raw_source: dict, archives: ProjectArchives) -> Source:
         raw_source = raw_source or {}
+        self._check_fields(raw_source, SOURCE_FIELDS, "Source", name)
         url = raw_source.get("url") or ""
         if url:
             try:
@@ -114,7 +142,7 @@ class AutomatonBuilder(object):
         on_exit = raw_action.get("on-exit")
         line = BuildCursor.own_line(raw_action)
         self._at(line, f"states.{key}.actions.{raw_action.get('name', '?')}")
-        self._warn_unknown_action_fields(raw_action)
+        self._check_fields(raw_action, ACTION_FIELDS, "Action", raw_action.get("name", "?"))
         return Action(
             name=raw_action["name"],
             ui_description=raw_action.get("ui-description"),
@@ -128,17 +156,27 @@ class AutomatonBuilder(object):
             line=line,
         )
 
-    def _warn_unknown_action_fields(self, raw_action: dict) -> None:
+    def _check_fields(
+        self, raw: dict, allowed: set[str], noun: str, name: str,
+        suggested: set[str] | None = None,
+    ) -> None:
         """A field nobody reads is a field that never runs. `on-enter:`
         held a send_mail call in a published project for four revisions,
         and the only thing that noticed was a build asked whether mail was
-        required and truthfully answering no."""
-        for field in sorted(set(raw_action) - ACTION_FIELDS):
-            self._cursor.warn(
-                f"Action '{raw_action.get('name', '?')}': '{field}' is not a field an action has, "
-                f"so it is ignored — expected one of {', '.join(sorted(ACTION_FIELDS))}.",
-                line=BuildCursor.line_of(raw_action, field),
-            )
+        required and truthfully answering no.
+
+        A build knows the fields it reads and nothing else — not what any
+        of them used to be called, not which spelling came before. That
+        is automaton/deprecations.py's business, and the only thing that
+        acts on it is the modernizer, before a build ever sees the file
+        (PROJECT_SPECS.md §8.1)."""
+        for field in sorted(set(raw) - allowed):
+            line = BuildCursor.line_of(raw, field)
+            self._at(line, self._cursor.section)
+            self._cursor.reject(UNKNOWN_FIELD.format(
+                noun=noun, name=name, field=field, article="an" if noun[0] in "AEIOU" else "a",
+                thing=noun.lower(), fields=", ".join(sorted(allowed if suggested is None else suggested)),
+            ), line=line)
 
     def _build_state_source_lists(self, key: str, raw_state: dict) -> dict[str, list[str]]:
         for legacy_field, replacement in LEGACY_STATE_SOURCE_FIELDS.items():
@@ -177,6 +215,7 @@ class AutomatonBuilder(object):
 
     def _build_state(self, key: str, raw_state: dict, archives: ProjectArchives, line: int | None = None) -> State:
         self._at(line, f"states.{key}")
+        self._check_fields(raw_state, STATE_FIELDS, "State", key, suggested=STATE_SUGGESTED_FIELDS)
         actions: list[Action] = []
         action_names_by_ui_label: dict[str, str] = {}
         for raw_action in raw_state.get("actions", []):
@@ -243,6 +282,7 @@ class AutomatonBuilder(object):
                 "'init-action' is required and must be a mapping with at least a 'target' "
                 "field — the project's real starting state."
             )
+        self._check_fields(raw_init_action, INIT_ACTION_FIELDS, "Action", "init-action")
         env = {name: (env_key.value or "''") for name, env_key in env_keys.items()}
         env.update(self._build_action_env(raw_init_action.get("env"), "init-action") or {})
         return Action(
@@ -308,11 +348,16 @@ class AutomatonBuilder(object):
         raw = load_yaml(contents['index.yml'])
         if not isinstance(raw, dict):
             raise ValueError(f"index.yml must be a YAML mapping at the top level, got {type(raw).__name__}.")
+        for field in sorted(set(raw) - TOP_LEVEL_FIELDS):
+            self._at(self._line_of(raw, field), field)
+            self._cursor.reject(UNKNOWN_TOP_LEVEL_FIELD.format(
+                field=field, fields=", ".join(sorted(TOP_LEVEL_FIELDS)),
+            ))
 
         self._at(self._line_of(raw, "project"), "project")
         metadata = ProjectMetadata.from_raw(raw, legacy_project_id=legacy_project_id)
-        for warning in metadata.service_warnings:
-            self._cursor.warn(warning)
+        for rejection in metadata.rejections:
+            self._cursor.reject(rejection)
 
         raw_signals = self._require_mapping_section(raw, "signals", "signal name")
         signals: dict[str, Signal] = {}
@@ -394,6 +439,7 @@ class AutomatonBuilder(object):
             )
 
         general_attachments = archives.require(raw.get('attachments', []), for_field="global")
+        self._cursor.raise_if_rejected()
 
         return Automaton(
             init_action=init_action,

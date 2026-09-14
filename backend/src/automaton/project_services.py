@@ -41,7 +41,6 @@ class DisabledService(OptionalService):
 
 
 _LEVELS = {REQUIRED: RequiredService, OPTIONAL: OptionalService, DISABLED: DisabledService}
-_LEGACY_TALK = {True: REQUIRED, False: DISABLED}
 _ABSENT = OptionalService()
 
 
@@ -70,7 +69,7 @@ class ProjectServices:
         return dict(self._declared)
 
 
-def parse(raw_services, *, talk_enabled=None) -> tuple[ProjectServices, list[str]]:
+def parse(raw_services) -> ProjectServices:
     if raw_services is None:
         declared = {}
     elif isinstance(raw_services, dict):
@@ -83,12 +82,4 @@ def parse(raw_services, *, talk_enabled=None) -> tuple[ProjectServices, list[str
     for key, level in declared.items():
         if level not in _LEVELS:
             raise ValueError(f"project.services.{key} {level!r} must be one of {sorted(_LEVELS)}.")
-    warnings: list[str] = []
-    legacy_levels = [_LEGACY_TALK[bool(value)] for value in [talk_enabled] if isinstance(value, bool)]
-    for legacy_level in legacy_levels:
-        warnings.append(
-            "project.talk-enabled is deprecated — write "
-            f"'services: {{talk: {legacy_level}}}' instead."
-        )
-        declared = {"talk": legacy_level, **declared}
-    return ProjectServices(declared), warnings
+    return ProjectServices(declared)

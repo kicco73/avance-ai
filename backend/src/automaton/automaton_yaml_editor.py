@@ -58,6 +58,13 @@ class AutomatonYamlEditor:
     def _sources(self) -> CommentedMap:
         return self.__raw.setdefault("sources", CommentedMap())
 
+    def document(self):
+        """The tree itself, for an edit this class has no vocabulary for
+        — automaton/deprecations.py walks it to find the entries carrying
+        a spelling the format moved past, and rewrites them through the
+        comment-preserving primitives below."""
+        return self.__raw
+
     def _state(self, state_name: str) -> CommentedMap:
         try:
             return self._states()[state_name]
@@ -192,7 +199,7 @@ class AutomatonYamlEditor:
             "revision": raw_project.get("revision", 0),
             "ui_label": raw_project.get("ui-label"),
             "ui_description": raw_project.get("ui-description"),
-            "services": self._declared_services(raw_project),
+            "services": self._declared_services(),
             "signal_tracking_on_ai_message": raw_project.get("signal-tracking-on-ai-message", False),
             "general_prompt": self.__raw.get("general-prompt", ""),
         }
@@ -376,11 +383,9 @@ class AutomatonYamlEditor:
             project.pop("services", None)
         return self._project_payload()
 
-    @staticmethod
-    def _declared_services(raw_project: Mapping) -> dict[str, str]:
-        declared, _ = project_services.parse(
-            dict(raw_project.get("services") or {}), talk_enabled=raw_project.get("talk-enabled"),
-        )
+    def _declared_services(self) -> dict[str, str]:
+        raw_project = self.__raw.get("project") or {}
+        declared = project_services.parse(dict(raw_project.get("services") or {}))
         return declared.as_raw()
 
     def set_project_revision(self, revision: int) -> ProjectPayload:
@@ -413,8 +418,17 @@ class AutomatonYamlEditor:
         init_action["target"] = state_name
         return self._state_payload(state_name)
 
+    @classmethod
+    def drop_key_preserving_comments(cls, mapping: CommentedMap, key: str) -> None:
+        """`del mapping[key]` raises on a mapping another one merges from
+        (`<<: *anchor`) — ruamel walks the referers to update them and
+        trips over its own bookkeeping. Rebuilding the mapping without
+        the key leaves every merge pointing at it intact, which is what
+        the rename below already relies on."""
+        cls.rename_key_preserving_comments(mapping, key, None)
+
     @staticmethod
-    def _rename_key_preserving_comments(mapping: CommentedMap, old_key: str, new_key: str) -> None:
+    def rename_key_preserving_comments(mapping: CommentedMap, old_key: str, new_key: str | None) -> None:
         """A structural key swap, not a textual replace — rebuilds
         `mapping` in place so every other entry's attached comment stays
         put; the renamed entry's own comment is carried over explicitly."""
@@ -424,6 +438,8 @@ class AutomatonYamlEditor:
         mapping.ca.items.clear()
         for key, value in items:
             actual_key = new_key if key == old_key else key
+            if actual_key is None:
+                continue
             mapping[actual_key] = value
             if key in original_comments:
                 mapping.ca.items[actual_key] = original_comments[key]
@@ -435,7 +451,7 @@ class AutomatonYamlEditor:
         existing_names = set(signals.keys()) - {old_name}
         unique_new_name = self._unique_signal_name(new_name, existing_names)
 
-        self._rename_key_preserving_comments(signals, old_name, unique_new_name)
+        self.rename_key_preserving_comments(signals, old_name, unique_new_name)
         self._rename_namespaced_ref_in_triggers("signal", old_name, unique_new_name)
 
         return self._signal_payload(unique_new_name)
@@ -447,7 +463,7 @@ class AutomatonYamlEditor:
         existing_names = set(env.keys()) - {old_name}
         unique_new_name = self._unique_signal_name(new_name, existing_names)
 
-        self._rename_key_preserving_comments(env, old_name, unique_new_name)
+        self.rename_key_preserving_comments(env, old_name, unique_new_name)
         self._rename_namespaced_ref_in_triggers("env", old_name, unique_new_name)
 
         return self._env_key_payload(unique_new_name)
@@ -462,7 +478,7 @@ class AutomatonYamlEditor:
         existing_names = set(sources.keys()) - {old_name}
         unique_new_name = self._unique_signal_name(new_name, existing_names)
 
-        self._rename_key_preserving_comments(sources, old_name, unique_new_name)
+        self.rename_key_preserving_comments(sources, old_name, unique_new_name)
         self._rename_source_ref_in_triggers(old_name, unique_new_name)
 
         return self._source_payload(unique_new_name)

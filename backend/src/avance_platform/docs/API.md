@@ -51,6 +51,32 @@ prefix changed.
 It sets a field, which is what PUT is for. Not everything that was not
 converted to POST was overlooked.
 
+## `POST .../index-yml/modernize` is the editor's, not the builder's
+
+`index.yml` can be written in a spelling the format has moved past but
+still reads exactly — `project.talk-enabled` for `services: {talk: …}`.
+Something has to rewrite those, and every place that already had the file
+in its hands was the wrong one.
+
+The builder was the obvious candidate and is the worst: it is the one
+thing in the product that never edits what it is given, and a project is
+built on every load, every health check, every session — turning that
+into a write would mean a read path that saves, at a revision an author
+may not even be looking at. The loader, the uploader and the save path
+each had the same problem in a smaller way: whichever one ran first
+would have silently changed a file, and told nobody.
+
+So the rewrite is a route of the editor, and "Edit project" posts to it
+on open. The author is present by construction; they get a dialog saying
+what changed, and the banner they were about to read has one fewer
+warning in it. What the fixer does not know how to rewrite it leaves
+alone, still warned about — the two halves are read from the same list
+(`automaton/deprecations.py`), so neither can drift from the other.
+
+This is also why the route is the skill's and not the core's: a build
+without this package has no editor, nobody to show a dialog to, and no
+business rewriting anyone's project.
+
 ## Open question
 
 Whether the Settings surface — backup/restore, Manage services, Manage

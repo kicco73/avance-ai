@@ -10,6 +10,10 @@ export function setTestProject(name) {
   testStore.setProject(name)
 }
 
+export function releaseTestProject() {
+  testStore.clearChatUi()
+}
+
 export const testStore = createChatStore({
   kind: 'test',
   getSessionsList: () => getTestSessions(testStore.currentProjectId.value),

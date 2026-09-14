@@ -56,3 +56,28 @@ def test_a_manually_paused_project_blocks_chat_the_same_as_an_automatic_pause(cl
     assert blocked["type"] == "session.blocked"
     assert blocked["reason"] == "paused"
     assert blocked["detail"] == "Manually paused."
+
+
+@pytest.mark.regression
+def test_one_row_carries_the_same_badge_the_whole_listing_draws(client):
+    """"Manage projects" replaces a single row with whatever pause/resume
+    answered, and draws its warning/broken badge off that row. A row
+    shape missing the two fields would silently erase the badge the
+    listing had just drawn, until someone reloaded the page."""
+    legacy = (
+        "project:\n  id: legacy_row\n  talk-enabled: true\n"
+        "init-action:\n  target: a\n"
+        "states:\n  a:\n    contextual-prompt: hi\n"
+    )
+    response = client.post(
+        "/api/skills/platform/projects/upload", content=legacy.encode(),
+        headers={"Content-Type": "application/x-yaml"},
+    )
+    assert response.status_code == 200, response.text
+
+    listed = _status(client)
+    paused = client.post("/api/skills/platform/projects/legacy_row/pause").json()
+
+    assert listed["build_warnings"]
+    assert paused["build_warnings"] == listed["build_warnings"]
+    assert paused["broken"] == listed["broken"]

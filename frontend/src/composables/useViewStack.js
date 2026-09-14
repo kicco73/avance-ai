@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { enterScreen } from '../errorStore.js'
 
 export function useViewStack(currentUserRole) {
   const pushedView = ref(null)
@@ -21,6 +22,7 @@ export function useViewStack(currentUserRole) {
 
   function pushView(view, context = {}) {
     setNavForward()
+    enterScreen(`${view}:${context.projectId ?? ''}`)
     pushedViewContext.value = context
     if (view === 'chat') chatOpen.value = true
     else pushedView.value = view
@@ -28,6 +30,7 @@ export function useViewStack(currentUserRole) {
 
   function popPushedView() {
     setNavBack()
+    enterScreen('home')
     if (chatOpen.value) {
       chatOpen.value = false
       return
@@ -37,17 +40,20 @@ export function useViewStack(currentUserRole) {
 
   function openHomePreview(role) {
     setNavForward()
+    enterScreen(`home:${role}`)
     homePreviewRole.value = role
   }
 
   function closeHomePreview() {
     setNavBack()
+    enterScreen('home')
     homePreviewRole.value = null
   }
 
   function goHome() {
     if (currentUserRole.value === 'customer') {
       setNavBack()
+      enterScreen('home')
       chatOpen.value = false
       pushedView.value = null
       return
@@ -57,6 +63,7 @@ export function useViewStack(currentUserRole) {
 
   function openProfile() {
     setNavForward()
+    enterScreen('profile')
     showProfile.value = true
   }
 

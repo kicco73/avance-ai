@@ -1,7 +1,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { getProjectGraph } from './api.js'
 import { onProjectChanged } from '../../projectChangeEvents.js'
-import { clearApiError, setApiWarning } from '../../errorStore.js'
+import { clearApiError } from '../../errorStore.js'
 import { refreshIdentifierRegistry } from '../../identifierRegistry.js'
 import { refreshProjectFiles } from './projectFiles.js'
 
@@ -10,6 +10,7 @@ export function useProjectCatalog(projectId) {
   const availableStates = ref([])
   const projectBroken = ref(false)
   const buildWarnings = ref([])
+  const buildProblems = ref([])
   const actionLabelsByState = ref(new Map())
 
   function stateLabelFor(key) {
@@ -27,6 +28,7 @@ export function useProjectCatalog(projectId) {
       availableStates.value = nodes.map((n) => ({ key: n.state.key, uiLabel: n.state.ui_label }))
       actionLabelsByState.value = new Map(edges.map((e) => [`${e.source}::${e.action.name}`, e.action.ui_label]))
       buildWarnings.value = build_warnings || []
+      buildProblems.value = []
       if (projectBroken.value) {
         projectBroken.value = false
         clearApiError()
@@ -35,10 +37,7 @@ export function useProjectCatalog(projectId) {
       if (err?.code === 'project_broken') {
         projectBroken.value = true
         buildWarnings.value = []
-        setApiWarning(
-          `Project '${projectId}' is broken — its stored index.yml no longer builds. Fix it below using the file editor.`,
-          err.message
-        )
+        buildProblems.value = err.fields?.problems ?? [{ message: err.message, line: err.fields?.line ?? null, section: null }]
       }
     }
     refreshIdentifierRegistry(projectId)
@@ -50,7 +49,7 @@ export function useProjectCatalog(projectId) {
   }))
 
   return {
-    validStateKeys, availableStates, projectBroken, buildWarnings,
+    validStateKeys, availableStates, projectBroken, buildWarnings, buildProblems,
     stateLabelFor, actionLabelFor, refreshCatalog,
   }
 }

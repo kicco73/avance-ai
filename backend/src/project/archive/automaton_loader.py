@@ -11,6 +11,7 @@ from events import ProjectRevisionBuildFailed, publish
 from system.logging_factory import LoggerFactory
 
 from .layout import ArchiveLayout
+from .stored_index_yml import StoredIndexYml
 
 if TYPE_CHECKING:
     from turn.sessions.session_manager import SessionManager
@@ -154,20 +155,27 @@ class AutomatonLoader(object):
 
         decoded = ArchiveLayout.decode_text(archives)
         _, family, _ = AutomatonBuilder.read_declared_env_keys(decoded['index.yml'])
+        known_projects = self.known_projects_env_keys(project_id, family)
         try:
             automaton = AutomatonBuilder().build(
-                decoded, self.known_projects_env_keys(project_id, family), legacy_project_id=project_id,
+                decoded, known_projects, legacy_project_id=project_id,
             )
+        except AutomatonBuildError as refusal:
+            automaton = self._repaired(project_id, revision, decoded, known_projects, refusal)
+        automaton.set_storage_location(revision)
+        self.set_cached(project_id, revision, automaton)
+        return automaton
+
+    def _repaired(self, project_id: str, revision: int, decoded: dict, known_projects, refusal):
+        try:
+            return StoredIndexYml(self._db, project_id, revision).rebuilt(decoded, known_projects, refusal)
         except AutomatonBuildError as exc:
             exc.project_id = exc.project_id or project_id
             exc.revision = revision
             exc.detail = f"Project '{project_id}', stored revision {revision}: index.yml no longer builds — {exc}"
-            self.__build_failures[cache_key] = exc
+            self.__build_failures[(project_id, revision)] = exc
             self._handle_broken_revision(project_id, revision, exc)
             raise
-        automaton.set_storage_location(revision)
-        self.set_cached(project_id, revision, automaton)
-        return automaton
 
     def _handle_broken_revision(self, project_id: str, revision: int, exc: AutomatonBuildError) -> None:
         """Logs once, force-closes any session still open on this exact

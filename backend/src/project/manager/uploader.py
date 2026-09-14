@@ -10,6 +10,7 @@ from automaton.automaton import Automaton
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
+from automaton.index_yml_modernizer import IndexYmlModernizer
 from automaton.file_types import ProjectFileTypes
 from db import Db
 from system.logging_factory import LoggerFactory
@@ -89,6 +90,7 @@ class ProjectUploader:
                 editor = AutomatonYamlEditor(index_yml)
                 editor.set_project_field("id", force_project_id)
                 files["index.yml"] = index_yml = editor.serialize()
+            files["index.yml"] = index_yml = IndexYmlModernizer().modernize(index_yml).text
             declared_id, declared_family, _ = AutomatonBuilder.read_declared_env_keys(index_yml)
             if declared_id is None:
                 raise ValueError(

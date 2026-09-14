@@ -19,6 +19,7 @@ class AutomatonBuildError(ServiceError, ValueError):
         self, message: str, *,
         project_id: str | None = None, revision: int | None = None,
         file: str = "index.yml", line: int | None = None, section: str | None = None,
+        problems: "list[dict] | None" = None,
     ) -> None:
         super().__init__(message, status_code=400)
         self.project_id = project_id
@@ -26,12 +27,17 @@ class AutomatonBuildError(ServiceError, ValueError):
         self.file = file
         self.line = line
         self.section = section
+        self.problems = problems or [{"message": message, "line": line, "section": section}]
 
     def fields(self) -> dict[str, object]:
         """Only the non-None structured fields — what error_handlers.py
-        nests under body["error"]["fields"]."""
+        nests under body["error"]["fields"]. `problems` has the shape a
+        build warning has ({message, line, section}), so one refusal and
+        five are drawn by the same clickable list, each line landing the
+        editor on its own."""
         raw = {
             "project_id": self.project_id, "revision": self.revision,
             "file": self.file, "line": self.line, "section": self.section,
+            "problems": self.problems,
         }
         return {key: value for key, value in raw.items() if value is not None}

@@ -9,10 +9,26 @@ from events import AvailabilityChanged, ProjectPublishedHealthChanged, ProjectRe
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
 
-from ..health import ProjectHealth, ProjectHealthChecker
+from ..health import BuildOutcome, ProjectHealth, ProjectHealthChecker, broken_fields
 from ..archive.automaton_loader import AutomatonLoader
 
 logger = LoggerFactory.get_logger(__name__)
+
+
+class ProjectBroken(ServiceError):
+    """What every read endpoint of the design view answers with while the
+    stored index.yml does not build. It carries the same `problems` a
+    build error does — one entry per problem, each with its own line — so
+    the view can offer them the way it offers warnings: a list you click
+    through, not a paragraph you read and then go hunting."""
+
+    def __init__(self, outcome: BuildOutcome) -> None:
+        super().__init__(outcome.error or "", status_code=HTTPStatus.CONFLICT, code="project_broken")
+        self._outcome = outcome
+
+    def fields(self) -> dict[str, object]:
+        raw = {"file": self._outcome.file, "line": self._outcome.line, "problems": self._outcome.problems}
+        return {key: value for key, value in raw.items() if value}
 
 
 class ProjectAvailability:
@@ -103,7 +119,7 @@ class ProjectAvailability:
             return
         health = self._health_checker.current(project_id)
         if health.draft.error is not None:
-            raise ServiceError(health.draft.error, status_code=HTTPStatus.CONFLICT, code="project_broken")
+            raise ProjectBroken(health.draft)
 
     def recheck_dependents_of_changed_id(
         self, project_id: str, old_project_id: str, new_project_id: str | None,
@@ -163,22 +179,25 @@ class ProjectAvailability:
         return "running"
 
     def get_runtime_status(self) -> list[dict]:
-        rows = []
-        for row in self._db.list_projects_runtime_status():
-            health = self._health_checker.current(row["id"])
-            rows.append({
+        return [
+            {
                 "id": row["id"],
                 "status": self.project_status(row["is_paused"], row["manually_paused"]),
                 "paused_reason": row["paused_reason"],
                 "revision": row["revision"],
                 "published_revision": row["published_revision"],
-                "broken": {
-                    "published": health.published.error if health.published is not None else None,
-                    "draft": health.draft.error,
-                },
-                "build_warnings": health.draft.warnings,
-            })
-        return rows
+                **self._health_fields(row["id"]),
+            }
+            for row in self._db.list_projects_runtime_status()
+        ]
+
+    def _health_fields(self, project_id: str) -> dict:
+        """What "Manage projects" reads to draw a row's broken/warning
+        badge. One row and the whole list say it the same way, so
+        replacing a single row (what pause/resume answer with) can never
+        drop a badge the list had drawn."""
+        health = self._health_checker.current(project_id)
+        return {"broken": broken_fields(health), "build_warnings": health.draft.warnings}
 
     def _current_status(self, project_id: str) -> str:
         if not self._db.project_exists(project_id):
@@ -219,6 +238,7 @@ class ProjectAvailability:
             "paused_reason": paused_reason,
             "revision": self._db.get_project_revision(project_id),
             "published_revision": self._db.get_project_published_revision(project_id),
+            **self._health_fields(project_id),
         }
 
     def get_project_availability(self, project_id: str) -> tuple[bool, str | None]:

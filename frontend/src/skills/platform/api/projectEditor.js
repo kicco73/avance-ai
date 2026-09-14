@@ -36,6 +36,14 @@ export function putProjectField(projectId, field, value) {
   )
 }
 
+export function postModernizeIndexYml(projectId) {
+  return projectFetch(
+    projectId,
+    `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/index-yml/modernize`,
+    { method: 'POST' }
+  )
+}
+
 export function putServiceLevel(projectId, service, level) {
   return projectFetch(
     projectId,

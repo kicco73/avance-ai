@@ -135,3 +135,44 @@ def test_own_broken_project_warnings_can_be_dismissed(client, app_db):
     assert client.delete(f"/api/skills/platform/settings/warnings/{warning_id}").status_code == HTTPStatus.NOT_FOUND
     assert client.delete(f"/api/skills/platform/settings/warnings/{foreign_id}").status_code == HTTPStatus.NOT_FOUND
     assert len(app_db.get_system_warnings("other", "p")) == 1
+
+
+STALE_YML = """\
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    whichever: 1
+    actions:
+      - name: go
+        target: a
+        bogus: 2
+env:
+  k:
+    value: "1"
+    nonsense: 3
+"""
+
+
+def test_a_broken_project_hands_the_view_one_entry_per_problem_to_click_through(client, app, app_db):
+    """A refusal the author can only read is a refusal they then have to
+    go hunting for. `problems` has the shape a build warning has — one
+    per problem, each with its own line — so the design view lists them
+    the way it lists warnings, and each line takes the editor there."""
+    _upload(client, "stale", VALID_YML)
+    revision = app_db.get_project_published_revision("stale")
+    rewrite_archive_content("stale", "index.yml", revision, f"project:\n  id: stale\n{STALE_YML}".encode("utf-8"))
+    app.state.project_service.automaton_loader.invalidate_cache("stale")
+
+    response = client.get("/api/skills/platform/projects/stale/graph")
+
+    assert response.status_code == HTTPStatus.CONFLICT
+    error = response.json()["error"]
+    assert error["code"] == "project_broken"
+    problems = error["fields"]["problems"]
+    assert [problem["message"].split(":")[0] for problem in problems] == [
+        "State 'a'", "Action 'go'", "Env key 'k'",
+    ]
+    assert [problem["line"] for problem in problems] == sorted(problem["line"] for problem in problems)
+    assert all(problem["line"] is not None and problem["section"] for problem in problems)

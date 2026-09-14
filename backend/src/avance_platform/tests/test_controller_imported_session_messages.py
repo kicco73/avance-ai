@@ -20,7 +20,7 @@ init-action:
 states:
   a:
     contextual-prompt: hi
-    chat: false
+    chat-enabled: false
     actions: []
 """
 

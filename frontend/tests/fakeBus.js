@@ -1,6 +1,7 @@
 import { vi } from 'vitest'
 
 const handlers = (globalThis.__fakeBusHandlers ??= new Map())
+const connectionHandlers = (globalThis.__fakeBusConnectionHandlers ??= new Set())
 
 export const busChannel = (globalThis.__fakeBusChannel ??= {
   isOpen: true,
@@ -11,7 +12,10 @@ export const busChannel = (globalThis.__fakeBusChannel ??= {
     return () => handlers.get(type)?.delete(handler)
   },
   send: vi.fn(() => true),
-  onConnectionState: vi.fn(() => () => {}),
+  onConnectionState(handler) {
+    connectionHandlers.add(handler)
+    return () => connectionHandlers.delete(handler)
+  },
   connect: vi.fn(),
   disconnect: vi.fn()
 })
@@ -30,8 +34,13 @@ export function deliverExchange({ sessionId = 1, chunks = [], actions = [], answ
   })
 }
 
+export function deliverConnected({ reconnected = true } = {}) {
+  for (const handler of [...connectionHandlers]) handler('open', { reconnected })
+}
+
 export function resetFakeBus() {
   handlers.clear()
+  connectionHandlers.clear()
   busChannel.send.mockClear()
 }
 

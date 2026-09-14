@@ -97,10 +97,3 @@ def test_a_project_can_only_narrow_the_servers_own_switch():
 def test_a_level_that_is_not_one_of_the_three_is_a_build_error():
     with pytest.raises(ValueError, match="project.services.talk"):
         project_services.parse({"talk": "maybe"})
-
-
-def test_the_deprecated_talk_flag_is_a_default_an_explicit_level_overrides():
-    declared, warnings = project_services.parse({"talk": "optional"}, talk_enabled=True)
-
-    assert declared.as_raw() == {"talk": "optional"}
-    assert len(warnings) == 1

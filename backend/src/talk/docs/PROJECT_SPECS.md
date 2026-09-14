@@ -9,6 +9,7 @@ audio and offered for playback in the conversation. Declared `disabled`,
 or absent from the build, no `audio` metadata is ever asked for and
 conversations stay in text.
 
-> **Deprecated:** `project.talk-enabled: true|false` still reads as
+> **Deprecated:** `project.talk-enabled: true|false` reads as
 > `services: {talk: required}` / `services: {talk: disabled}` and builds
-> with a warning. Write `services:` instead.
+> with a warning. It is one of the spellings §8 rewrites, so a project
+> still carrying it stops carrying it the next time someone opens it.

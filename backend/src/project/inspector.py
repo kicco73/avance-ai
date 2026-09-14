@@ -10,6 +10,7 @@ from tracking.sources import driver_class_for
 from tracking.tracking_engine import TrackingEngine
 
 from .archive.automaton_loader import AutomatonLoader
+from .health import ProjectHealthChecker, broken_fields
 from .archive.layout import CACHE_DIR, LEGAL_TERMS_FILE_NAME
 
 if TYPE_CHECKING:
@@ -331,8 +332,13 @@ class ProjectInspector:
 
     def get_project_revision_info(self, project_id: str) -> dict:
         """{revision, published_revision, is_paused, paused_reason,
-        modified_files} for the "Edit project" toolbar's revision display,
-        refreshed after every save and publish."""
+        broken, modified_files} for the "Edit project" toolbar's revision
+        display, refreshed after every save and publish. `broken` says
+        which of the two revisions does not build, because a paused
+        project whose *draft* is fine is asking to be published, not
+        edited — and a reason line that only says "no longer builds"
+        reads as a complaint about the file on screen, which is the one
+        that works."""
         if project_id not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_id}' does not exist.")
         is_paused, paused_reason = self._db.get_project_availability(project_id) or (False, None)
@@ -343,6 +349,7 @@ class ProjectInspector:
             "published_revision": published_revision,
             "is_paused": is_paused,
             "paused_reason": paused_reason,
+            "broken": broken_fields(ProjectHealthChecker(self._db, self._automaton_loader).current(project_id)),
             "modified_files": self._modified_archive_names(project_id, revision, published_revision),
         }
 

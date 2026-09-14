@@ -12,6 +12,11 @@ logger = LoggerFactory.get_logger(__name__)
 
 VALID_NEW_SESSION_STRATEGIES = {"resume", "restart"}
 
+PROJECT_FIELDS = {
+    "id", "family", "revision", "ui-label", "ui-description",
+    "signal-tracking-on-ai-message", "services", "new-session-strategy",
+}
+
 
 def load_yaml(text: str):
     return YAML(typ='rt').load(text)
@@ -26,7 +31,7 @@ class ProjectMetadata:
     ui_description: str | None
     autotracking_on_ai_message: bool
     services: ProjectServices
-    service_warnings: tuple[str, ...]
+    rejections: tuple[str, ...]
     new_session_strategy: str
 
     @classmethod
@@ -60,10 +65,14 @@ class ProjectMetadata:
                 f"project.new-session-strategy {new_session_strategy!r} must be one of "
                 f"{sorted(VALID_NEW_SESSION_STRATEGIES)}."
             )
-        services, service_warnings = project_services.parse(
-            raw_project.get("services"), talk_enabled=raw_project.get("talk-enabled"),
-        )
+        rejections = [
+            f"project.{field} is not a field 'project' has — expected one of "
+            f"{', '.join(sorted(PROJECT_FIELDS))}."
+            for field in sorted(set(raw_project) - PROJECT_FIELDS)
+        ]
+        services = project_services.parse(raw_project.get("services"))
         return cls(
+            rejections=tuple(rejections),
             project_id=project_id,
             family=family,
             revision=revision,
@@ -71,7 +80,6 @@ class ProjectMetadata:
             ui_description=raw_project.get("ui-description"),
             autotracking_on_ai_message=raw_project.get("signal-tracking-on-ai-message", False),
             services=services,
-            service_warnings=tuple(service_warnings),
             new_session_strategy=new_session_strategy,
         )
 

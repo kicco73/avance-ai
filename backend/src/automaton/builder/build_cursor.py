@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from automaton.build_error import AutomatonBuildError
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -10,6 +11,7 @@ class BuildCursor:
         self.line: int | None = None
         self.section: str | None = None
         self.warnings: list[dict] = []
+        self.rejections: list[dict] = []
 
     def at(self, line: int | None, section: str) -> None:
         self.line = line
@@ -26,6 +28,40 @@ class BuildCursor:
             "line": self.line if line is None else line,
             "section": self.section,
         })
+
+    def reject(self, message: str, line: int | None = None) -> None:
+        """A problem the rest of the pass can be carried out in spite of
+        — a field nobody reads, say. Recorded and reported together at
+        the end (see raise_if_rejected) rather than raised where it is
+        found: fixing an index.yml one rejection per build, with a whole
+        pass between each, is how a five-field mistake takes five rounds."""
+        self.rejections.append({
+            "message": message,
+            "line": self.line if line is None else line,
+            "section": self.section,
+        })
+
+    def raise_if_rejected(self) -> None:
+        """One refusal carrying every problem the pass found, each with
+        its own line: `problems` is the same shape a warning has, so the
+        editor draws them the same way — one clickable line per problem,
+        landing on the key that caused it.
+
+        The message itself only counts them. Every string that is not
+        that list — a log line, an admin's "project broken" notice, a row
+        in Manage projects — would otherwise carry all of them run
+        together into a paragraph nobody can read and nobody can click."""
+        if not self.rejections:
+            return
+        self.rejections.sort(key=lambda rejection: (rejection["line"] is None, rejection["line"]))
+        first = self.rejections[0]
+        message = (
+            first["message"] if len(self.rejections) == 1
+            else f"{len(self.rejections)} problems in index.yml"
+        )
+        raise AutomatonBuildError(
+            message, line=first["line"], section=first["section"], problems=list(self.rejections),
+        )
 
     @staticmethod
     def line_of(parent, key: str) -> int | None:

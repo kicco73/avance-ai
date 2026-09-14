@@ -13,6 +13,7 @@ class BuildOutcome:
     revision: int
     error: str | None
     warnings: list[str] = field(default_factory=list)
+    problems: list[dict] = field(default_factory=list)
     file: str | None = None
     line: int | None = None
 
@@ -22,6 +23,18 @@ class ProjectHealth:
     project_id: str
     published: BuildOutcome | None
     draft: BuildOutcome
+
+
+def broken_fields(health: ProjectHealth) -> dict:
+    """{published, draft}: the build error of each, or None where it
+    builds. One shape, read by the Manage projects row and by the design
+    view's own toolbar — which of the two revisions is the broken one is
+    the whole difference between "fix this file" and "publish what you
+    already fixed"."""
+    return {
+        "published": health.published.error if health.published is not None else None,
+        "draft": health.draft.error,
+    }
 
 
 class ProjectHealthChecker:
@@ -55,7 +68,10 @@ class ProjectHealthChecker:
         try:
             automaton = self._automaton_loader.load_at_revision(project_id, revision)
         except AutomatonBuildError as exc:
-            return BuildOutcome(revision=revision, error=exc.detail or str(exc), file=exc.file, line=exc.line)
+            return BuildOutcome(
+                revision=revision, error=exc.detail or str(exc), problems=list(exc.problems),
+                file=exc.file, line=exc.line,
+            )
         except (ValueError, FileNotFoundError) as exc:
             return BuildOutcome(revision=revision, error=str(exc))
         return BuildOutcome(revision=revision, error=None, warnings=automaton.build_warnings)

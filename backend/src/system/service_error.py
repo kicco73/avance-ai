@@ -17,3 +17,9 @@ class ServiceError(Exception):
         self.detail = detail
         self.status_code = status_code
         self.code = code
+
+    def fields(self) -> dict[str, object]:
+        """What error_handlers.py nests under body["error"]["fields"] —
+        empty unless a subclass has something structured to say, which is
+        what lets a caller act on a failure rather than only print it."""
+        return {}

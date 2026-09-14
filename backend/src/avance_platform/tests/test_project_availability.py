@@ -206,6 +206,7 @@ def test_manual_pause_and_resume_are_the_only_transitions_between_running_and_ma
     assert row == {
         "id": "solo", "status": "manually_paused", "paused_reason": "Manually paused.",
         "revision": 0, "published_revision": 0,
+        "broken": {"published": None, "draft": None}, "build_warnings": [],
     }
     assert db.get_project_availability("solo") == (True, "Manually paused.")
     assert db.get_manually_paused("solo") is True

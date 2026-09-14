@@ -9,7 +9,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ai import AIServiceError
-from automaton.build_error import AutomatonBuildError
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
 
@@ -70,7 +69,7 @@ class ApiErrorHandlers:
         any future subclass — in one handler, since Starlette resolves handlers
         by walking the exception's MRO rather than requiring an exact type match."""
         logger.exception("Service error on %s %s", request.method, request.url.path)
-        fields = exc.fields() if isinstance(exc, AutomatonBuildError) else None
+        fields = exc.fields() or None
         return JSONResponse(status_code=exc.status_code, content=cls._body(exc.message, exc.detail, exc.code, fields))
 
     @classmethod

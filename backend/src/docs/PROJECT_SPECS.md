@@ -99,7 +99,10 @@ of its own.
 | `sources` | no | mapping (name → fields) | `{}` | Declares every `source.<name>` a trigger/env expression may reference, and the model may read/write as a tool. §5.2. |
 | `project` | no | mapping | — | Identity/display metadata + auto-tracking mode. §1.1. |
 
-Any other top-level key is ignored.
+Any other top-level key is a build error, with one exception: a
+top-level `actions:` is read by nothing and allowed, because a project
+can keep its actions there as YAML anchors and merge them into states
+(`<<: *action`).
 
 ### 1.1 `project:`
 
@@ -378,6 +381,18 @@ actions:
 
 An action has no `attachments:` of its own — list attachments on the
 destination state's or the top-level `attachments:` instead (§6).
+
+Any other field is a build error (§8). Some of them were
+renamed rather than invented, so the build names the replacement instead
+and the file is rewritten to use it: `actuator` and then `on-enter`
+are both `task`; `action-prompt` is a `task.prompt(...)` call inside
+`task`; and the `actuator.*` namespace all three used to call split in
+two — `task.*` for what reaches a service, `chat.*` in `on-exit` for
+what reaches the conversation, which is also what decides which of the
+two fields each line ends up in. A line that called both at once
+(`actuator.notify(..., actuator.prompt(...))`) has no single spelling
+today: there is a choice to make, so that whole action is left as
+written and keeps its warning until a person makes it.
 
 **5.1 Manual vs. triggered.** Any action can be fired manually, by name —
 its trigger (if any) is never evaluated for a manual firing. Actions
@@ -820,7 +835,8 @@ have anything left to tunnel to the browser synchronously.)
 
   Nothing is persisted, and it never updates `env`/evaluates a signal/fires a
   transition — read-only, but its return value is real text. This is what
-  replaced the old, removed `action-prompt` field.
+  replaced the old, removed `action-prompt` field, and what a project
+  still carrying one is rewritten to call (§8).
 
 **No `task.*` call tunnels anything to the browser.** Every member
 returns `None`, a plain value for an assignment, or a bool, never a
@@ -905,12 +921,61 @@ of how you're likely to hit them:
 - Every name in a state's own `input`/`output` (§4.3) names a key actually declared in `env:`, and that env key declares its own `ai-definition`.
 - Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements the method the field exposes (`select_rows_containing`/`update`), and no name appears in both read fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement.
 
+### 8.1 A field nobody reads
+
+Every section takes the fields it reads and no others — `project`,
+`signals`, `reactions`, `env`, `sources`, `states`, an action,
+`init-action`, and the top level itself. A name outside its section's own
+set is a build error, not a silent omission: `chat: false` sat on 83
+states of one real installation, every one of them answering the user it
+was written to silence, and nothing said a word. Three verdicts, and
+`automaton/deprecations.py` is the list of which name earns which:
+
+| | |
+| --- | --- |
+| unrecognized | **error** — a typo until proven otherwise |
+| renamed, or removed with nothing left to say | **warning**, and the rewrite below settles it: `project.talk-enabled`, an action's `actuator`/`on-enter`/`action-prompt`, a state's `chat`, an env key's `ai-access`/`ui-label` |
+| removed, with no single replacement | **error** naming what to write instead: a state's `on-enter`, whose script belongs to the actions that reach the state — which of them should still do it is a decision, so nothing makes it for you |
+
+One pass reports all of them at once. A build that stopped at the first
+would cost a whole pass per mistake, and five bad fields would take five
+rounds of fixing and rebuilding; every problem the pass can be carried
+out in spite of is collected and raised together (`BuildCursor.reject`).
+
+### 8.2 What is rewritten, and what is not
+
 A stored revision that fails this checklist because the format moved on
 underneath it (a removed field, a removed method) is never rewritten
 automatically — there is no migration for a breaking format change. The
 project is paused, flagged broken, and stays that way until a human
 corrects the `index.yml` by hand in the design view, whose banner shows
 the builder's own rejection message.
+
+A spelling that still *reads* is the opposite case. Where a field is
+deprecated but today's format states exactly what it meant — the whole of
+it, mechanically, with nothing left to choose — the build says so as a
+warning and changes nothing: `automaton/deprecations.py` is the list of
+which spellings those are, and each one carries both the warning and the
+rewrite that settles it.
+
+Building a project never applies it. A build reads, reports and returns
+an automaton; it does not edit the file it was given, so a loader stays a
+read path and a revision nobody opens stays byte-for-byte what it was.
+The rewrite is made by whoever authors projects, when a person opens one
+— it applies every rewrite there is, saves the file, and tells them what
+it changed, which is the whole reason it is allowed to happen without
+being asked. Comments, key order and formatting survive it
+(`AutomatonYamlEditor`), and the automaton built either side of it is the
+same one. A build with no authoring surface has nobody to tell and
+nothing to open, so it just keeps reporting the warning.
+
+Two properties it has to keep, because a person opens the same project
+many times. It rewrites the field **where the field is**: one written on
+an anchor that entries merge (`<<: *action`) is the anchor's, and
+rewriting the entry that merges it would leave the original to be merged
+in again — the warning survives and the next open rewrites it again,
+appending. And what it writes is never something it still recognizes, so
+opening the same project twice reports a fix exactly once.
 
 ## 9. Worked examples
 

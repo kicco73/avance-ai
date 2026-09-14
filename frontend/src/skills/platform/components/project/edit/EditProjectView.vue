@@ -12,6 +12,7 @@ import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
 import EditorStateTab from './EditorStateTab.vue'
 import ActionsOrderDialog from '../../inspector/ActionsOrderDialog.vue'
+import IndexYmlFixesDialog from './IndexYmlFixesDialog.vue'
 import SessionDetailCard from '../../../../../components/skillkit/SessionDetailCard.vue'
 import ModelMenu from '../../ModelMenu.vue'
 import ProfileMenu from '../../../../../components/ProfileMenu.vue'
@@ -25,14 +26,14 @@ import { useIndexYmlEditing } from '../../../useIndexYmlEditing.js'
 import { useProjectCatalog } from '../../../useProjectCatalog.js'
 import { useLiveRunTimeline } from '../../../useLiveRunTimeline.js'
 import { useStateTabTokens } from '../../../../../composables/useStateTabTokens.js'
-import { putSessionTitle, putSessionComment } from '../../../api.js'
+import { putSessionTitle, putSessionComment, postModernizeIndexYml } from '../../../api.js'
 import { onProjectChanged } from '../../../../../projectChangeEvents.js'
 import { projectModes } from '../../../../registry.js'
 import { setApiWarning } from '../../../../../errorStore.js'
 import { chooseDialog, customDialog } from '../../../../../dialogStore.js'
 import { totalTokenBudgetPerSession } from '../../../../../chatStore.js'
 import { activeChatMode } from '../../../../../chatSkin.js'
-import { setTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
+import { setTestProject, releaseTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
 
 const {
   currentSessionId, turnCount, chatLoading, loadMessages, loadSessions,
@@ -47,8 +48,6 @@ const props = defineProps({
   profile: { type: Object, default: null },
   buildError: { type: Object, default: null }
 })
-
-setTestProject(props.projectId)
 
 const emit = defineEmits(['saved', 'renamed', 'back', 'home', 'profile', 'logout'])
 
@@ -170,7 +169,7 @@ const selectedStateData = computed(() => {
 const runCurrentSession = computed(() => runSessions.value.find((s) => s.id === currentSessionId.value) ?? null)
 
 const {
-  validStateKeys, availableStates, buildWarnings, stateLabelFor, actionLabelFor, refreshCatalog,
+  validStateKeys, availableStates, buildWarnings, buildProblems, stateLabelFor, actionLabelFor, refreshCatalog,
 } = useProjectCatalog(props.projectId)
 
 const {
@@ -213,10 +212,15 @@ async function ensureDraftChatSession() {
 function setMode(next) {
   modeId.value = next
   activeChatMode.value = activeMode.value.chatMode ?? LIVE_CHAT
-  if (next === RUN_MODE.id) ensureDraftChatSession()
+  if (next !== RUN_MODE.id) return
+  setTestProject(props.projectId)
+  ensureDraftChatSession()
 }
 
-onBeforeUnmount(() => { activeChatMode.value = 'live' })
+onBeforeUnmount(() => {
+  activeChatMode.value = 'live'
+  releaseTestProject()
+})
 
 const { width: explorerWidth, startDrag: startExplorerDrag } = useResizablePanel(220, { min: 160, max: 420 })
 
@@ -377,7 +381,28 @@ watch(currentSessionId, () => {
   if (inspecting.value) nextTick(() => inspectorRef.value?.refresh())
 })
 
+function reportPause() {
+  const info = projectRevision.value
+  if (!info?.is_paused) return
+  if (info.broken?.draft) return
+  if (info.broken?.published) {
+    setApiWarning(
+      `Project '${props.projectId}' is paused: its published revision ${info.published_revision} no longer builds.`
+        + ' This draft does — publish it to bring the project back.'
+    )
+    return
+  }
+  setApiWarning(info.paused_reason || `Project '${props.projectId}' is currently paused.`)
+}
+
+function modernizeIndexYml() {
+  return postModernizeIndexYml(props.projectId)
+    .then((result) => result.fixed)
+    .catch(() => [])
+}
+
 onMounted(async () => {
+  const fixed = await modernizeIndexYml()
   loadFiles()
   loadSources()
   loadTestChatModels()
@@ -385,15 +410,14 @@ onMounted(async () => {
   refreshSignalsLog()
   refreshCatalog()
   await refreshProjectRevision()
-  if (projectRevision.value?.is_paused) {
-    setApiWarning(projectRevision.value.paused_reason || `Project '${props.projectId}' is currently paused.`)
-  }
+  reportPause()
   if (inspecting.value) openInspect()
   window.addEventListener('resize', handleWindowResize)
   if (props.buildError?.file === 'index.yml') {
     await nextTick()
     indexYmlEditorRef.value?.showBuildError(props.buildError.line)
   }
+  if (fixed.length) await customDialog({ component: IndexYmlFixesDialog, props: { fixes: fixed } })
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize)
@@ -441,6 +465,19 @@ async function handleSetSessionComment(sessionId, comment) {
         </div>
       </template>
     </AppHeader>
+
+    <div v-if="buildProblems.length" class="build-warnings-banner build-problems-banner">
+      <button
+        v-for="(problem, index) in buildProblems"
+        :key="index"
+        type="button"
+        class="build-warnings-banner-line build-problems-banner-line"
+        :class="{ 'build-warnings-banner-line-locatable': problem.line != null }"
+        :disabled="problem.line == null"
+        :title="problem.line == null ? '' : `Go to ${problem.section ?? 'index.yml'}`"
+        @click="showWarning(problem)"
+      >{{ problem.message }}</button>
+    </div>
 
     <div v-if="buildWarnings.length" class="build-warnings-banner">
       <button
@@ -663,6 +700,15 @@ async function handleSetSessionComment(sessionId, comment) {
   font-size: 0.85rem;
   font-family: inherit;
   text-align: left;
+}
+
+.build-problems-banner {
+  background: #fdecea;
+  border-bottom-color: #f5c2bd;
+}
+
+.build-problems-banner-line {
+  color: #b3261e;
 }
 
 .build-warnings-banner-line-locatable {
