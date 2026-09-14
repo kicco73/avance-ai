@@ -11,7 +11,6 @@ import { observeMessages } from '../messageNotifier.js'
 import { installModelSelector, modelSelector } from '../modelSelector.js'
 import { installChatChannel } from '../liveChatChannel.js'
 import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, liveStore, observeLiveChat } from '../chatStore.js'
-import { watchPushedTasks } from '../notificationBus.js'
 
 export function useAppBoot(
   currentUserProfile, currentUserRole, landingProjectId,
@@ -42,7 +41,6 @@ export function useAppBoot(
       observeMessages(messageListeners.value)
       installModelSelector(modelSelectors.value)
       installChatChannel(chatChannel.value)
-      watchPushedTasks(liveStore)
       observeLiveChat(liveChatObservers.value)
       publishState(newState)
       return 'ready'

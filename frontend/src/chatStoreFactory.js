@@ -16,6 +16,7 @@ import { messageArrived } from './messageNotifier.js'
 import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
+import { runTaskScript } from './taskActions.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
 
@@ -187,6 +188,12 @@ export function createChatStore({
     if (frame.session_id !== currentSessionId.value) return
     showButtons([])
     handleStateChange(frame.state ?? {})
+  })
+
+  busChannel.subscribe('ui.notification', (frame) => {
+    if (!frame.task) return
+    if (frame.session_id != null ? frame.session_id !== currentSessionId.value : frame.project_id !== currentProjectId.value) return
+    runTaskScript(frame.task)
   })
 
   busChannel.subscribe('output.reaction', (frame) => {

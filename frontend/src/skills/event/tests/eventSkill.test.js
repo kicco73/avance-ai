@@ -23,6 +23,7 @@ describe('the event skill, as the registry sees it', () => {
 describe('a wake-up pushed for another project reaches the live conversation', () => {
   let busChannel
   let chatStore
+  let subscribedBefore
 
   beforeEach(async () => {
     vi.resetModules()
@@ -30,6 +31,7 @@ describe('a wake-up pushed for another project reaches the live conversation', (
     ;({ busChannel } = await import('../../../busChannel.js'))
     chatStore = await import('../../../chatStore.js')
     const { liveChatWakeup } = await import('../liveChatWakeup.js')
+    subscribedBefore = notificationSubscriptions().length
     chatStore.observeLiveChat([liveChatWakeup])
   })
 
@@ -38,8 +40,12 @@ describe('a wake-up pushed for another project reaches the live conversation', (
     vi.clearAllMocks()
   })
 
+  function notificationSubscriptions() {
+    return busChannel.subscribe.mock.calls.filter(([type]) => type === 'ui.notification')
+  }
+
   function pushedFrame() {
-    const call = busChannel.subscribe.mock.calls.find(([type]) => type === 'ui.notification')
+    const call = notificationSubscriptions()[subscribedBefore]
     expect(call).toBeTruthy()
     return call[1]
   }
@@ -70,6 +76,6 @@ describe('a wake-up pushed for another project reaches the live conversation', (
     chatStore.observeLiveChat([liveChatWakeup])
     chatStore.observeLiveChat([liveChatWakeup])
 
-    expect(busChannel.subscribe.mock.calls.filter(([type]) => type === 'ui.notification')).toHaveLength(1)
+    expect(notificationSubscriptions()).toHaveLength(subscribedBefore + 1)
   })
 })
