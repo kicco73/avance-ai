@@ -551,8 +551,9 @@ the same answer a search that matched nothing gives — never an error:
 a source is a table to query, and "nobody has searched yet" is a state
 the project's own triggers handle as "no rows", not as a failure. In the editor it is declared
 from the file explorer's own "+" menu, **Add web search**, next to **Add
-source** — the only difference being that this one writes no `sources/`
-archive, since there is no file to edit.
+source**, and writes no `sources/` archive: its panel shows the editing
+user's own cached table read-only — no cell editing, no upload, no new
+rows — with a **Clear cache** button that empties it.
 
 The automaton's own `env:` keys are never reached through a `sources:`
 driver — the model reads/sets them through a state's own `input`/`output`

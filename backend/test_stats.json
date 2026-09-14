@@ -1043,10 +1043,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
+    "last_run": "2026-09-14T10:07:36+00:00",
     "last_seconds": 1.554,
-    "runs": 21,
-    "seconds": 9.409,
+    "runs": 22,
+    "seconds": 9.988,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutInitAction::test_edits_ui_description_and_task_never_reports_a_trigger_and_rejects_setting_one": {
@@ -1131,10 +1131,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
+    "last_run": "2026-09-14T10:07:36+00:00",
     "last_seconds": 2.078,
-    "runs": 21,
-    "seconds": 14.243,
+    "runs": 22,
+    "seconds": 15.456,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_add_websearch_declares_a_user_scoped_source_with_no_archive_of_its_own": {
@@ -1142,9 +1142,9 @@
     "first_run": "2026-09-14T09:58:25+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 3,
-    "seconds": 1.611,
+    "last_run": "2026-09-14T10:07:36+00:00",
+    "runs": 4,
+    "seconds": 2.175,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_delete_removes_it_and_its_archive": {
@@ -1152,10 +1152,20 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
+    "last_run": "2026-09-14T10:07:36+00:00",
     "last_seconds": 2.282,
-    "runs": 21,
-    "seconds": 12.567,
+    "runs": 22,
+    "seconds": 13.101,
+    "skips": 0
+  },
+  "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_the_websearch_cache_is_served_to_the_panel_and_cleared_on_demand": {
+    "failures": 0,
+    "first_run": "2026-09-14T10:07:36+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-14T10:07:36+00:00",
+    "runs": 1,
+    "seconds": 0.455,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_ui_label_is_a_plain_edit_and_renaming_the_id_renames_its_archive_keeping_its_content": {
@@ -1163,10 +1173,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
+    "last_run": "2026-09-14T10:07:36+00:00",
     "last_seconds": 1.857,
-    "runs": 21,
-    "seconds": 15.826,
+    "runs": 22,
+    "seconds": 16.391,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::test_every_field_endpoint_rejects_a_field_not_on_its_whitelist": {
@@ -13631,10 +13641,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:44+00:00",
+    "last_run": "2026-09-14T10:07:48+00:00",
     "last_seconds": 0.099,
-    "runs": 16,
-    "seconds": 0.512,
+    "runs": 17,
+    "seconds": 0.538,
     "skips": 0
   },
   "tests/test_frontend_calls_real_routes.py::test_every_frontend_call_reaches_a_declared_route": {
@@ -13642,10 +13652,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:44+00:00",
+    "last_run": "2026-09-14T10:07:48+00:00",
     "last_seconds": 0.31,
-    "runs": 16,
-    "seconds": 1.748,
+    "runs": 17,
+    "seconds": 1.871,
     "skips": 0
   },
   "tests/test_frontend_reads_real_fields.py::test_every_field_listed_as_coming_from_elsewhere_really_does": {
@@ -17241,10 +17251,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:44+00:00",
+    "last_run": "2026-09-14T10:07:48+00:00",
     "last_seconds": 2.762,
-    "runs": 21,
-    "seconds": 18.435,
+    "runs": 22,
+    "seconds": 19.199,
     "skips": 0
   },
   "tests/test_skill_boundaries.py::test_no_skill_imports_another_skill": {
@@ -17252,10 +17262,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:44+00:00",
+    "last_run": "2026-09-14T10:07:48+00:00",
     "last_seconds": 0.453,
-    "runs": 21,
-    "seconds": 5.09,
+    "runs": 22,
+    "seconds": 5.599,
     "skips": 0
   },
   "tests/test_skill_boundaries.py::test_nothing_outside_a_skill_imports_one": {
@@ -17263,10 +17273,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:44+00:00",
+    "last_run": "2026-09-14T10:07:48+00:00",
     "last_seconds": 1.423,
-    "runs": 21,
-    "seconds": 12.481,
+    "runs": 22,
+    "seconds": 12.946,
     "skips": 0
   },
   "tests/test_skill_owned_requirements.py::test_a_dependency_only_one_skill_imports_is_claimed_by_that_skill": {
@@ -20106,9 +20116,9 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 11,
-    "seconds": 0.029,
+    "last_run": "2026-09-14T10:07:48+00:00",
+    "runs": 12,
+    "seconds": 0.031,
     "skips": 0
   },
   "tests/test_websearch.py::test_a_schema_the_model_did_not_return_fails_the_search_instead_of_inventing_one": {
@@ -20116,9 +20126,9 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 12,
-    "seconds": 0.025,
+    "last_run": "2026-09-14T10:07:48+00:00",
+    "runs": 13,
+    "seconds": 0.027,
     "skips": 0
   },
   "tests/test_websearch.py::test_a_search_result_link_resolves_to_its_real_target_and_never_to_the_engine_itself": {
@@ -20126,9 +20136,9 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 11,
-    "seconds": 0.018,
+    "last_run": "2026-09-14T10:07:48+00:00",
+    "runs": 12,
+    "seconds": 0.019,
     "skips": 0
   },
   "tests/test_websearch.py::test_a_websearch_source_reads_empty_before_any_search_and_never_another_users_results": {
@@ -20136,9 +20146,9 @@
     "first_run": "2026-09-14T10:02:10+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 2,
-    "seconds": 0.074,
+    "last_run": "2026-09-14T10:07:48+00:00",
+    "runs": 3,
+    "seconds": 0.098,
     "skips": 0
   },
   "tests/test_websearch.py::test_a_websearch_source_says_no_search_has_run_rather_than_reading_another_users_results": {
@@ -20156,9 +20166,9 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 11,
-    "seconds": 0.015,
+    "last_run": "2026-09-14T10:07:48+00:00",
+    "runs": 12,
+    "seconds": 0.016,
     "skips": 0
   },
   "tests/test_websearch.py::test_task_websearch_hands_the_script_the_csv_and_runs_suppressed_or_not": {
@@ -20166,9 +20176,9 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 12,
-    "seconds": 0.035,
+    "last_run": "2026-09-14T10:07:48+00:00",
+    "runs": 13,
+    "seconds": 0.037,
     "skips": 0
   },
   "tests/test_websearch.py::test_task_websearch_returns_empty_string_with_no_ai_service_bound": {
@@ -20176,9 +20186,9 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 13,
-    "seconds": 0.016,
+    "last_run": "2026-09-14T10:07:48+00:00",
+    "runs": 14,
+    "seconds": 0.017,
     "skips": 0
   },
   "tests/test_websearch.py::test_the_csv_is_normalized_against_the_schema_whatever_shape_the_model_replied_in": {
@@ -20186,9 +20196,9 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 11,
-    "seconds": 0.024,
+    "last_run": "2026-09-14T10:07:48+00:00",
+    "runs": 12,
+    "seconds": 0.026,
     "skips": 0
   },
   "tests/test_websearch.py::test_what_task_websearch_found_is_kept_for_this_user_and_read_back_through_a_websearch_source": {
@@ -20196,9 +20206,9 @@
     "first_run": "2026-09-14T09:33:28+00:00",
     "last_failed": "2026-09-14T09:33:37+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-14T10:02:33+00:00",
-    "runs": 9,
-    "seconds": 0.282,
+    "last_run": "2026-09-14T10:07:48+00:00",
+    "runs": 10,
+    "seconds": 0.308,
     "skips": 0
   },
   "tests/test_wiring_contract.py::test_every_controller_asks_only_for_names_something_offers": {
