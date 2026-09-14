@@ -32,6 +32,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			self.out.reply = buffered_text_before_signals_resolved
 			self.metadata.on_metadata('chunk', buffered_text_before_signals_resolved)
 
+		self._apply_output_to_env()
 		transitioned = self.user.state != self.out.state
 		self.moved_before_reply = transitioned
 

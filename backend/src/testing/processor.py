@@ -101,15 +101,15 @@ class TestProcessor(object):
             next_assistant_message_id(self._ordered_ids, self._by_id, message_id)
             if self._automaton.autotracking_on_ai_message else message_id
         )
+        output_for_env = {name: value for name, value in output_values.items() if name in state.output}
+        if output_for_env:
+            self._env.update_action_set(output_for_env, origin="output")
         self._tracking_engine.apply_transition(
             self._automaton, state, action, signal_values, session_id,
             message_id=observation_message_id,
             origin='trigger',
             output_values=output_values,
         )
-        output_for_env = {name: value for name, value in output_values.items() if name in state.output}
-        if output_for_env:
-            self._env.update_action_set(output_for_env, origin="output")
 
         if action is not None:
             self._current_state = action.target

@@ -25,9 +25,10 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-def _automaton(*, trigger: str | None = None, action_env: dict | None = None) -> Automaton:
+def _automaton(*, trigger: str | None = None, action_env: dict | None = None, on_exit: str | None = None) -> Automaton:
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger, env=action_env,
+        on_exit=on_exit,
     )
     state_a = State(
         key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action],
@@ -135,3 +136,23 @@ async def test_the_turn_reports_where_it_moved_from_only_when_it_moved(db):
     assert (moved["from_state"], moved["new_state"]) == ("a", "b")
     assert (stayed["from_state"], stayed["new_state"]) == (None, None)
     assert stayed["env_changed"] == {"status": "done", "confidence": 90}
+
+
+async def test_on_exit_is_authoritative_over_the_models_output_on_the_same_key(db):
+    automaton = _automaton(trigger="env.status == 'done'", on_exit="env.status = 'verified'")
+    processor, _, env = _processor(db, automaton, '{"status": "done", "confidence": 90}')
+
+    result = await processor.process("hello")
+
+    assert processor.out.state.key == "b"
+    assert env.action_set()["status"] == "verified"
+    assert result["env_changed"]["status"] == "verified"
+
+
+async def test_action_env_is_authoritative_over_the_models_output_on_the_same_key(db):
+    automaton = _automaton(trigger="env.status == 'done'", action_env={"status": "'verified'"})
+    processor, _, env = _processor(db, automaton, '{"status": "done", "confidence": 90}')
+
+    await processor.process("hello")
+
+    assert env.action_set()["status"] == "verified"

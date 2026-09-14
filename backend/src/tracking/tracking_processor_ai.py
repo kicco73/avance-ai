@@ -14,6 +14,7 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 
 		if not self.out.signals_resolved:
 			self._resolve_signals({})
+		self._apply_output_to_env()
 
 		if self._records_evaluation():
 			self.out.tracking_id, written = self._tracking_engine.apply_transition(

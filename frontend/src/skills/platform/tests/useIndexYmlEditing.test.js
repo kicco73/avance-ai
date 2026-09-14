@@ -138,9 +138,13 @@ describe('useIndexYmlEditing', () => {
 
   it('deleting a state clears the selection outright, while deleting a signal or env key never touches it', async () => {
     selectedGraphElement.value = { kind: 'action', data: { actionName: 'go' } }
+    deleteState.mockImplementation(async (_projectId, _stateName, onCommitted) => {
+      onCommitted()
+      expect(selectedGraphElement.value).toBeNull()
+    })
 
     await s.handleDeleteState('greeting')
-    expect(deleteState).toHaveBeenCalledWith('proj', 'greeting')
+    expect(deleteState).toHaveBeenCalledWith('proj', 'greeting', expect.any(Function))
     expect(selectedGraphElement.value).toBeNull()
 
     const selection = { kind: 'state', data: { id: 'x' } }

@@ -237,10 +237,10 @@ export function putActionOrder(projectId, stateName, actionName, position) {
   )
 }
 
-export function deleteState(projectId, stateName) {
+export function deleteState(projectId, stateName, onCommitted) {
   return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/states/${encodeURIComponent(stateName)}`, {
     method: 'DELETE'
-  })
+  }, { onCommitted })
 }
 
 export function deleteProjectAction(projectId, stateName, actionName) {

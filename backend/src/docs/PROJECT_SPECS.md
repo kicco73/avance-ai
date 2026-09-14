@@ -350,7 +350,10 @@ and independent of `ai-may-read-sources`/`ai-may-write-sources` above
   is described to the model from its own env key's `ai-definition` (§5.3).
   Once the turn completes, every reported name that's actually in this
   state's `output` is copied onto the real env key — anything else the
-  model reports under `output` is ignored.
+  model reports under `output` is ignored. That copy lands *before* the
+  action this turn fires runs its own `env:`/`on-exit` (§5.3, §5.3bis):
+  the model proposes, the script decides — an `on-exit` assignment to a
+  key the model also reported is the value that stays.
 
 An `input`/`output` name must be declared in the project's own `env:`
 section, and that env key must declare its own `ai-definition` — a build

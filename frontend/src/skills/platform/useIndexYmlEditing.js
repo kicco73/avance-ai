@@ -124,8 +124,7 @@ export function useIndexYmlEditing(
   function handleDeleteState(stateName) {
     guardedAction('delete this state', async () => {
       try {
-        await deleteState(projectId, stateName)
-        selectedGraphElement.value = null
+        await deleteState(projectId, stateName, () => { selectedGraphElement.value = null })
       } catch {
       }
     })

@@ -189,12 +189,6 @@ class TrackingProcessor(object):
 			audio_text=self.metadata.audio, tokens=self.metadata.output_tokens,
 		)
 		self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
-		output_for_env = {
-			name: value for name, value in self.metadata.output.items() if name in self.user.state.output
-		}
-		if output_for_env:
-			self.env.update_action_set(output_for_env, origin="output")
-			self.out.env_changed.update(output_for_env)
 		self.db.mark_messages_answered(self._fragment_ids, assistant_id)
 
 		if self.metadata.tool_calls:
@@ -212,6 +206,14 @@ class TrackingProcessor(object):
 			self.db.set_message_tokens(user_message_id, self.metadata.input_tokens, self.metadata.cache_read_tokens or 0)
 
 		return self._build_turn_response(user_message_id, assistant_id)
+
+	def _apply_output_to_env(self) -> None:
+		output_for_env = {
+			name: value for name, value in self.metadata.output.items() if name in self.user.state.output
+		}
+		if output_for_env:
+			self.env.update_action_set(output_for_env, origin="output")
+			self.out.env_changed.update(output_for_env)
 
 	def on_receiving_metadata(self, key: str, value: Any) -> None:
 		"""Shared by every generate call this processor (or a subclass)
