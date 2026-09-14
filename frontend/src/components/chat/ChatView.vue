@@ -251,6 +251,7 @@ watch(
       />
 
       <ChatInput
+        v-if="state?.chat_enabled"
         ref="chatInputRef"
         v-model="draft"
         :disabled="chatDisabled || !chatConnected"

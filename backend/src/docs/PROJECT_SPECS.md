@@ -242,7 +242,7 @@ states:
 | `ui-label` | no | string | the state's key | Shown in the frontend. |
 | `ui-description` | no | string | `None` | Shown in the frontend; omitted entirely when absent. |
 | `actions` | no | list of actions | `[]` | Outgoing actions — §5. **No actions ⇒ automatically `final`** (derived, never declared). |
-| `chat-enabled` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation. Independent of `final`/`fixed-message`. |
+| `chat-enabled` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation, and the chat shows no text input line. Independent of `final`/`fixed-message`. |
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to a `task.prompt(...)` call (§5.4), which is fully isolated. |

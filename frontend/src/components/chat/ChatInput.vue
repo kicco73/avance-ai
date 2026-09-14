@@ -1,12 +1,14 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { chatInputControls } from '../../skills/registry.js'
 
-defineProps({
+const props = defineProps({
   disabled: { type: Boolean, default: false },
   store: { type: Object, required: true },
   sample: { type: Boolean, default: false }
 })
+
+const inert = computed(() => props.disabled || props.sample)
 
 const draft = defineModel({ type: String, default: '' })
 
@@ -24,7 +26,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
       v-model="draft"
       type="text"
       placeholder="Type a message..."
-      :disabled="disabled"
+      :disabled="inert"
       enterkeyhint="send"
       autocapitalize="sentences"
       autocomplete="off"
@@ -36,7 +38,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
       :key="control.id"
       :is="control.component"
       :store="store"
-      :disabled="disabled"
+      :disabled="inert"
       :sample="sample"
     />
   </form>

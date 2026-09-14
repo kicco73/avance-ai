@@ -42,7 +42,7 @@ export function createSampleChatStore({ stateKey = ref(''), appId = ref(null) } 
 
   return {
     sample: true,
-    state: computed(() => ({ key: stateKey.value, chat_enabled: false, reactions: [] })),
+    state: computed(() => ({ key: stateKey.value, chat_enabled: true, reactions: [] })),
     buttons: ref(SAMPLE_BUTTONS),
     messages,
     historyLoaded,

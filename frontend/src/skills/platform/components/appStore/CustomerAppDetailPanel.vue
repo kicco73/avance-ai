@@ -85,7 +85,7 @@ async function selectUninstallFromMenu() {
 
   <div v-if="app.ai_summary" class="customer-app-detail-ai-summary" v-html="renderMarkdown(app.ai_summary)"></div>
 
-  <button type="button" class="customer-app-detail-chat-now-btn" @click="emit('open', app.id)">Chat now</button>
+  <button type="button" class="customer-app-detail-chat-now-btn" @click="emit('open', app.id)">Open</button>
 
   <hr v-if="sessionSummaries.length" class="customer-app-detail-divider" />
   <h3 v-if="sessionSummaries.length" class="customer-app-detail-subtitle">Last sessions</h3>
