@@ -220,6 +220,7 @@ class ProjectInspector:
             "ui_description": automaton.project_ui_description,
             "services": automaton.services.as_raw(),
             "signal_tracking_on_ai_message": automaton.autotracking_on_ai_message,
+            "new_session_strategy": automaton.new_session_strategy,
             "general_prompt": automaton.general_prompt,
         }
 

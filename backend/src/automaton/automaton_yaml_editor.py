@@ -201,6 +201,7 @@ class AutomatonYamlEditor:
             "ui_description": raw_project.get("ui-description"),
             "services": self._declared_services(),
             "signal_tracking_on_ai_message": raw_project.get("signal-tracking-on-ai-message", False),
+            "new_session_strategy": raw_project.get("new-session-strategy", "resume"),
             "general_prompt": self.__raw.get("general-prompt", ""),
         }
 

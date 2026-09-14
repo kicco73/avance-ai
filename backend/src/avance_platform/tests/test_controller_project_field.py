@@ -28,7 +28,8 @@ class TestGetProjectMetadata:
         assert response.status_code == 200
         assert response.json()["project"] == {
             "id": "bare", "family": None, "revision": 0, "ui_label": None, "ui_description": None,
-            "services": {}, "signal_tracking_on_ai_message": False, "general_prompt": "",
+            "services": {}, "signal_tracking_on_ai_message": False, "new_session_strategy": "resume",
+            "general_prompt": "",
         }
 
     def test_reports_declared_fields(self, client, hello_project):
@@ -41,7 +42,8 @@ class TestGetProjectMetadata:
         assert response.status_code == 200
         assert response.json()["project"] == {
             "id": "concierge", "family": None, "revision": 0, "ui_label": "Concierge", "ui_description": "The front desk.",
-            "services": {}, "signal_tracking_on_ai_message": False, "general_prompt": "",
+            "services": {}, "signal_tracking_on_ai_message": False, "new_session_strategy": "resume",
+            "general_prompt": "",
         }
 
 
@@ -83,6 +85,27 @@ class TestPutProjectField:
         response = client.put(f"/api/skills/platform/projects/{hello_project}/project/id", json={"value": "hello_id"})
         assert response.status_code == 200
         assert response.json()["id"] == "hello_id"
+
+    def test_new_session_strategy_accepts_the_two_strategies_and_rejects_anything_else(self, client, hello_project):
+        response = client.put(
+            f"/api/skills/platform/projects/{hello_project}/project/new-session-strategy", json={"value": "restart"}
+        )
+        assert response.status_code == 200
+        assert response.json()["new_session_strategy"] == "restart"
+        response = client.get(f"/api/skills/platform/projects/{hello_project}/files/index.yml")
+        assert "new-session-strategy: restart" in response.json()["content"]
+
+        response = client.put(
+            f"/api/skills/platform/projects/{hello_project}/project/new-session-strategy", json={"value": "sometimes"}
+        )
+        assert response.status_code == 400
+        assert client.get(f"/api/skills/platform/projects/{hello_project}/project").json()["project"]["new_session_strategy"] == "restart"
+
+        response = client.put(
+            f"/api/skills/platform/projects/{hello_project}/project/new-session-strategy", json={"value": "resume"}
+        )
+        assert response.status_code == 200
+        assert response.json()["new_session_strategy"] == "resume"
 
     def test_reports_the_project_id_the_save_settled_on_so_a_rename_can_be_followed(self, client, hello_project):
         response = client.put(f"/api/skills/platform/projects/{hello_project}/project/ui-label", json={"value": "Hello"})

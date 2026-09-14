@@ -114,6 +114,7 @@ project:
   ui-label: My Project
   ui-description: A friendly description.
   signal-tracking-on-ai-message: false
+  new-session-strategy: resume
   services:
     <service>: required
 ```
@@ -126,6 +127,7 @@ project:
 | `ui-label` | no | string | — | The only "name" ever shown to a user; `id` is never displayed. |
 | `ui-description` | no | string | — | Shown in the frontend. |
 | `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §3.2). |
+| `new-session-strategy` | no | `resume` \| `restart` | `resume` | Where a **new live session** of a returning user starts. `resume`: in the state the user's previous session left, and nothing fires. `restart`: in `init-action.target`, and `init-action`'s own `task` fires again (§7). Test and preview sessions always start from `init-action`, whatever this says. Env keys persist either way (§4.3): a restart that must also forget a previous case resets them in `init-action`'s own `env:`. |
 | `services` | no | mapping (service name → level) | `{}` | What this project asks of each platform service it can reach. §1.2. |
 
 ### 1.2 `project.services:`
@@ -658,9 +660,10 @@ value. This is deliberate: the write was the model's decision on the
 user's message, not on its own discarded wording.
 
 **Persistence and reset.** Every env key persists per (project, user) —
-across sessions. To start a case afresh, reset them on the initial
-action (`init-action`'s own `env:`, §7) or on the action that opens the
-case.
+across sessions, and so does the state a live session was left in unless
+`project.new-session-strategy` is `restart` (§1.1). To start a case
+afresh, reset them on the initial action (`init-action`'s own `env:`, §7)
+or on the action that opens the case.
 
 **Action `env`.**
 

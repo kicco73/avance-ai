@@ -72,6 +72,12 @@ function commitGeneralPrompt() {
 function commitBoolField(field, value) {
   emit('set-field', field, value)
 }
+
+const restartsEverySession = computed(() => props.project?.new_session_strategy === 'restart')
+
+function toggleNewSessionStrategy() {
+  emit('set-field', 'new-session-strategy', restartsEverySession.value ? 'resume' : 'restart')
+}
 </script>
 
 <template>
@@ -94,7 +100,7 @@ function commitBoolField(field, value) {
         />
         <span v-else class="inspector-detail-title">{{ project?.ui_label || 'Untitled project' }}</span>
       </div>
-      <div v-if="showEditForm || anySkillRequired" class="inspector-detail-badges">
+      <div class="inspector-detail-badges">
         <button
           v-if="showEditForm"
           type="button"
@@ -104,7 +110,7 @@ function commitBoolField(field, value) {
           @click.stop="openSkillsDialog"
         >Skills</button>
         <span
-          v-else
+          v-else-if="anySkillRequired"
           class="inspector-detail-badge inspector-detail-badge-toggle inspector-detail-badge-toggle-on"
         >Skills</span>
         <span
@@ -114,6 +120,19 @@ function commitBoolField(field, value) {
           title="Click to toggle"
           @click.stop="commitBoolField('signal-tracking-on-ai-message', !project?.signal_tracking_on_ai_message)"
         >Track on AI</span>
+        <span
+          v-if="showEditForm"
+          class="inspector-detail-badge inspector-detail-badge-toggle"
+          :class="restartsEverySession ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+          title="Where a returning user's new session starts: Restart from init-action, Resume where the last one left. Click to toggle"
+          @click.stop="toggleNewSessionStrategy"
+        >{{ restartsEverySession ? 'Restart' : 'Resume' }}</span>
+        <span
+          v-else
+          class="inspector-detail-badge inspector-detail-badge-toggle"
+          :class="restartsEverySession ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+          title="Where a returning user's new session starts: Restart from init-action, Resume where the last one left"
+        >{{ restartsEverySession ? 'Restart' : 'Resume' }}</span>
       </div>
     </div>
     <div class="inspector-detail-body">

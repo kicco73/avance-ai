@@ -12,7 +12,8 @@ const PROJECT_FIELDS = [
   { name: 'id' },
   { name: 'ui-label' },
   { name: 'ui-description' },
-  { name: 'signal-tracking-on-ai-message' }
+  { name: 'signal-tracking-on-ai-message' },
+  { name: 'new-session-strategy' }
 ]
 
 const STATE_FIELDS = [

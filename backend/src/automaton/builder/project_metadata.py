@@ -44,7 +44,7 @@ class ProjectMetadata:
         if not isinstance(raw_project, dict):
             raise ValueError(
                 "'project' is required and must be a mapping of fields (id, family, ui-label, "
-                "ui-description, signal-tracking-on-ai-message, services), got "
+                "ui-description, signal-tracking-on-ai-message, new-session-strategy, services), got "
                 f"{type(raw_project).__name__ if raw_project is not None else 'nothing'}."
             )
         project_id = raw_project.get("id")

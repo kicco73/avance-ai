@@ -32,7 +32,9 @@ INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value", "ai-definition"}
 SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description", "ai-definition"}
-PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "signal-tracking-on-ai-message", "general-prompt"}
+PROJECT_EDITABLE_FIELDS = {
+    "id", "ui-label", "ui-description", "signal-tracking-on-ai-message", "new-session-strategy", "general-prompt",
+}
 
 
 def _ensure_editable_field(field: str, editable_fields: set[str], noun: str) -> None:

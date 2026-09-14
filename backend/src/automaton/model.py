@@ -179,4 +179,5 @@ class ProjectPayload(TypedDict):
     ui_description: str | None
     services: dict[str, str]
     signal_tracking_on_ai_message: bool
+    new_session_strategy: str
     general_prompt: str
