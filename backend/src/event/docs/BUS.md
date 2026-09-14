@@ -3,14 +3,15 @@
 `docs/BUS.md` is the vocabulary; this is only what this package does with
 it.
 
+**Subscribes** to `state.changed` and `env.changed` — what a conversation
+did, addressed to the user it happened to. Both carry the project on the
+envelope, which is what lets this package ask which other projects were
+watching that one.
+
 **Publishes** `ui.notification` — `{project_name, state, buttons}` — when
 a watching project moved without anybody speaking to it. That is the whole
 outbound surface: the transition is already recorded by the time the
 message goes out, so nobody carrying it costs the watcher nothing.
-
-It subscribes to no bus type. What wakes it is the in-process event
-registry (`events/`, `StateChanged` and `EnvChanged`), not the Bus:
-those carry a project id and a username and never leave the server.
 
 Composition is deliberately late. The service re-evaluates against the
 tracking engine and the task namespaces, which exist only once the core

@@ -25,8 +25,10 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-def _automaton(*, trigger: str | None = None) -> Automaton:
-    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger)
+def _automaton(*, trigger: str | None = None, action_env: dict | None = None) -> Automaton:
+    action = Action(
+        name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger, env=action_env,
+    )
     state_a = State(
         key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action],
         output=("status", "confidence"),
@@ -43,6 +45,7 @@ def _automaton(*, trigger: str | None = None) -> Automaton:
         env_keys=[
             EnvKey(name="status", ai_definition="Where things stand."),
             EnvKey(name="confidence", ai_definition="0-100."),
+            EnvKey(name="seen", ai_definition="Whether it has been seen."),
         ],
     )
 
@@ -109,3 +112,26 @@ async def test_a_trigger_this_same_turn_already_sees_the_fresh_output_value(db):
 
     assert processor.out.state.key == "b"
     assert env.action_set()["status"] == "done"
+
+
+async def test_the_turn_reports_every_key_it_wrote_whoever_wrote_it(db):
+    automaton = _automaton(trigger="env.status == 'done'", action_env={"seen": "True"})
+    processor, _, _ = _processor(db, automaton, '{"status": "done", "confidence": 90}')
+
+    result = await processor.process("hello")
+
+    assert result["env_changed"] == {"status": "done", "confidence": 90, "seen": True}
+
+
+async def test_the_turn_reports_where_it_moved_from_only_when_it_moved(db):
+    moving = _automaton(trigger="env.status == 'done'")
+    processor, _, _ = _processor(db, moving, '{"status": "done", "confidence": 90}')
+    moved = await processor.process("hello")
+
+    still = _automaton(trigger="env.status == 'never'")
+    processor, _, _ = _processor(db, still, '{"status": "done", "confidence": 90}')
+    stayed = await processor.process("hello")
+
+    assert (moved["from_state"], moved["new_state"]) == ("a", "b")
+    assert (stayed["from_state"], stayed["new_state"]) == (None, None)
+    assert stayed["env_changed"] == {"status": "done", "confidence": 90}

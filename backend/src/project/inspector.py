@@ -7,7 +7,6 @@ from automaton.identifier_registry import IdentifierRegistry
 from db import Db
 from system.web_session import WebSession
 from tracking.sources import driver_class_for
-from tracking.tracking_engine import TrackingEngine
 
 from .archive.automaton_loader import AutomatonLoader
 from .health import ProjectHealthChecker, broken_fields
@@ -152,9 +151,6 @@ class ProjectInspector:
             transition_log_level=new_state.transition_log_level,
             origin='manual',
         )
-        session = self._db.get_chat_session(session_id)
-        assert session is not None
-        TrackingEngine.notify_transition(session["username"], session["project_id"], state.key, new_state.key)
         return automaton.get_state_payload(new_state), action, state.key
 
     def get_active_state_payload(self) -> StatePayload:

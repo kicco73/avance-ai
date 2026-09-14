@@ -1,9 +1,8 @@
-"""TrackingEngine.notify_transition/apply_action_env's own event
-publishing: StateChanged for a real (non-self-loop) transition,
-EnvChanged for each action-set key an action's `env:` field (or its own
-`on-exit` script — same env-write timing, see Automaton.
-eval_action_on_exit) wrote. Both are no-ops when username/project_id
-aren't given at all.
+"""What TrackingEngine reports about an action's env writes: every
+action-set key an action's `env:` field (or its own `on-exit` script —
+same env-write timing, see Automaton.eval_action_on_exit) wrote is
+handed back to the caller, who is the one that says so on the way out
+(see turn/outbound.py). The engine itself publishes nothing.
 """
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ import pytest
 
 from automaton.automaton import Action, Automaton, State
 from automaton.scope import EvaluationScope
-from events import EnvChanged, StateChanged, subscribe
 from tracking.actuators.chat_namespace import FakeChatNamespace
 from tracking.tracking_engine import TrackingEngine
 
@@ -97,30 +95,30 @@ def _engine() -> tuple[TrackingEngine, FakeSink, FakeEnv]:
     return TrackingEngine(sink, env, FakeScopeBuilder()), sink, env
 
 
-def _collect(event_type):
-    received = []
-    subscribe(event_type, received.append)
-    return received
+def test_apply_transition_records_the_move_and_hands_back_what_its_action_wrote():
+    automaton, state, action = _automaton(action_target="b", action_env={"counter": "1"})
+    engine, sink, env = _engine()
+
+    tracking_id, written = engine.apply_transition(
+        automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID,
+    )
+
+    assert sink.transitions == [("a", "go", "b")]
+    assert written == {"counter": 1}
+    assert env.updates == [{"counter": 1}]
+    assert tracking_id == 1
 
 
-def test_apply_transition_publishes_state_changed_only_for_a_real_transition_carrying_an_identity():
-    received = _collect(StateChanged)
+def test_apply_transition_with_no_action_writes_nothing():
+    automaton, state, _action = _automaton(action_target="b")
+    engine, sink, env = _engine()
 
-    real_automaton, real_state, real_action = _automaton(action_target="b")
-    engine, sink, _ = _engine()
-    engine.apply_transition(real_automaton, real_state, real_action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
-    assert received == [StateChanged(username=USERNAME, project_id=PROJECT_ID, from_state="a", to_state="b")]
+    tracking_id, written = engine.apply_transition(
+        automaton, state, None, {}, session_id=1, origin='trigger',
+    )
 
-    loop_automaton, loop_state, loop_action = _automaton(action_target="a")
-    loop_engine, loop_sink, _ = _engine()
-    loop_engine.apply_transition(loop_automaton, loop_state, loop_action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID)
-    assert loop_sink.transitions == [("a", "go", "a")]
-
-    anonymous_engine, anonymous_sink, _ = _engine()
-    anonymous_engine.apply_transition(real_automaton, real_state, real_action, {}, session_id=1, origin='trigger')
-    assert anonymous_sink.transitions == [("a", "go", "b")]
-
-    assert len(received) == 1
+    assert (tracking_id, written) == (0, {})
+    assert sink.transitions == [] and env.updates == []
 
 
 def test_apply_transition_requires_an_origin():
@@ -131,33 +129,32 @@ def test_apply_transition_requires_an_origin():
         engine.apply_transition(automaton, state, action, {}, session_id=1)
 
 
-def test_apply_action_env_publishes_env_changed_per_written_key_only_when_an_identity_is_given():
-    received = _collect(EnvChanged)
-
+def test_apply_action_env_returns_every_key_it_wrote():
     automaton, state, action = _automaton(action_target="a", action_env={"counter": "1", "flag": "True"})
     engine, _sink, env = _engine()
-    engine.apply_action_env(automaton, action, {}, state.key, username=USERNAME, project_id=PROJECT_ID)
+
+    written = engine.apply_action_env(automaton, action, {}, state.key)
 
     assert env.updates == [{"counter": 1, "flag": True}]
-    assert {(e.key, e.value) for e in received} == {("counter", 1), ("flag", True)}
-    assert all(e.username == USERNAME and e.project_id == PROJECT_ID for e in received)
-
-    anonymous_engine, _sink, anonymous_env = _engine()
-    anonymous_engine.apply_action_env(automaton, action, {}, state.key)
-
-    assert anonymous_env.updates == [{"counter": 1, "flag": True}]
-    assert len(received) == 2
+    assert written == {"counter": 1, "flag": True}
 
 
-def test_apply_action_env_also_applies_and_publishes_on_exit_writes():
-    received = _collect(EnvChanged)
+def test_apply_action_env_returns_nothing_for_an_action_that_writes_nothing():
+    automaton, state, action = _automaton(action_target="a")
+    engine, _sink, env = _engine()
 
+    assert engine.apply_action_env(automaton, action, {}, state.key) == {}
+    assert env.updates == []
+
+
+def test_apply_action_env_also_applies_and_returns_on_exit_writes():
     automaton, state, action = _automaton(action_target="a", action_on_exit="env.counter = 1")
     engine, _sink, env = _engine()
-    engine.apply_action_env(automaton, action, {}, state.key, username=USERNAME, project_id=PROJECT_ID)
+
+    written = engine.apply_action_env(automaton, action, {}, state.key)
 
     assert env.updates == [{"counter": 1}]
-    assert {(e.key, e.value) for e in received} == {("counter", 1)}
+    assert written == {"counter": 1}
 
 
 def test_apply_action_env_prefers_on_exit_over_env_for_the_same_key():
@@ -197,14 +194,3 @@ def test_apply_action_env_never_touches_chat_when_on_exit_writes_env_only():
     engine.apply_action_env(automaton, action, {}, state.key)
 
     assert env.updates == [{"counter": 1}]
-
-
-def test_notify_transition_is_also_reachable_as_a_bare_staticmethod():
-    """The other of its own two call sites (see the method's own
-    docstring) — ProjectService.apply_manual_action calls this directly
-    off the class, with no TrackingEngine instance of its own to hand."""
-    received = _collect(StateChanged)
-
-    TrackingEngine.notify_transition(USERNAME, PROJECT_ID, "a", "b")
-
-    assert received == [StateChanged(username=USERNAME, project_id=PROJECT_ID, from_state="a", to_state="b")]

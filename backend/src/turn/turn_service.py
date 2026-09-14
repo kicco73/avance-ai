@@ -701,7 +701,7 @@ class TurnService(object):
 			)
 			automaton, state = self.__project_service.get_automaton_and_state_for_session(session["id"])
 			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
-			tracking_engine.apply_action_env(
+			env_changed = tracking_engine.apply_action_env(
 				automaton, action, {}, source_state_key, username=WebSession().user, project_id=project_id,
 				session_id=session["id"],
 			)
@@ -711,8 +711,10 @@ class TurnService(object):
 			return {
 				"state": fresh,
 				"state_changed": True,
+				"from_state": source_state_key,
 				"new_state": fresh.get("key"),
 				"triggered_action": action_name,
+				"env_changed": env_changed,
 				"buttons": self.buttons_for(session["id"], fresh),
 				"reply": reply,
 				"ai_model": self.get_ai_models_info(),
@@ -803,8 +805,10 @@ class TurnService(object):
 			"state": automaton.get_state_payload(state),
 			"buttons": self.buttons_for(session_id, automaton.get_state_payload(state)),
 			"state_changed": False,
+			"from_state": None,
 			"new_state": None,
 			"triggered_action": None,
+			"env_changed": {},
 			"ai_model": self.get_ai_models_info(),
 			"session_id": session_id,
 		}

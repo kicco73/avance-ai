@@ -132,3 +132,24 @@ async def test_an_unexported_env_key_never_reaches_the_prompt(db):
 
     system_prompt, _ = ai_service.calls[0]
     assert "reset_counter" not in system_prompt.full_text()
+
+
+async def test_the_result_names_where_it_came_from_and_what_it_wrote(db):
+    turn_service, _ = _turn_service(db, _automaton({"reset_counter": "True"}))
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
+
+    result = await turn_service.apply_manual_action("advance", session["id"])
+
+    assert result["from_state"] == "a"
+    assert result["new_state"] == "b"
+    assert result["env_changed"] == {"reset_counter": True}
+
+
+async def test_an_action_that_writes_nothing_reports_an_empty_env_change(db):
+    turn_service, _ = _turn_service(db, _automaton(None))
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
+
+    result = await turn_service.apply_manual_action("advance", session["id"])
+
+    assert result["env_changed"] == {}
+    assert result["from_state"] == "a"

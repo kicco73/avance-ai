@@ -9,7 +9,6 @@ from db.db import Db
 from ai import AiService
 from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
-from events import EnvChanged, publish
 from system import bus
 from system.bus import POINT_SPOKEN_REPLY
 from system.logging_factory import LoggerFactory
@@ -103,6 +102,7 @@ class OutVariables:
 	action: Action | None
 	tracking_linked_to_message: bool = False
 	signals_resolved: bool = False
+	env_changed: dict = field(default_factory=dict)
 
 class TrackingProcessor(object):
 	user: UserVariables
@@ -194,8 +194,7 @@ class TrackingProcessor(object):
 		}
 		if output_for_env:
 			self.env.update_action_set(output_for_env, origin="output")
-			for key, value in output_for_env.items():
-				publish(EnvChanged(username=WebSession().user, project_id=self.user.project_id, key=key, value=value))
+			self.out.env_changed.update(output_for_env)
 		self.db.mark_messages_answered(self._fragment_ids, assistant_id)
 
 		if self.metadata.tool_calls:
@@ -537,7 +536,9 @@ class TrackingProcessor(object):
 			"state": self._current_state_payload(self.user.automaton, self.out.state, self.metadata.button_translations),
 			"state_changed": action is not None,
 			"moved_before_reply": self.moved_before_reply,
+			"from_state": self.user.state.key if action else None,
 			"new_state": action.target if action else None,
+			"env_changed": dict(self.out.env_changed),
 			"triggered_action": action.name if action else None,
 			"ai_model": self.ai_service.get_models_info(),
 			"session_id": self.user.session_id,

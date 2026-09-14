@@ -1,8 +1,8 @@
 """The Bus: typed messages, producers, listeners.
 
 Not the event dispatcher in `events/`, and the difference is the reason
-both exist. An event there is a *fact that happened* — StateChanged,
-AvailabilityChanged — with no destination and no answer. A message here
+both exist. An event there is a *fact that happened* — AvailabilityChanged,
+ProjectRevisionBuildFailed — with no destination and no answer. A message here
 is a *delivery*: it has a type, it carries everything its handler needs,
 and something is expected to happen to it.
 
@@ -65,6 +65,7 @@ UI_NOTIFICATION = "ui.notification"
 UI_PROGRESS = "ui.progress"
 OUTPUT_REACTION = "output.reaction"
 STATE_CHANGED = "state.changed"
+ENV_CHANGED = "env.changed"
 OUTPUT_ERROR = "output.error"
 
 TASK_STARTED = "task.started"

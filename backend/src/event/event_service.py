@@ -1,16 +1,15 @@
 """Cross-project wake-up: when a project's state/env changes for a user,
 every OTHER project referencing it via automaton.* that the same user has
 ever talked to gets a chance to re-evaluate its triggers. One handler
-serves both event types — neither carries anything the other doesn't."""
+serves both message types — neither carries anything the other doesn't."""
 from __future__ import annotations
 
 from ai import AiService
 from automaton.automaton import pressable_actions
 from db.db import Db
-from events import EnvChanged, StateChanged, subscribe, unsubscribe
 from jobs import CancelableJob
 from system import bus
-from system.bus import UI_NOTIFICATION, Message
+from system.bus import ENV_CHANGED, STATE_CHANGED, UI_NOTIFICATION, Message
 from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
@@ -66,21 +65,24 @@ class EventService:
         self._ai_service = ai_service
 
     def register(self) -> None:
-        subscribe(StateChanged, self._on_event)
-        subscribe(EnvChanged, self._on_event)
+        for message_type in (STATE_CHANGED, ENV_CHANGED):
+            bus.subscribe(message_type, self._on_event)
 
     def unregister(self) -> None:
-        unsubscribe(StateChanged, self._on_event)
-        unsubscribe(EnvChanged, self._on_event)
+        for message_type in (STATE_CHANGED, ENV_CHANGED):
+            bus.unsubscribe(message_type, self._on_event)
 
-    def _on_event(self, event: StateChanged | EnvChanged) -> None:
+    async def _on_event(self, message: Message) -> None:
+        if message.username is None or message.project_id is None:
+            logger.debug("%s carries no user or no project — nobody to wake.", message.type)
+            return
         try:
-            for observer_project_id in self._db.get_observers(event.project_id):
-                if self._db.get_latest_chat_session(event.username, observer_project_id) is not None:
-                    self._wake(event.username, observer_project_id)
+            for observer_project_id in self._db.get_observers(message.project_id):
+                if self._db.get_latest_chat_session(message.username, observer_project_id) is not None:
+                    self._wake(message.username, observer_project_id)
         except Exception:
             logger.exception(
-                "Wake-up dispatch failed for %s in project '%s'.", type(event).__name__, event.project_id
+                "Wake-up dispatch failed for %s in project '%s'.", message.type, message.project_id
             )
 
     async def _reevaluate_and_apply(self, username: str, observer_project_id: str) -> None:

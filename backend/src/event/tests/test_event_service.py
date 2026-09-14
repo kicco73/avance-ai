@@ -1,6 +1,6 @@
 """Cross-project wake-up, end to end: a self-loop action in one project
 ("watcher") references another ("observed") via automaton.*. A real
-transition in "observed" publishes StateChanged, the reverse index
+transition in "observed" publishes `state.changed` on the Bus, the reverse index
 resolves it back to "watcher", and re-evaluating its triggers fires
 the self-loop, recording a new transition.
 """
@@ -12,8 +12,8 @@ import time
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from system.bus import UI_NOTIFICATION
-from events import StateChanged, publish
+from system import bus
+from system.bus import STATE_CHANGED, UI_NOTIFICATION, Message
 from conftest import RecordedMessages, make_test_namespace_factory, make_test_scheduler_service
 from turn.sessions.session_manager import SessionManager
 from project.archive.automaton_loader import AutomatonLoader
@@ -193,6 +193,15 @@ def _signals_once_woken(db, session_id: int, timeout: float = 2.0) -> list:
     return db.get_signals(session_id)
 
 
+def _publish_state_changed() -> None:
+    """The frame a turn in "observed" puts on the Bus (see
+    turn/outbound.py), with the envelope that names who it happened to."""
+    asyncio.run(bus.publish(Message(
+        type=STATE_CHANGED, username=USERNAME, project_id="observed",
+        body={"state": None, "from_state": "a", "new_state": "b", "triggered_action": "go"},
+    )))
+
+
 def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app_db):
     db = app_db
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
@@ -201,7 +210,7 @@ def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app
     service = EventService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
     service.register()
 
-    publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
+    _publish_state_changed()
 
     rows = _signals_once_woken(db, watcher_session["id"])
     assert len(rows) == 1
@@ -219,7 +228,7 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
     service = EventService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
     service.register()
 
-    publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
+    _publish_state_changed()
     time.sleep(0.1)
     assert db.get_observers("observed") == ["watcher"]
 
@@ -230,7 +239,7 @@ def test_the_skill_is_what_puts_the_listener_there(app):
 
     app.state.scheduler_service.start()
     try:
-        publish(StateChanged(username=USERNAME, project_id="observed", from_state="a", to_state="b"))
+        _publish_state_changed()
         rows = _signals_once_woken(db, watcher_session["id"])
     finally:
         app.state.scheduler_service.stop()

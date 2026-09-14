@@ -74,7 +74,8 @@ annotating one. Even reading a transcript opens nothing
 | `output.tool` | `dict` — one tool call; `phase` tells its two halves apart |
 | `output.reaction` | `{user_message_id, reaction}` — the model reacted to **that** message |
 | `output.error` | `{message, detail, code}` — in place of the reply. Only for things that went wrong: a conversation that cannot be had is `session.blocked` |
-| `state.changed` | `{state, new_state, triggered_action}` — said only **when it moves**: a reader keeps the last one it was told |
+| `state.changed` | `{state, from_state, new_state, triggered_action}` — said only **when it moves**: a reader keeps the last one it was told. `from_state` is where it moved from, so a listener can tell a real transition (`from_state != new_state`) from a self-loop |
+| `env.changed` | `{key, value}` — one env key an action wrote, one message per key: whoever cares that a key moved does not care how many others moved with it. Same envelope as `state.changed` |
 | `state.buttons` | `{actions}` — what can be done now, and the **only** place the choices are: no state payload carries them |
 
 ## Notifications and tools

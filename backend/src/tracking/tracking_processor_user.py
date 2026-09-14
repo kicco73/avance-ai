@@ -38,11 +38,11 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		if transitioned:
 
 			self.out.reply = ""
-			self._tracking_engine.apply_action_env(
+			self.out.env_changed.update(self._tracking_engine.apply_action_env(
 				self.user.automaton, self.out.action, self.metadata.signals, self.user.state.key,
 				username=WebSession().user, project_id=self.user.project_id, session_id=self.user.session_id,
 				output_values=self.metadata.output,
-			)
+			))
 			base_prompt, chat_history, env_block = self._build_base_prompt_and_history(self.out.state)
 			prompt = self.build_regeneration_prompt(self.out.state, base_prompt)
 			async for chunk in self.assistant_talker.chat(
@@ -64,12 +64,13 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 					output_values=self.metadata.output,
 				)
 			else:
-				self.out.tracking_id = self._tracking_engine.apply_transition(
+				self.out.tracking_id, written = self._tracking_engine.apply_transition(
 					self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 					message_id=self.user.message_id if has_real_user_message else None,
 					origin='trigger', username=WebSession().user, project_id=self.user.project_id,
 					output_values=self.metadata.output,
 				)
+				self.out.env_changed.update(written)
 			self.out.tracking_linked_to_message = has_real_user_message
 
 		return self.out

@@ -16,10 +16,11 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			self._resolve_signals({})
 
 		if self._records_evaluation():
-			self.out.tracking_id = self._tracking_engine.apply_transition(
+			self.out.tracking_id, written = self._tracking_engine.apply_transition(
 				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 				origin='trigger', username=WebSession().user, project_id=self.user.project_id,
 				output_values=self.metadata.output,
 			)
+			self.out.env_changed.update(written)
 
 		return self.out

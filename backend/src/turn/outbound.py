@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from system import bus
 from system.bus import (
     OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    STATE_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES, Message,
+    STATE_CHANGED, ENV_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES, Message,
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
@@ -105,9 +105,17 @@ class Outbound(object):
         for _ in filter(None, [result.get("state_changed")]):
             self.put(STATE_CHANGED, {
                 "state": result.get("state"),
+                "from_state": result.get("from_state"),
                 "new_state": result.get("new_state"),
                 "triggered_action": result.get("triggered_action"),
             })
+
+    def wrote(self, result: dict) -> None:
+        """One message per env key an action wrote this turn. Said for
+        the key, not for the turn: whoever listens for a key cares that
+        it moved, never how many others moved with it."""
+        for key, value in (result.get("env_changed") or {}).items():
+            self.put(ENV_CHANGED, {"key": key, "value": value})
 
     def informed(self, session: dict, services: dict, kind: str) -> None:
         self.put(SESSION_INFO, {
@@ -134,6 +142,7 @@ class Outbound(object):
         for turn in filter(None, [result]):
             self.reacted(turn)
             self.moved(turn)
+            self.wrote(turn)
             self.offered(turn.get("buttons"))
             self.said(turn["reply"])
 

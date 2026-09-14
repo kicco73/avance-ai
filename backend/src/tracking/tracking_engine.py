@@ -6,7 +6,6 @@ from typing import Protocol
 from automaton.automaton import Action, Automaton, State
 from db.db import Db
 from db.models import TestObservation
-from events import EnvChanged, StateChanged, publish
 from system.logging_factory import LoggerFactory
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -151,25 +150,26 @@ class TrackingEngine:
         username: str | None = None,
         project_id: str | None = None,
         output_values: dict | None = None,
-    ) -> int:
-        """`username`/`project_id`: optional, defaulting to None meaning
-        "don't publish" — a test replay has no real user/project of
-        its own and must never trigger a StateChanged/EnvChanged a wake-up
-        handler could act on. Returns the tracking row id. The fired
-        action's own task is scheduled as a task by apply_action_env,
-        never returned: it reaches the browser over the websocket.
-        `output_values`: structured output dict from this turn's AI generation."""
+    ) -> tuple[int, dict]:
+        """Returns the tracking row id and the env keys the fired action
+        wrote — the second so whoever ran the turn can say so on the way
+        out (see turn/outbound.py). The fired action's own task is
+        scheduled as a task by apply_action_env, never returned: it
+        reaches the browser over the websocket. `output_values`:
+        structured output dict from this turn's AI generation."""
         if action is None:
-            return self._sink.save_signal_snapshot(signal_values, session_id, message_id, output_values=output_values)
+            return self._sink.save_signal_snapshot(
+                signal_values, session_id, message_id, output_values=output_values,
+            ), {}
 
-        self.apply_action_env(
+        written = self.apply_action_env(
             automaton, action, signal_values, state.key, username=username, project_id=project_id,
             session_id=session_id, output_values=output_values,
         )
         return self.record_transition(
             automaton, state, action, signal_values, session_id, message_id,
             origin=origin, username=username, project_id=project_id, output_values=output_values,
-        )
+        ), written
 
     def record_transition(
         self,
@@ -197,21 +197,7 @@ class TrackingEngine:
             origin=origin,
             output_values=output_values,
         )
-        self.notify_transition(username, project_id, state.key, action.target)
         return tracking_id
-
-    @staticmethod
-    def notify_transition(
-        username: str | None, project_id: str | None, old_state: str, new_state: str
-    ) -> None:
-        """Publishes StateChanged for a *real* transition only (old_state
-        != new_state) — a no-op when either identity is missing. Called
-        right after save_transition, from both the auto-tracking and manual-action paths."""
-        if username is None or project_id is None:
-            return
-        if old_state == new_state:
-            return
-        publish(StateChanged(username=username, project_id=project_id, from_state=old_state, to_state=new_state))
 
     def apply_action_env(
         self,
@@ -224,15 +210,16 @@ class TrackingEngine:
         project_id: str | None = None,
         session_id: int | None = None,
         output_values: dict | None = None,
-    ) -> None:
+    ) -> dict:
         """Applies `action`'s own env writes to the current scope — both
         the legacy declarative `env:` map and its own `on-exit` script
         (the future replacement for it, same `key = expr` writes, see
         Automaton.eval_action_on_exit) — shared by both the auto-tracking
         and manual-action paths (the latter fires with empty
-        signal_values). Publishes one EnvChanged per key actually
-        written; on-exit's own value for a key wins over env:'s should an
-        action somehow declare both. Then hands `action.task` (§6.5's
+        signal_values). Returns the keys it actually wrote, so whoever
+        ran the turn can say so on the way out (see turn/outbound.py);
+        on-exit's own value for a key wins over env:'s should an action
+        somehow declare both. Then hands `action.task` (§6.5's
         task.* calls) to the scope's own task namespace, which runs it
         as an ActionTask due now — never inline here: task.prompt
         is a model call, send_mail a network call, and the browser gets
@@ -248,7 +235,7 @@ class TrackingEngine:
         `output_values`: structured output dict from this turn's AI
         generation, available in env expressions and task/on-exit scripts."""
         if not action.env and not action.task and not action.on_exit:
-            return
+            return {}
         scope = self._scope_builder.build(
             automaton, state_key, signal_values, session_id=session_id, output_values=output_values,
         )
@@ -261,13 +248,11 @@ class TrackingEngine:
             updates.update(on_exit_updates)
         if updates:
             self._env.update_action_set(updates)
-            if username is not None and project_id is not None:
-                for key, value in updates.items():
-                    publish(EnvChanged(username=username, project_id=project_id, key=key, value=value))
         if action.task:
             scope["task"].schedule_task(action, scope, session_id=session_id)
         if chat_snippets:
             scope["chat"].push_notification(chat_snippets)
+        return updates
 
     def schedule_task(
         self, automaton: Automaton, action: Action, state_key: str, session_id: int | None = None,
