@@ -92,17 +92,23 @@ class WsConnection(object):
         self._outgoing.put_nowait(payload)
 
     async def write_loop(self) -> None:
-        try:
-            while True:
-                payload = await self._outgoing.get()
-                if payload is None:
-                    await self._close_socket()
-                    return
+        """One frame failing to send — a transient network blip, a
+        payload that momentarily can't serialize — must not take every
+        frame queued after it down too: the browser hasn't disconnected
+        (that surfaces on the *receive* side, as WebSocketDisconnect,
+        which is what actually calls close() below), so there is no
+        reason yet to stop trying. Logged at WARNING, not swallowed at
+        DEBUG: a frame that never reached the browser is worth knowing
+        about, not just discarding quietly."""
+        while True:
+            payload = await self._outgoing.get()
+            if payload is None:
+                await self._close_socket()
+                return
+            try:
                 await self._websocket.send_json(payload)
-        except Exception as exc:
-            logger.debug(f"websocket writer stopped: {exc}")
-        finally:
-            self._closed = True
+            except Exception as exc:
+                logger.warning(f"websocket send failed, frame dropped: type={payload.get('type')}: {exc}")
 
     async def _close_socket(self) -> None:
         """Closing goes through the writer task rather than the caller so

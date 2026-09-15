@@ -305,7 +305,7 @@ class TrackingProcessor(object):
 		remaining_history_budget = self._enforce_input_budget(
 			base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
 		)
-		chat_history = self._build_chat_history(turn_attachments, remaining_history_budget)
+		chat_history = self._build_chat_history(state, turn_attachments, remaining_history_budget)
 
 		return self.assistant_talker.chat(
 			prompt, chat_history, on_metadata,
@@ -399,11 +399,11 @@ class TrackingProcessor(object):
 		remaining_history_budget = self._enforce_input_budget(
 			base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
 		)
-		return prompt, self._build_chat_history(turn_attachments, remaining_history_budget), env_block
+		return prompt, self._build_chat_history(state, turn_attachments, remaining_history_budget), env_block
 
-	def _build_chat_history(self, turn_attachments: list, token_budget: int | None) -> list[dict]:
+	def _build_chat_history(self, state: State, turn_attachments: list, token_budget: int | None) -> list[dict]:
 		priming_messages = build_priming_messages(turn_attachments)
-		since = self.db.history_cutoff_for_session(self.user.session_id, self.user.state.history_cutoff)
+		since = self.db.history_cutoff_for_session(self.user.session_id, state.history_cutoff)
 		history = priming_messages + self._strip_timestamps(
 			self.db.get_turn_history(self.user.session_id, since, token_budget)
 		)

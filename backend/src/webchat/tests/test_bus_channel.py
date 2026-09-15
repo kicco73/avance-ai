@@ -222,6 +222,49 @@ class TestPushEvent:
         assert other.sent == []
 
 
+class _FailsOnNthSendWebSocket(_OpenWebSocket):
+    """Raises instead of sending its `fail_on`-th frame — a transient
+    write failure (a serialization error, a momentary network blip) that
+    has nothing to do with the socket actually disconnecting."""
+
+    def __init__(self, *events: str, fail_on: int, username: str = USERNAME) -> None:
+        super().__init__(*events, username=username)
+        self._fail_on = fail_on
+        self._attempts = 0
+
+    async def send_json(self, payload: dict) -> None:
+        self._attempts += 1
+        if self._attempts == self._fail_on:
+            raise RuntimeError("simulated transient send failure")
+        self.sent.append(payload)
+
+
+class TestWriterSurvivesASendFailure:
+    """One frame failing to serialize/send must not be allowed to take
+    every frame after it down with it — the browser is still connected
+    (`receive_text` never raised), so the server has no reason yet to
+    believe otherwise."""
+
+    def test_a_send_failure_does_not_silently_stop_later_deliveries(self):
+        channel = BusChannel(_FakeAuthService())
+        websocket = _FailsOnNthSendWebSocket(UI_NOTIFICATION, fail_on=2)
+        pushed = {}
+
+        async def scenario():
+            async with _connected(channel, websocket):
+                pushed["first"] = await channel.push_event(USERNAME, UI_NOTIFICATION, {"type": UI_NOTIFICATION, "n": 1})
+                await asyncio.sleep(0)
+                pushed["second"] = await channel.push_event(USERNAME, UI_NOTIFICATION, {"type": UI_NOTIFICATION, "n": 2})
+                await asyncio.sleep(0)
+                pushed["third"] = await channel.push_event(USERNAME, UI_NOTIFICATION, {"type": UI_NOTIFICATION, "n": 3})
+                await asyncio.sleep(0)
+
+        asyncio.run(scenario())
+
+        assert pushed == {"first": True, "second": True, "third": True}
+        assert websocket.sent == [{"type": UI_NOTIFICATION, "n": 1}, {"type": UI_NOTIFICATION, "n": 3}]
+
+
 class TestRegistration:
     """What a `subscribe` frame did is read where it shows: a type the
     connection registered for reaches it, one it was refused does not."""
