@@ -7,6 +7,8 @@ equivalent of what test_action_task.py exercises for task.*, end to
 end against a real TaskNamespaceFactory."""
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
@@ -81,7 +83,7 @@ def _fire_go(db, factory, project_service: ProjectService, session_id: int, *, f
         task_namespace, chat_namespace,
     )
     engine = TrackingEngine(DbTrackingSink(db), env, builder)
-    engine.apply_action_env(automaton, automaton.states["a"].actions[0], {}, "a", session_id=session_id)
+    engine.apply_action_env(automaton, automaton.states["a"].actions[0], {}, ChoiceSelection.NONE, "a", session_id=session_id)
 
 
 @pytest.fixture

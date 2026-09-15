@@ -4,6 +4,7 @@ import json
 from typing import Protocol
 
 from automaton.automaton import Action, Automaton, State
+from automaton.choice import ChoiceSelection
 from db.db import Db
 from db.models import TestObservation
 from system.logging_factory import LoggerFactory
@@ -134,8 +135,8 @@ class TrackingEngine:
         self._auto_tracking_enabled = auto_tracking_enabled
 
     def evaluate_triggered_action(
-        self, automaton: Automaton, state: State, signal_values: dict, session_id: int | None = None,
-        output_values: dict | None = None,
+        self, automaton: Automaton, state: State, signal_values: dict, selection: ChoiceSelection,
+        session_id: int | None = None, output_values: dict | None = None,
     ) -> Action | None:
         """None whenever auto-tracking is frozen or `state` has nothing
         triggerable. Only decides which action fires from already-computed
@@ -146,9 +147,15 @@ class TrackingEngine:
             return None
 
         scope = self._scope_builder.build(
-            automaton, state.key, signal_values, session_id=session_id, output_values=output_values,
+            automaton, state.key, signal_values, selection, session_id=session_id, output_values=output_values,
         )
         return automaton.evaluate_triggers_action(state.key, scope)
+
+    def evaluate_choice(
+        self, automaton: Automaton, state_key: str, selection: ChoiceSelection, session_id: int,
+    ) -> Action | None:
+        scope = self._scope_builder.build(automaton, state_key, None, selection, session_id=session_id)
+        return automaton.evaluate_triggers_action(state_key, scope)
 
     def apply_transition(
         self,
@@ -156,6 +163,7 @@ class TrackingEngine:
         state: State,
         action: Action | None,
         signal_values: dict | None,
+        selection: ChoiceSelection,
         session_id: int,
         message_id: int | None = None,
         *,
@@ -176,7 +184,7 @@ class TrackingEngine:
             ), {}
 
         written = self.apply_action_env(
-            automaton, action, signal_values, state.key, username=username, project_id=project_id,
+            automaton, action, signal_values, selection, state.key, username=username, project_id=project_id,
             session_id=session_id, output_values=output_values,
         )
         return self.record_transition(
@@ -218,6 +226,7 @@ class TrackingEngine:
         automaton: Automaton,
         action: Action,
         signal_values: dict | None,
+        selection: ChoiceSelection,
         state_key: str,
         *,
         username: str | None = None,
@@ -251,7 +260,7 @@ class TrackingEngine:
         if not action.env and not action.task and not action.on_exit:
             return {}
         scope = self._scope_builder.build(
-            automaton, state_key, signal_values, session_id=session_id, output_values=output_values,
+            automaton, state_key, signal_values, selection, session_id=session_id, output_values=output_values,
         )
         updates: dict = {}
         if action.env:
@@ -269,7 +278,8 @@ class TrackingEngine:
         return updates
 
     def schedule_task(
-        self, automaton: Automaton, action: Action, state_key: str, session_id: int | None = None,
+        self, automaton: Automaton, action: Action, state_key: str, selection: ChoiceSelection,
+        session_id: int | None = None,
     ) -> None:
         """`action.task` scheduled against a fresh scope, with no env
         applied — for a caller firing an action's task outside a
@@ -278,5 +288,5 @@ class TrackingEngine:
         irrelevant or already handled elsewhere."""
         if not action.task:
             return
-        scope = self._scope_builder.build(automaton, state_key, None, session_id=session_id)
+        scope = self._scope_builder.build(automaton, state_key, None, selection, session_id=session_id)
         scope["task"].schedule_task(action, scope, session_id=session_id)

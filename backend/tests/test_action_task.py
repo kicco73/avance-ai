@@ -20,6 +20,8 @@ no browser-visible output of its own any more.
 """
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 import asyncio
 import json
 import time
@@ -153,7 +155,9 @@ def _fire_go(
         UserFacts(db), db, task_namespace, ai_service=ai_service,
     )
     engine = TrackingEngine(DbTrackingSink(db), env, builder)
-    engine.apply_action_env(automaton, automaton.states["a"].actions[0], signal_values, "a", session_id=session_id)
+    engine.apply_action_env(
+        automaton, automaton.states["a"].actions[0], signal_values, ChoiceSelection.NONE, "a", session_id=session_id,
+    )
 
 
 def _due_now(key: str) -> None:
@@ -257,7 +261,7 @@ def test_a_fake_task_namespaces_task_still_runs_as_a_task_and_reports(file_db):
         factory.fake(project_id=PROJECT),
     )
     TrackingEngine(DbTrackingSink(file_db), env, builder).apply_action_env(
-        automaton, automaton.states["a"].actions[0], {}, "a",
+        automaton, automaton.states["a"].actions[0], {}, ChoiceSelection.NONE, "a",
     )
 
     (row,) = file_db.list_tasks()

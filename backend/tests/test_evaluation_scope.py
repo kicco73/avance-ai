@@ -4,6 +4,8 @@ place a trigger/`env:`-expression evaluation scope gets assembled: the
 """
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 from datetime import datetime
 
 import pytest
@@ -73,7 +75,7 @@ def _pinned(db, automaton: Automaton) -> Automaton:
 def test_the_scope_always_carries_every_namespace(db):
     _published(db)
 
-    scope = _builder(db).build(_automaton_with_trigger("signal.mood >= 1"), "a", {})
+    scope = _builder(db).build(_automaton_with_trigger("signal.mood >= 1"), "a", {}, ChoiceSelection.NONE)
 
     assert set(scope["signal"]) == set()
     assert scope["env"] == {}
@@ -95,7 +97,7 @@ def test_a_metric_namespace_is_usable_in_a_trigger_end_to_end(db, trigger):
     _published(db)
     automaton = _automaton_with_trigger(trigger)
 
-    scope = _builder(db).build(automaton, "a", {})
+    scope = _builder(db).build(automaton, "a", {}, ChoiceSelection.NONE)
 
     assert automaton.evaluate_triggers("a", scope) == "advance"
 
@@ -105,19 +107,19 @@ def test_a_session_fact_a_user_fact_and_an_action_set_env_value_are_each_usable_
     builder = _builder(db)
 
     sessions = _automaton_with_trigger("session.number_of_user_sessions() >= 1")
-    assert sessions.evaluate_triggers("a", builder.build(sessions, "a", {})) is None
+    assert sessions.evaluate_triggers("a", builder.build(sessions, "a", {}, ChoiceSelection.NONE)) is None
     session_id = _session(db)
-    assert sessions.evaluate_triggers("a", builder.build(sessions, "a", {})) == "advance"
+    assert sessions.evaluate_triggers("a", builder.build(sessions, "a", {}, ChoiceSelection.NONE)) == "advance"
 
     db.set_user_role(USERNAME, "admin")
     user = _automaton_with_trigger("user.role == 'admin'")
-    scope = builder.build(user, "a", {})
+    scope = builder.build(user, "a", {}, ChoiceSelection.NONE)
     assert scope["user"]["role"] == "admin"
     assert user.evaluate_triggers("a", scope) == "advance"
 
     db.set_action_env(session_id, {"number_of_steps": 3})
     env_trigger = _automaton_with_trigger("env.number_of_steps >= 3")
-    scope = builder.build(env_trigger, "a", {})
+    scope = builder.build(env_trigger, "a", {}, ChoiceSelection.NONE)
     assert scope["env"]["number_of_steps"] == 3
     assert env_trigger.evaluate_triggers("a", scope) == "advance"
 
@@ -130,7 +132,7 @@ def test_the_env_namespace_carries_the_action_set_only_never_the_models_own_memo
     _published(db)
     db.set_env(_session(db), {"favorite_color": "blue"})
 
-    scope = _builder(db).build(_automaton_with_trigger("signal.mood >= 1"), "a", {})
+    scope = _builder(db).build(_automaton_with_trigger("signal.mood >= 1"), "a", {}, ChoiceSelection.NONE)
 
     assert "favorite_color" not in scope["env"]
     assert "memory" not in scope
@@ -154,7 +156,7 @@ def test_a_declared_source_is_readable_from_an_env_expression_end_to_end(db):
     ))
     action = automaton.states["a"].actions[0]
 
-    scope = _builder(db).build(automaton, "a", {})
+    scope = _builder(db).build(automaton, "a", {}, ChoiceSelection.NONE)
 
     assert scope["source"].pino.select_rows_containing("hello") == "note\nhello from the archive\n"
     assert automaton.eval_action_env(action, scope) == {"notes": "note\nhello from the archive\n"}
@@ -172,7 +174,7 @@ def test_attachment_read_resolves_a_text_archive_from_both_scope_views_and_raise
     )
     automaton = _pinned(db, _automaton_with_trigger("signal.mood >= 1"))
 
-    scope = _builder(db).build(automaton, "a", {})
+    scope = _builder(db).build(automaton, "a", {}, ChoiceSelection.NONE)
     task_scope = scope.for_task()
 
     assert scope["attachment"].read("policy.txt") == "be kind"

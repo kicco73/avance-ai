@@ -10,6 +10,7 @@ from http import HTTPStatus
 
 from automaton.automaton import Action, Automaton, SignalPayload, State, pressable_actions
 from automaton.build_error import AutomatonBuildError
+from automaton.choice import ChoiceSelection, button_name
 from db import Db, _utc_iso
 from ai import AiService
 from system.keyed_lock_registry import KeyedLockRegistry
@@ -113,7 +114,7 @@ class TurnService(object):
 				chat_namespace=self._namespace_factory.chat_fake(project_id=project_id),
 			)
 			tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
-		tracking_engine.schedule_task(automaton, action, action.target, session_id=session_id)
+		tracking_engine.schedule_task(automaton, action, action.target, ChoiceSelection.NONE, session_id=session_id)
 
 	@property
 	def _active_project_id(self) -> str:
@@ -554,7 +555,35 @@ class TurnService(object):
 		see docs/BUS.md), and a state that carried them too meant two
 		roads to the same buttons and a first paint that disagreed with
 		what was published."""
-		return pressable_actions(state_payload["actions"], self.is_auto_tracking_enabled(session_id))
+		pressable = pressable_actions(state_payload["actions"], self.is_auto_tracking_enabled(session_id))
+		return pressable + self._choice_buttons_for(session_id, state_payload["key"])
+
+	def _choice_buttons_for(self, session_id: int, state_key: str) -> list[dict]:
+		automaton = self.__project_service.get_automaton_for_session(session_id)
+		descriptions = {env_key.name: env_key.ui_description for env_key in automaton.env_keys}
+		options_by_key = self.choice_options_for(session_id)
+		return [
+			{
+				"name": button_name(key, index),
+				"ui_label": option,
+				"ui_button": option,
+				"ui_description": descriptions.get(key),
+				"target": "",
+				"has_trigger": False,
+				"task": None,
+				"on-exit": None,
+			}
+			for key in automaton.states[state_key].choice_keys
+			for index, option in enumerate(options_by_key.get(key, []))
+		]
+
+	def choice_options_for(self, session_id: int) -> dict[str, list[str]]:
+		automaton = self.__project_service.get_automaton_for_session(session_id)
+		declared = {env_key.name for env_key in automaton.env_keys if env_key.type == "choice"}
+		current = self._env_for_session(session_id).action_set()
+		return {
+			key: list(options) for key, options in current.items() if key in declared and isinstance(options, list)
+		}
 
 	def is_actuators_enabled(self, session_id: int) -> bool:
 		self._ownership.require_own_session(session_id)
@@ -602,14 +631,14 @@ class TurnService(object):
 		tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		for key, expression in missing.items():
 			tracking_engine.apply_action_env(
-				automaton, replace(action, env={key: expression}), {}, "",
+				automaton, replace(action, env={key: expression}), {}, ChoiceSelection.NONE, "",
 				username=self._username, project_id=project_id, session_id=session_id,
 			)
 
 	def _fire_init_action(self, automaton: Automaton, session_id: int, project_id: str) -> None:
 		tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		tracking_engine.apply_transition(
-			automaton, automaton.states[""], automaton.init_action, None, session_id,
+			automaton, automaton.states[""], automaton.init_action, None, ChoiceSelection.NONE, session_id,
 			origin='init-action', username=self._username, project_id=project_id,
 		)
 
@@ -710,25 +739,62 @@ class TurnService(object):
 			)
 			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
 			_, env_changed = tracking_engine.apply_transition(
-				automaton, source_state, action, None, session["id"],
+				automaton, source_state, action, None, ChoiceSelection.NONE, session["id"],
 				origin='manual', username=WebSession().user, project_id=project_id,
 			)
-			automaton, state = self.__project_service.get_automaton_and_state_for_session(session["id"])
-			reply, fresh_state_payload = await self._messages_for_transition(session["id"], on_metadata=on_metadata)
-			self.__session_manager.touch_session(session["id"], state.key)
-			fresh = fresh_state_payload if fresh_state_payload is not None else state_payload
-			return {
-				"state": fresh,
-				"state_changed": True,
-				"from_state": source_state_key,
-				"new_state": fresh.get("key"),
-				"triggered_action": action_name,
-				"env_changed": env_changed,
-				"buttons": self.buttons_for(session["id"], fresh),
-				"reply": reply,
-				"ai_model": self.get_ai_models_info(),
-				"session_id": session["id"],
-			}
+			return await self._transition_result(
+				session["id"], state_payload, source_state_key, action.name, env_changed, on_metadata,
+			)
+
+	async def apply_choice(
+		self, selection: ChoiceSelection, session_id: int, on_metadata: OnMetadata | None = None,
+	) -> dict | None:
+		project_id = self._project_id_for_session(session_id)
+		self._ensure_project_available(project_id)
+		if self._session_locks.get(str(session_id)).locked():
+			raise TurnServiceError(
+				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
+			)
+		async with self._session_scope(project_id, session_id):
+			automaton, source_state = self.__project_service.get_automaton_and_state_for_session(session_id)
+			session = self._require_active_session(session_id, project_id, source_state.key)
+			if selection.key not in source_state.choice_keys:
+				raise ValueError(f"'{selection.key}' is not a choice offered in state '{source_state.key}'.")
+			if selection.option not in self.choice_options_for(session["id"]).get(selection.key, []):
+				raise ValueError(f"'{selection.option}' is not among the current options of '{selection.key}'.")
+			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
+			action = tracking_engine.evaluate_choice(automaton, source_state.key, selection, session["id"])
+			if action is None:
+				return None
+			_, env_changed = tracking_engine.apply_transition(
+				automaton, source_state, action, None, selection, session["id"],
+				origin='manual', username=WebSession().user, project_id=project_id,
+			)
+			state_payload = automaton.get_state_payload(automaton.get_state(action.target))
+			return await self._transition_result(
+				session["id"], state_payload, source_state.key, action.name, env_changed, on_metadata,
+			)
+
+	async def _transition_result(
+		self, session_id: int, state_payload: dict, source_state_key: str, action_name: str,
+		env_changed: dict, on_metadata: OnMetadata | None,
+	) -> dict:
+		_, state = self.__project_service.get_automaton_and_state_for_session(session_id)
+		reply, fresh_state_payload = await self._messages_for_transition(session_id, on_metadata=on_metadata)
+		self.__session_manager.touch_session(session_id, state.key)
+		fresh = fresh_state_payload if fresh_state_payload is not None else state_payload
+		return {
+			"state": fresh,
+			"state_changed": True,
+			"from_state": source_state_key,
+			"new_state": fresh.get("key"),
+			"triggered_action": action_name,
+			"env_changed": env_changed,
+			"buttons": self.buttons_for(session_id, fresh),
+			"reply": reply,
+			"ai_model": self.get_ai_models_info(),
+			"session_id": session_id,
+		}
 
 	def accept_user_message(self, session_id: int, text: str) -> int:
 		"""Persists a user message the moment its frame is read — before any

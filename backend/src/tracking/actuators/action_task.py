@@ -46,6 +46,8 @@ pending script). `session_id` rides along only for an immediate run
 (see is_deferred below) — a deferred call has none."""
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 import json
 import uuid
 from datetime import datetime, timezone
@@ -324,7 +326,7 @@ class ScopeHydrator(object):
             ai_service=self._ai_service,
         )
         snapshot = payload["snapshot"]
-        scope = builder.build(automaton, payload["state_key"], snapshot.get("signal") or {})
+        scope = builder.build(automaton, payload["state_key"], snapshot.get("signal") or {}, ChoiceSelection.NONE)
         for name in _FROZEN_NAMESPACES:
             scope[name] = snapshot.get(name, {})
         scope.update(snapshot.get("extra", {}))

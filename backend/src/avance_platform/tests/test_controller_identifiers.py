@@ -26,6 +26,9 @@ env:
   visits:
     type: number
     ui-description: "How many times this action has fired."
+  slot:
+    type: choice
+    ui-description: "The appointment slots on offer."
 
 states:
   a:
@@ -76,7 +79,10 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
         "datetime", "datetime.timezone",
     }
     assert body["signal"] == {"myOwnSignal": "whatever this measures"}
-    assert body["env"] == {"visits": "How many times this action has fired."}
+    assert body["env"] == {
+        "visits": "How many times this action has fired.", "slot": "The appointment slots on offer.",
+    }
+    assert body["choice"] == {"slot": "The appointment slots on offer."}
     assert set(body["session"]) == {
         "current_session_duration_in_minutes", "last_user_session_datetime",
         "number_of_user_sessions", "state_duration_in_minutes",
@@ -109,7 +115,9 @@ def test_200_for_a_project_that_exists_but_has_never_been_published(client):
     response = client.get(f"/api/core/projects/{project_id}/identifiers")
 
     assert response.status_code == 200
-    assert response.json()["env"] == {"visits": "How many times this action has fired."}
+    assert response.json()["env"] == {
+        "visits": "How many times this action has fired.", "slot": "The appointment slots on offer.",
+    }
 
 
 

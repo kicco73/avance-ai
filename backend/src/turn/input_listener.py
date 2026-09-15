@@ -24,6 +24,7 @@ import asyncio
 from dataclasses import dataclass, field, replace
 from itertools import takewhile
 
+from automaton.choice import ChoiceSelection, parse_button_name
 from db import Db
 from system import bus
 from system.bus import (
@@ -221,12 +222,40 @@ class TurnInput(object):
         is no difference."""
         action = str((message.body or {}).get("id") or "")
         try:
+            selection = parse_button_name(action, self._turn_service.choice_options_for(message.session_id))
+        except ValueError as exc:
+            logger.info("Choice %r refused for session %s: %s", action, message.session_id, exc)
+            outbound.put(OUTPUT_ERROR, {"code": "choice_unavailable", "message": str(exc), "detail": ""})
+            return None
+        if selection is None:
+            return await self._take_manual_action(action, message, outbound)
+        return await self._take_choice(selection, action, message, outbound)
+
+    async def _take_manual_action(self, action: str, message: Message, outbound: "Outbound") -> dict | None:
+        try:
             result = await self._turn_service.apply_manual_action(
                 action, message.session_id, on_metadata=outbound.on_metadata,
             )
         except ValueError as exc:
             logger.info("Action %r refused for session %s: %s", action, message.session_id, exc)
             outbound.put(OUTPUT_ERROR, {"code": "action_unavailable", "message": str(exc), "detail": ""})
+            return None
+        except ServiceError as exc:
+            outbound.failed(exc, [])
+            return None
+        outbound.ran(result)
+        return result
+
+    async def _take_choice(
+        self, selection: ChoiceSelection, action: str, message: Message, outbound: "Outbound",
+    ) -> dict | None:
+        try:
+            result = await self._turn_service.apply_choice(
+                selection, message.session_id, on_metadata=outbound.on_metadata,
+            )
+        except ValueError as exc:
+            logger.info("Choice %r refused for session %s: %s", action, message.session_id, exc)
+            outbound.put(OUTPUT_ERROR, {"code": "choice_unavailable", "message": str(exc), "detail": ""})
             return None
         except ServiceError as exc:
             outbound.failed(exc, [])

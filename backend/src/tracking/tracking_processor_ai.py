@@ -1,3 +1,4 @@
+from automaton.choice import ChoiceSelection
 from system.web_session import WebSession
 
 from .tracking_processor import OutVariables, TrackingProcessor
@@ -18,7 +19,8 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 
 		if self._records_evaluation():
 			self.out.tracking_id, written = self._tracking_engine.apply_transition(
-				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
+				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, ChoiceSelection.NONE,
+				self.user.session_id,
 				origin='trigger', username=WebSession().user, project_id=self.user.project_id,
 				output_values=self.metadata.output,
 			)

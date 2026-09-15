@@ -6,6 +6,8 @@ preamble, a ragged row) still becomes the table the caller was promised,
 and that an unusable one is refused rather than silently emptied."""
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 import json
 
 import pytest
@@ -143,7 +145,7 @@ def _scope(db, automaton: Automaton):
         Env(), MetricService(db, context), SessionFacts(db, context), UserFacts(db), db,
         task_namespace=FakeTaskNamespace(crawler=FakeCrawler(PAGES)),
     )
-    return builder.build(automaton, "a", {})
+    return builder.build(automaton, "a", {}, ChoiceSelection.NONE)
 
 
 def test_what_task_websearch_found_is_kept_for_this_user_and_read_back_through_a_websearch_source(db):

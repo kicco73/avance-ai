@@ -5,6 +5,8 @@ triggers. One handler serves both message types — neither carries
 anything the other doesn't."""
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 from ai import AiService
 from automaton.automaton import pressable_actions
 from db.db import Db
@@ -118,11 +120,11 @@ class EventService:
             )
             tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 
-            scope = scope_builder.build(automaton, state.key, {})
+            scope = scope_builder.build(automaton, state.key, {}, ChoiceSelection.NONE)
             action = automaton.evaluate_triggers_action(state.key, scope)
             if action is not None and action.target == state.key:
                 tracking_engine.apply_transition(
-                    automaton, state, action, {}, session["id"],
+                    automaton, state, action, {}, ChoiceSelection.NONE, session["id"],
                     origin='system', username=username, project_id=observer_project_id,
                 )
                 state_payload = automaton.get_state_payload(state)

@@ -3,6 +3,8 @@ resolves to None and records a SystemWarning instead of raising.
 """
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
@@ -62,7 +64,7 @@ def _caller(family: str | None):
 def _namespace(db, event_namespace, family=FAMILY):
     project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({"db": db, "project_service": project_service}))
-    return event_namespace.scope_for(_caller(family))
+    return event_namespace.scope_for(_caller(family), ChoiceSelection.NONE)
 
 
 def _session(db, project_id="observed") -> int:

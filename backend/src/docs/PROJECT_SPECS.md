@@ -435,6 +435,7 @@ user.role == "admin"
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
 | `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select_rows_containing(...)`/`.update(...)` |
 | `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `task.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
+| `choice.<key>` | `<key>` an env key declared of type `choice` (§5.3): the option just pressed, for the one trigger evaluation the press starts — `""` in every other evaluation and under every other `choice` key. Exactly `choice.<key>`, in `trigger:` and `env:` only — never in `on-exit:`/`task:` | attribute |
 
 A **bare** name is only ever a core metric (§2) — nothing else may appear
 unnamespaced. An installed feature may declare one more namespace of its
@@ -635,7 +636,7 @@ env:
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `type` | **yes** | `number` \| `string` \| `bool` \| `choice` | — | What the key holds, declared once: a number (`int` or `float`, never a bool), a string, a bool, or a `choice` — a list of strings that scripts write and nothing reads yet. A key without `type`, or with any other value, fails the build naming the key and the four admitted values. |
+| `type` | **yes** | `number` \| `string` \| `bool` \| `choice` | — | What the key holds, declared once: a number (`int` or `float`, never a bool), a string, a bool, or a `choice` — a list of strings, the options a script writes and the person picks from (see **Choice keys** below). A key without `type`, or with any other value, fails the build naming the key and the four admitted values. |
 | `value` | no | string (expression) | the type's own default | The default, applied once (top-to-bottom order) the first time a session opens — a later default may reference an earlier key. Constrained to `type`: a `value` whose kind is statically known (`"0"`, `"'x'"`, `"True"`) and differs from `type` fails the build; a `choice` key takes no `value` at all — its options are written by scripts. Absent, the type's own default applies: `0`, `""`, `False`, `[]`. |
 | `ui-description` | no | string | `None` | Shown in the frontend — never sent to the model. |
 | `ai-definition` | conditionally | string | `None` | Written *for the model*: what this variable means. **Required** (build error) whenever some state lists this key in its own `input`/`output` (§4.3) — same requirement a source exposed to the model gets; optional otherwise. Becomes that field's own description in the prompt's env block / output schema. |
@@ -645,6 +646,41 @@ An action's `env:` can only update a key declared here, never invent one
 itself update it on any turn. Whether the model ever sees or sets a given
 key is decided entirely per state, by that state's own `input`/`output`
 (§4.3) — never a property of the key itself.
+
+**Choice keys.** A `choice` key holds the options on offer — a list of
+strings a script writes (an action's `env:` or `on-exit`, a `value` is
+refused) and nothing ever shows the model: a `choice` key in a state's
+`input`/`output` fails the build, and its `ai-definition` is never read.
+In any state whose actions' `trigger`s read `choice.<key>`, the current
+options become buttons, one per option, after the state's own pressable
+actions (see BUS.md, `state.buttons`). Pressing one writes nothing: the
+option is the value of `choice.<key>` for the single trigger evaluation
+the press starts — `""` everywhere else, in every other evaluation and
+under every other `choice` key — and the first action whose trigger
+answers transitions as a manual action does, its own `env:` reading the
+same `choice.<key>`. No trigger answering, nothing happens. The pattern:
+
+```yaml
+env:
+  slot:
+    type: choice
+  booked_slot:
+    type: string
+states:
+  pick:
+    contextual-prompt: Offer the slots.
+    actions:
+      - name: offer
+        target: pick
+        trigger: "env.slot == []"
+        env:
+          slot: "['morning', 'evening']"
+      - name: book
+        target: booked
+        trigger: "choice.slot != ''"
+        env:
+          booked_slot: choice.slot
+```
 
 **The type is enforced twice.** At build, every expression that writes a
 key — an action's `env:` entry, an `on-exit` assignment, the key's own

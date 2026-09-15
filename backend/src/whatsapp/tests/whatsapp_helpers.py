@@ -195,6 +195,9 @@ class _FakeTurns:
     def buttons_for(self, session_id, state_payload):
         return self.buttons
 
+    def choice_options_for(self, session_id):
+        return {}
+
     async def prepare_user_initiated_turn(self, session_id):
         if self.wrap_up_message and not self.db.get_messages(session_id):
             return [self.db.row(self.db.add(session_id, "assistant", self.wrap_up_message))]

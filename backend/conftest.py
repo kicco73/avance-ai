@@ -380,6 +380,18 @@ def _reset_bus():
 
 
 @pytest.fixture(autouse=True)
+def _declare_core_trigger_namespaces(_reset_bus):
+    from automaton.choice_namespace import ChoiceNamespace
+    from system.bus import POINT_TRIGGER_NAMESPACES
+
+    namespace = ChoiceNamespace()
+    declare = lambda namespaces: namespaces.declare(namespace)  # noqa: E731
+    bus.contribute(POINT_TRIGGER_NAMESPACES, declare)
+    yield
+    bus.withdraw(POINT_TRIGGER_NAMESPACES, declare)
+
+
+@pytest.fixture(autouse=True)
 def _reset_skills():
     """skills' list of started modules is a process-global too, and the
     `app` fixture starts whatever is on disk once per test — without this

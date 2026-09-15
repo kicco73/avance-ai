@@ -3,7 +3,8 @@ from __future__ import annotations
 import ast
 from typing import Any
 
-from automaton.automaton import Action, Automaton, State
+from automaton.automaton import Action, Automaton, EnvKey, State
+from automaton.choice import ChoiceSelection
 from automaton.trigger_namespaces import TriggerNamespace
 from system import bus
 from system.bus import POINT_CORE_SERVICES
@@ -47,7 +48,7 @@ def watched_from(automaton: Automaton, state_key: str) -> set[str]:
 class EventNamespace(TriggerNamespace):
     name = NAME
 
-    def check_action(self, state: State, action: Action) -> None:
+    def check_action(self, state: State, action: Action, env_keys: dict[str, EnvKey]) -> None:
         if not action.trigger:
             return
         chains = _chains(action.trigger)
@@ -68,7 +69,7 @@ class EventNamespace(TriggerNamespace):
                     f"{context} references {'.'.join(chain)} — {NAME}.<id> only has .state and .env.<key>."
                 )
 
-    def scope_for(self, automaton: Automaton) -> object:
+    def scope_for(self, automaton: Automaton, selection: ChoiceSelection) -> object:
         core = self._core()
         return _ScopedEventNamespace(core["db"], core["project_service"], automaton.family)
 

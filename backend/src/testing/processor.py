@@ -3,6 +3,8 @@
 signal_source.get_turn_data(message_id, current_state)."""
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 from datetime import datetime
 from typing import Protocol
 
@@ -91,7 +93,7 @@ class TestProcessor(object):
 
         state = self._automaton.get_state(self._current_state)
         action = self._tracking_engine.evaluate_triggered_action(
-            self._automaton, state, signal_values, output_values=output_values,
+            self._automaton, state, signal_values, ChoiceSelection.NONE, output_values=output_values,
         )
 
         if action is not None:
@@ -105,7 +107,7 @@ class TestProcessor(object):
         if output_for_env:
             self._env.update_action_set(output_for_env, origin="output")
         self._tracking_engine.apply_transition(
-            self._automaton, state, action, signal_values, session_id,
+            self._automaton, state, action, signal_values, ChoiceSelection.NONE, session_id,
             message_id=observation_message_id,
             origin='trigger',
             output_values=output_values,

@@ -12,6 +12,7 @@ from typing import Any, TYPE_CHECKING
 from simpleeval import ModuleWrapper
 
 from automaton.automaton import Automaton
+from automaton.choice import ChoiceSelection
 from automaton.scope import EvaluationScope
 from automaton.trigger_namespaces import TriggerNamespaces
 from db import Db
@@ -52,7 +53,7 @@ class EvaluationScopeBuilder(object):
 
     def build(
         self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None,
-        session_id: int | None = None, output_values: dict[str, Any] | None = None,
+        selection: ChoiceSelection, session_id: int | None = None, output_values: dict[str, Any] | None = None,
     ) -> EvaluationScope:
         """`raw_signal_values` is always re-coerced against every declared
         signal, never assumed pre-validated. `output_values` is this turn's
@@ -91,7 +92,7 @@ class EvaluationScopeBuilder(object):
             # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its
             "datetime": ModuleWrapper(datetime, allowed_attrs={"datetime", "timedelta", "timezone"}),
         }
-        scope.update(TriggerNamespaces.collect().scope(automaton))
+        scope.update(TriggerNamespaces.collect().scope(automaton, selection))
         scope["chat"] = self._chat_namespace
         task_namespace = self._task_namespace.with_services(automaton.services).with_websearch_archive(
             websearch_archive_for(self._db, automaton)

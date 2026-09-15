@@ -15,8 +15,9 @@ from auth.auth_service import AuthService
 from turn.input_listener import TurnInput
 from turn.turn_service import TurnService
 from turn.sessions.session_manager import SessionManager
+from automaton.choice_namespace import ChoiceNamespace
 from system import bus
-from system.bus import POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES
+from system.bus import POINT_AUTOMATON_LOADER, POINT_CORE_SERVICES, POINT_TRIGGER_NAMESPACES
 from system.bus_channel import BusChannel
 from system import skills
 from config import DEFAULT_ALLOWED_ORIGINS, AppConfig
@@ -37,7 +38,7 @@ from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 
-__version__ = "2.1.17"
+__version__ = "2.1.18"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -118,6 +119,7 @@ def create_app() -> FastAPI:
             tracking_service, metric_service, scheduler_service, namespace_factory, project_locks,
         )
         TurnInput(turn_service, db).register()
+        bus.contribute(POINT_TRIGGER_NAMESPACES, lambda namespaces: namespaces.declare(ChoiceNamespace()))
         progress_broadcaster.bind_loop()
         bus_channel = BusChannel(auth_service)
         bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({

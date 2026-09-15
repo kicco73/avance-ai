@@ -108,6 +108,18 @@ def referenced_signal_names(state: "State", declared_signal_names: set[str]) -> 
     return referenced & declared_signal_names
 
 
+def choice_keys(state: "State") -> tuple[str, ...]:
+    from .choice_namespace import expression_chains
+
+    keys: dict[str, None] = {}
+    for action in state.actions:
+        if action.trigger:
+            for chain in expression_chains(action.trigger):
+                if len(chain) == 2:
+                    keys.setdefault(chain[1], None)
+    return tuple(keys)
+
+
 def trigger_bare_names(state: "State") -> set[str]:
     """Every bare identifier any triggerable action leaving `state`
     mentions in its trigger. Unioned across those actions, which answers

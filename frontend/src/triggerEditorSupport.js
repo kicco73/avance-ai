@@ -22,6 +22,7 @@ export const NAMESPACE_COLORS = {
   chat: '#f9a825',
   metric: '#2e7d32',
   event: '#455a64',
+  choice: '#5d4037',
   datetime: '#00695c',
   'datetime.timezone': '#00897b'
 }
@@ -37,7 +38,7 @@ export function isProxyNamespace(namespace) {
     namespace !== 'event' && namespace !== 'datetime.timezone' && !namespace.startsWith('event.')
 }
 
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|metric|event|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
+export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|metric|event|choice|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
   const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)

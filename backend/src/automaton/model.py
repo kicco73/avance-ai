@@ -61,6 +61,7 @@ class State:
     line: int | None = None
     input: tuple[str, ...] = ()
     output: tuple[str, ...] = ()
+    choice_keys: tuple[str, ...] = ()
 
     @property
     def has_triggerable_actions(self) -> bool:

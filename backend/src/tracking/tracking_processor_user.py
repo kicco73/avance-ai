@@ -1,3 +1,4 @@
+from automaton.choice import ChoiceSelection
 from system.logging_factory import LoggerFactory
 from system.web_session import WebSession
 from tracking.tracking_processor import OutVariables, TrackingProcessor
@@ -40,7 +41,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 
 			self.out.reply = ""
 			self.out.env_changed.update(self._tracking_engine.apply_action_env(
-				self.user.automaton, self.out.action, self.metadata.signals, self.user.state.key,
+				self.user.automaton, self.out.action, self.metadata.signals, ChoiceSelection.NONE, self.user.state.key,
 				username=WebSession().user, project_id=self.user.project_id, session_id=self.user.session_id,
 				output_values=self.metadata.output,
 			))
@@ -66,7 +67,8 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 				)
 			else:
 				self.out.tracking_id, written = self._tracking_engine.apply_transition(
-					self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
+					self.user.automaton, self.user.state, self.out.action, self.metadata.signals, ChoiceSelection.NONE,
+					self.user.session_id,
 					message_id=self.user.message_id if has_real_user_message else None,
 					origin='trigger', username=WebSession().user, project_id=self.user.project_id,
 					output_values=self.metadata.output,

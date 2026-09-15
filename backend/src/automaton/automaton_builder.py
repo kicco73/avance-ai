@@ -1,3 +1,6 @@
+from dataclasses import replace
+
+from automaton import analysis
 from automaton.automaton import (
     Action, EnvKey, Automaton, Reaction, Signal, Source, State,
 )
@@ -281,7 +284,7 @@ class AutomatonBuilder(object):
         input_names = self._build_variable_name_list(key, raw_state, "input")
         output_names = self._build_variable_name_list(key, raw_state, "output")
 
-        return State(
+        state = State(
             key=key,
             ui_label=raw_state.get("ui-label", key),
             final=len(actions) == 0,
@@ -303,6 +306,7 @@ class AutomatonBuilder(object):
             output=output_names,
             line=line,
         )
+        return replace(state, choice_keys=analysis.choice_keys(state))
 
     def _build_init_action(self, raw: dict) -> Action:
         line = self._line_of(raw, "init-action")

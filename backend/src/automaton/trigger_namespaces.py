@@ -6,16 +6,17 @@ from system import bus
 from system.bus import POINT_TRIGGER_NAMESPACES
 
 if TYPE_CHECKING:
-    from automaton.automaton import Action, Automaton, State
+    from automaton.automaton import Action, Automaton, EnvKey, State
+    from automaton.choice import ChoiceSelection
 
 
 class TriggerNamespace:
     name: str = ""
 
-    def check_action(self, state: "State", action: "Action") -> None:
+    def check_action(self, state: "State", action: "Action", env_keys: "dict[str, EnvKey]") -> None:
         raise NotImplementedError
 
-    def scope_for(self, automaton: "Automaton") -> object:
+    def scope_for(self, automaton: "Automaton", selection: "ChoiceSelection") -> object:
         raise NotImplementedError
 
     def identifiers(self, automaton: "Automaton") -> dict[str, dict[str, str]]:
@@ -37,12 +38,12 @@ class TriggerNamespaces:
     def names(self) -> frozenset[str]:
         return frozenset(self._declared)
 
-    def check_action(self, state: "State", action: "Action") -> None:
+    def check_action(self, state: "State", action: "Action", env_keys: "dict[str, EnvKey]") -> None:
         for namespace in self._declared.values():
-            namespace.check_action(state, action)
+            namespace.check_action(state, action, env_keys)
 
-    def scope(self, automaton: "Automaton") -> dict[str, object]:
-        return {name: namespace.scope_for(automaton) for name, namespace in self._declared.items()}
+    def scope(self, automaton: "Automaton", selection: "ChoiceSelection") -> dict[str, object]:
+        return {name: namespace.scope_for(automaton, selection) for name, namespace in self._declared.items()}
 
     def identifiers(self, automaton: "Automaton") -> dict[str, dict[str, str]]:
         merged: dict[str, dict[str, str]] = {}

@@ -34,12 +34,12 @@ class _Strict(TriggerNamespace):
     def __init__(self) -> None:
         self.checked: list[str] = []
 
-    def check_action(self, state, action) -> None:
+    def check_action(self, state, action, env_keys) -> None:
         self.checked.append(action.name)
         if "forbidden" in (action.trigger or ""):
             raise ValueError("strict.forbidden is not allowed here")
 
-    def scope_for(self, automaton) -> object:
+    def scope_for(self, automaton, selection) -> object:
         return {}
 
     def identifiers(self, automaton) -> dict[str, dict[str, str]]:
@@ -62,7 +62,7 @@ def test_a_declared_namespace_is_accepted_and_gets_to_check_every_action():
     automaton = _build("strict.thing == 1")
 
     assert automaton.states["a"].actions[0].trigger == "strict.thing == 1"
-    assert strict.checked == ["go"]
+    assert strict.checked == ["init-action", "go"]
 
 
 def test_what_a_declared_namespace_refuses_refuses_the_build():

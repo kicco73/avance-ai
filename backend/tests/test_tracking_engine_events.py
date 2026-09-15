@@ -6,6 +6,8 @@ handed back to the caller, who is the one that says so on the way out
 """
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 import pytest
 
 from automaton.automaton import Action, Automaton, State
@@ -40,7 +42,7 @@ class FakeEnv:
 
 
 class FakeScopeBuilder:
-    def build(self, automaton, state_key, signal_values, session_id=None, output_values=None):
+    def build(self, automaton, state_key, signal_values, selection, session_id=None, output_values=None):
         return EvaluationScope({}, automaton=automaton, state_key=state_key)
 
 
@@ -67,7 +69,7 @@ class FakeScopeBuilderWithChat:
     def __init__(self, chat: FakeChatNamespaceRecorder) -> None:
         self._chat = chat
 
-    def build(self, automaton, state_key, signal_values, session_id=None, output_values=None):
+    def build(self, automaton, state_key, signal_values, selection, session_id=None, output_values=None):
         return EvaluationScope({"chat": self._chat}, automaton=automaton, state_key=state_key)
 
 
@@ -100,7 +102,8 @@ def test_apply_transition_records_the_move_and_hands_back_what_its_action_wrote(
     engine, sink, env = _engine()
 
     tracking_id, written = engine.apply_transition(
-        automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_id=PROJECT_ID,
+        automaton, state, action, {}, ChoiceSelection.NONE, session_id=1, origin='trigger', username=USERNAME,
+        project_id=PROJECT_ID,
     )
 
     assert sink.transitions == [("a", "go", "b")]
@@ -114,7 +117,7 @@ def test_apply_transition_with_no_action_writes_nothing():
     engine, sink, env = _engine()
 
     tracking_id, written = engine.apply_transition(
-        automaton, state, None, {}, session_id=1, origin='trigger',
+        automaton, state, None, {}, ChoiceSelection.NONE, session_id=1, origin='trigger',
     )
 
     assert (tracking_id, written) == (0, {})
@@ -126,14 +129,14 @@ def test_apply_transition_requires_an_origin():
     engine, _sink, _env = _engine()
 
     with pytest.raises(TypeError):
-        engine.apply_transition(automaton, state, action, {}, session_id=1)
+        engine.apply_transition(automaton, state, action, {}, ChoiceSelection.NONE, session_id=1)
 
 
 def test_apply_action_env_returns_every_key_it_wrote():
     automaton, state, action = _automaton(action_target="a", action_env={"counter": "1", "flag": "True"})
     engine, _sink, env = _engine()
 
-    written = engine.apply_action_env(automaton, action, {}, state.key)
+    written = engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
 
     assert env.updates == [{"counter": 1, "flag": True}]
     assert written == {"counter": 1, "flag": True}
@@ -143,7 +146,7 @@ def test_apply_action_env_returns_nothing_for_an_action_that_writes_nothing():
     automaton, state, action = _automaton(action_target="a")
     engine, _sink, env = _engine()
 
-    assert engine.apply_action_env(automaton, action, {}, state.key) == {}
+    assert engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key) == {}
     assert env.updates == []
 
 
@@ -151,7 +154,7 @@ def test_apply_action_env_also_applies_and_returns_on_exit_writes():
     automaton, state, action = _automaton(action_target="a", action_on_exit="env.counter = 1")
     engine, _sink, env = _engine()
 
-    written = engine.apply_action_env(automaton, action, {}, state.key)
+    written = engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
 
     assert env.updates == [{"counter": 1}]
     assert written == {"counter": 1}
@@ -162,7 +165,7 @@ def test_apply_action_env_prefers_on_exit_over_env_for_the_same_key():
         action_target="a", action_env={"counter": "0"}, action_on_exit="env.counter = 1",
     )
     engine, _sink, env = _engine()
-    engine.apply_action_env(automaton, action, {}, state.key)
+    engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
 
     assert env.updates == [{"counter": 1}]
 
@@ -179,7 +182,7 @@ def test_apply_action_env_pushes_on_exits_own_chat_snippets_through_the_scopes_c
     chat = FakeChatNamespaceRecorder()
     engine = TrackingEngine(FakeSink(), FakeEnv(), FakeScopeBuilderWithChat(chat))
 
-    engine.apply_action_env(automaton, action, {}, state.key)
+    engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
 
     assert chat.pushed == ['celebrate()\nnotify("Nice!", "Done.")']
 
@@ -191,6 +194,6 @@ def test_apply_action_env_never_touches_chat_when_on_exit_writes_env_only():
     automaton, state, action = _automaton(action_target="a", action_on_exit="env.counter = 1")
     engine, _sink, env = _engine()
 
-    engine.apply_action_env(automaton, action, {}, state.key)
+    engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
 
     assert env.updates == [{"counter": 1}]

@@ -9,6 +9,7 @@ from db.db import Db
 from ai import AiService
 from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
+from automaton.choice import ChoiceSelection
 from system import bus
 from system.bus import POINT_SPOKEN_REPLY
 from system.logging_factory import LoggerFactory
@@ -272,8 +273,8 @@ class TrackingProcessor(object):
 		on_receiving_metadata's ordering)."""
 		self.metadata.signals = signal_values
 		self.out.action = self._tracking_engine.evaluate_triggered_action(
-			self.user.automaton, self.user.state, self.metadata.signals, session_id=self.user.session_id,
-			output_values=self.metadata.output,
+			self.user.automaton, self.user.state, self.metadata.signals, ChoiceSelection.NONE,
+			session_id=self.user.session_id, output_values=self.metadata.output,
 		)
 		if self.out.action:
 			self.out.state = self.user.automaton.get_state(self.out.action.target)

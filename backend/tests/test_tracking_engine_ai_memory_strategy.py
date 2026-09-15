@@ -5,6 +5,8 @@ never touched by it.
 """
 from __future__ import annotations
 
+from automaton.choice import ChoiceSelection
+
 import pytest
 
 from automaton.automaton import Action, Automaton, State
@@ -50,7 +52,7 @@ class FakeSink:
 
 
 class FakeScopeBuilder:
-    def build(self, automaton, state_key, signal_values, session_id=None, output_values=None):
+    def build(self, automaton, state_key, signal_values, selection, session_id=None, output_values=None):
         return {}
 
 
@@ -81,7 +83,7 @@ def test_landing_on_a_clear_state_wipes_the_memory_and_leaves_the_env_keys(origi
     automaton, state, action = _automaton("b", "clear")
     engine, env, sink = _engine()
 
-    engine.apply_transition(automaton, state, action, None, session_id=1, origin=origin)
+    engine.apply_transition(automaton, state, action, None, ChoiceSelection.NONE, session_id=1, origin=origin)
 
     assert sink.transitions == [("a", "go", "b")]
     assert env.memory() == {}
@@ -92,7 +94,7 @@ def test_landing_on_a_keep_state_leaves_the_memory():
     automaton, state, action = _automaton("b", "keep")
     engine, env, _sink = _engine()
 
-    engine.apply_transition(automaton, state, action, None, session_id=1, origin="trigger")
+    engine.apply_transition(automaton, state, action, None, ChoiceSelection.NONE, session_id=1, origin="trigger")
 
     assert env.memory() == {"note": "remembered"}
 
@@ -101,7 +103,7 @@ def test_a_self_loop_lands_on_the_state_again_and_clears_too():
     automaton, state, action = _automaton("a", "clear")
     engine, env, _sink = _engine()
 
-    engine.apply_transition(automaton, state, action, None, session_id=1, origin="trigger")
+    engine.apply_transition(automaton, state, action, None, ChoiceSelection.NONE, session_id=1, origin="trigger")
 
     assert env.memory() == {}
 
@@ -110,6 +112,6 @@ def test_a_turn_that_stays_where_it_is_touches_nothing():
     automaton, state, _action = _automaton("b", "clear")
     engine, env, _sink = _engine()
 
-    engine.apply_transition(automaton, state, None, {}, session_id=1, origin="trigger")
+    engine.apply_transition(automaton, state, None, {}, ChoiceSelection.NONE, session_id=1, origin="trigger")
 
     assert env.memory() == {"note": "remembered"}

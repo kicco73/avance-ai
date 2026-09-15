@@ -58,6 +58,10 @@ async function toggle(field, name, event) {
   event.target.checked = isChecked(field, name)
 }
 
+function isChoice(key) {
+  return key.type === 'choice'
+}
+
 function jumpToEnvKey(name) {
   emit('jump-to-definition', { kind: 'env-key', envKeyName: name })
 }
@@ -86,18 +90,19 @@ function jumpToEnvKey(name) {
             v-for="key in envKeys"
             :key="`${field.name}-${key.name}`"
             class="inspector-io-row"
-            :class="{ 'inspector-io-row-undefined': !key.ai_definition }"
+            :class="{ 'inspector-io-row-undefined': !key.ai_definition || isChoice(key) }"
             @click="jumpToEnvKey(key.name)"
           >
             <input
               type="checkbox"
               :checked="isChecked(field.name, key.name)"
-              :disabled="!key.ai_definition"
+              :disabled="!key.ai_definition || isChoice(key)"
               @click.stop
               @change="toggle(field.name, key.name, $event)"
             />
             <span class="inspector-io-name">{{ key.name }}</span>
-            <span v-if="key.ai_definition" class="inspector-io-definition">{{ key.ai_definition }}</span>
+            <span v-if="isChoice(key)" class="inspector-io-undefined">choice keys are never rendered to the model</span>
+            <span v-else-if="key.ai_definition" class="inspector-io-definition">{{ key.ai_definition }}</span>
             <span v-else class="inspector-io-undefined">needs an AI definition — click to write one</span>
           </label>
         </div>

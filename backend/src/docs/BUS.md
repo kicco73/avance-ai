@@ -31,7 +31,7 @@ documentation; this page says only what the messages are.
 | Type | Body |
 | --- | --- |
 | `input.text` | `{text}` — what the person asks |
-| `input.button` | `{id}` — one of the choices, taken. Same road as `input.text`, so the two cannot overtake each other |
+| `input.button` | `{id}` — one of the choices, taken: an action's `name`, or `choice:<key>:<index>` for the option of a `choice` env key (see `state.buttons`). Same road as `input.text`, so the two cannot overtake each other. A `choice:` id nobody offers is `output.error` with code `choice_unavailable`; one whose trigger does not answer publishes nothing at all |
 | `input.audio` | `{audio}` — the bytes, or a callable that fetches them. Whoever transcribes converts it to `input.text` on the same envelope; the publisher never re-publishes the transcript itself |
 | `input.reaction` | `{assistant_message_id, reaction}` — the person's own reaction to a message. The model's reaction to theirs is `output.reaction`: two facts about two different messages |
 
@@ -77,7 +77,7 @@ annotating one. Even reading a transcript opens nothing
 | `output.error` | `{message, detail, code}` — in place of the reply. Only for things that went wrong: a conversation that cannot be had is `session.blocked` |
 | `state.changed` | `{state, from_state, new_state, triggered_action}` — said only **when it moves**: a reader keeps the last one it was told. `from_state` is where it moved from, so a listener can tell a real transition (`from_state != new_state`) from a self-loop |
 | `env.changed` | `{key, value}` — one env key an action wrote, one message per key: whoever cares that a key moved does not care how many others moved with it. Same envelope as `state.changed` |
-| `state.buttons` | `{actions}` — what can be done now, and the **only** place the choices are: no state payload carries them |
+| `state.buttons` | `{actions}` — what can be done now, and the **only** place the choices are: no state payload carries them. The pressable actions first, then — for every `choice` env key a trigger of the state reads — one entry per current option, named `choice:<key>:<index>` with the option as its `ui_button`/`ui_label` and `target` `""`; pressing one sends that `name` back as `input.button` unchanged |
 
 ## Notifications and tools
 

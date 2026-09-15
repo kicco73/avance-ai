@@ -5,6 +5,7 @@ import inspect
 from automaton.builder.archive_resolver import ProjectArchives
 from automaton.automaton import EnvKey, Source, State
 from automaton.builder.build_cursor import BuildCursor
+from automaton.choice_namespace import choice_key_names
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.trigger_namespaces import TriggerNamespaces
@@ -309,12 +310,12 @@ class AutomatonValidator:
                     f"State '{state.key}', action '{action.name}': "
                     f"target '{action.target}' is not a valid state"
                 )
+            namespaces.check_action(state, action, env_keys)
             if action.trigger:
                 self.validate_namespaced_expression(
                     action.trigger, f"{action_context}: trigger", registry_for_triggers, sources,
                     namespaces=namespaces.names,
                 )
-                namespaces.check_action(state, action)
             if action.env:
                 for env_key, expression in action.env.items():
                     if env_key not in registry.get("env", {}):
@@ -324,7 +325,7 @@ class AutomatonValidator:
                         )
                     self.validate_namespaced_expression(
                         expression, f"{action_context}: env expression for '{env_key}'",
-                        registry_for_triggers, sources,
+                        registry_for_triggers, sources, namespaces=namespaces.names,
                     )
                     self.validate_env_key_type(env_keys[env_key], expression, action_context)
             if action.task:
@@ -333,6 +334,7 @@ class AutomatonValidator:
                 self.validate_on_exit(action.on_exit, action_context, registry_for_on_exit, sources, env_keys, archives)
 
     def validate_state_io(self, state: State, env_keys: dict[str, EnvKey]) -> None:
+        choice_keys = choice_key_names(env_keys)
         for field_name, names in (("input", state.input), ("output", state.output)):
             for name in names:
                 env_key = env_keys.get(name)
@@ -340,6 +342,10 @@ class AutomatonValidator:
                     raise ValueError(
                         f"State '{state.key}': {field_name} '{name}' — 'env.{name}' is not "
                         "declared in the project's own 'env' section."
+                    )
+                if name in choice_keys:
+                    raise ValueError(
+                        f"State '{state.key}': {field_name} '{name}' — a choice key is never rendered to the model."
                     )
                 if not env_key.ai_definition:
                     raise ValueError(
