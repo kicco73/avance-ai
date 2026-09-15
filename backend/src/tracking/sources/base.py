@@ -124,6 +124,9 @@ class SourceDriver:
         simply never declares it in SUPPORTED_METHODS."""
         raise self._unsupported("update")
 
+    def save_as(self, key: str | float, **columns: str | float) -> str:
+        raise self._unsupported("save_as")
+
     def parameter_schema(self, method: str) -> dict | None:
         """A driver-specific *narrowing* of `method`'s uniform JSON Schema
         (see tracking.sources.METHOD_SCHEMAS) — e.g. an enum of the

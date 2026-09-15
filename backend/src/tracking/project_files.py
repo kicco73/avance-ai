@@ -73,6 +73,11 @@ class ProjectFiles:
     def read(self, path: str) -> tuple[bytes, str] | None:
         raise NotImplementedError
 
+    def write(self, path: str, content: bytes) -> None:
+        raise ValueError(
+            f"'{path}' cannot be written here — a source only writes into the cache copy of a real session."
+        )
+
     def cache_key(self, path: str) -> str:
         """What identifies this file across the whole process, for
         ProjectFileCache. Each reader says it in its own terms — there is
@@ -176,10 +181,20 @@ class SessionCachedProjectFiles(ProjectFiles):
     def resolve(self, name: str) -> str | None:
         return self._inner.resolve(name)
 
+    def _cache_path(self, path: str) -> str:
+        return f"{CACHE_DIR}/sessions/{self._session_id}/{path}"
+
+    def write(self, path: str, content: bytes) -> None:
+        project_id, revision = self._automaton.project_id, self._automaton.revision
+        assert project_id is not None and revision is not None
+        self._db.write_archive_at_revision(
+            project_id, self._cache_path(path), revision, content, media_type_for(path),
+        )
+
     def read(self, path: str) -> tuple[bytes, str] | None:
         project_id, revision = self._automaton.project_id, self._automaton.revision
         assert project_id is not None and revision is not None
-        cache_path = f"{CACHE_DIR}/sessions/{self._session_id}/{path}"
+        cache_path = self._cache_path(path)
         cached = self._db.get_archive(project_id, cache_path, revision=revision)
         if cached is not None:
             media_type = self._db.get_archive_content_type(project_id, cache_path, revision=revision)

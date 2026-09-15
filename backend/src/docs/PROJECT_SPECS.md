@@ -296,8 +296,8 @@ read fields differ only in how much the model is trusted to decide for itself:
   model's discretion. Never forced: there is no `must-write` counterpart,
   and `update` is never in the forced set even when the same source is
   also in `ai-must-read-sources`. No driver implements `update` today
-  (the only driver, `avance:<path>`, is read-only — §5.2), so this field
-  currently has no effect.
+  (`avance:<path>`'s own `save_as` is a script's, never the model's —
+  §5.2), so this field currently has no effect.
 
 A source named in any field must declare its own `ai-definition` (§5.2) —
 a build error otherwise, the same requirement a signal's own `definition`
@@ -550,6 +550,15 @@ of source kinds: method support is the whole compatibility story.
 - `update(*values, fields={...})` — assigns `fields` (column → new value)
   to every row containing every value; returns how many rows it touched
   (`"1 row updated"`). Unsupported by a driver that can't write.
+- `save_as(key, **columns)` — writes one whole record under `key`, the
+  first column's own value: the row carrying it is replaced, and when no
+  row does, one is added (`"1 row replaced"` / `"1 row added"`). The row
+  is built from `columns` alone — a column left out is written empty, and
+  a name that isn't a column of the file comes back as an error *text*.
+  The file written is this session's own cache copy (see `avance:<path>`
+  below), never the project's stored archive, so what a project ships is
+  the same again for the next conversation. Scripts and trigger/env:
+  expressions only — never exposed to the model.
 
 Every read returns whole rows: there is no column projection, and an
 unknown column or operator comes back as an error *text*, never an
@@ -565,8 +574,12 @@ basename under `behaviour/`, resolved directly from storage at the
 conversation's own pinned automaton revision, never "whatever's published
 now" — not the `attachments:` mechanism, nothing is eagerly loaded).
 Assumes a normalized CSV (header + one row per record; the separator is
-detected). Implements every `select_rows_*` read and `value` — never
-`update`, read-only. A
+detected). Implements every `select_rows_*` read, `value`, `column`,
+`row_where` and `save_as` — never `update`. Its reads go through a
+per-session copy of the file, and `save_as` writes that copy: within one
+conversation a saved record reads back, while the project's own file is
+untouched and a session that never saved anything reads exactly what the
+project ships. A
 whole-file read is `attachment.read(name)`'s job (`on-exit`/`task` only), not a
 `source.*` capability.
 

@@ -166,6 +166,7 @@ def test_source_namespace_lists_one_entry_per_declared_source(client):
     assert response.status_code == 200
     body = response.json()
     assert set(body["source.pino"]) == {
-        "select_rows_containing", "select_rows_where", "select_rows_in_range", "value",
+        "select_rows_containing", "select_rows_where", "select_rows_in_range", "value", "column", "row_where",
+        "save_as",
     }
     assert body["source.unconfigured"] == {}
