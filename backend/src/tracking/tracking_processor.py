@@ -419,8 +419,16 @@ class TrackingProcessor(object):
 		(the turn's own pre-transition state); that one path must pass
 		its own self.out.state instead: the gating below is about what's
 		triggerable/translatable from THAT state, not the one the turn
-		started in. OutputPrompt is always first, before signals (so output
-		values are available to triggers when signals arrive)."""
+		started in. Output/signals precede text only when `state` actually
+		has a triggerable action to evaluate them against before the reply
+		commits (state.has_triggerable_actions) — otherwise nothing reads
+		them pre-reply (see TrackingEngine.evaluate_triggered_action's own
+		short-circuit on the same property), and asking for them before the
+		model has composed its own text only pressures a state's own
+		output fields (e.g. one meant to echo back what the reply just
+		said) into a generic placeholder instead. Within the "before"
+		branch, output still precedes signals (so output values are
+		available to triggers when signals arrive)."""
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		talk_enabled = _spoken_reply_wanted(self.user.automaton.services, self.user.session_id)
 		logger.info(
@@ -435,7 +443,7 @@ class TrackingProcessor(object):
 		audio = AudioPrompt() if talk_enabled else None
 		text = TextPrompt(base_prompt)
 		memory = MemoryPrompt(self.env)
-		if has_to_evaluate_signals_before_ai_reply:
+		if has_to_evaluate_signals_before_ai_reply and state.has_triggerable_actions:
 			prompt = Prompt.chain(output, signals, reaction, audio, text, memory)
 		else:
 			prompt = Prompt.chain(audio, text, output, signals, reaction, memory)
@@ -623,7 +631,7 @@ def estimate_state_prompt(
 	audio_prompt = AudioPrompt() if _spoken_reply_possible(automaton.services) else None
 	text_prompt = TextPrompt(base_prompt)
 	memory_prompt = MemoryPrompt(env)
-	if has_to_evaluate_signals_before_ai_reply:
+	if has_to_evaluate_signals_before_ai_reply and state.has_triggerable_actions:
 		prompt = Prompt.chain(output_prompt, signals_prompt, reaction_prompt, audio_prompt, text_prompt, memory_prompt)
 	else:
 		prompt = Prompt.chain(audio_prompt, text_prompt, output_prompt, signals_prompt, reaction_prompt, memory_prompt)

@@ -355,6 +355,16 @@ and independent of `ai-may-read-sources`/`ai-may-write-sources` above
   action this turn fires runs its own `env:`/`on-exit` (§5.3, §5.3bis):
   the model proposes, the script decides — an `on-exit` assignment to a
   key the model also reported is the value that stays.
+  Requested *before* the reply text only when this state has a
+  triggerable action (§5.1) *and* `signal-tracking-on-ai-message: false`
+  — the one case where a trigger needs this turn's own output values
+  before the reply commits, so a fired transition can discard and
+  regenerate the reply instead of showing one already contradicted by its
+  own state change (§5.3's "Optimistic reply and writes"). Every other
+  state gets its `output` requested *after* the reply text, so a field
+  meant to echo or summarize what the reply just said actually can —
+  asking for it first would have the model commit to a value before it
+  has composed the text that value is supposed to reflect.
 
 An `input`/`output` name must be declared in the project's own `env:`
 section, and that env key must declare its own `ai-definition` — a build
