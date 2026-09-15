@@ -188,8 +188,6 @@ class SessionMixin:
         ]
 
     def delete_chat_session(self, session_id: int) -> None:
-        Tracking.delete().where(Tracking.session == session_id).execute()
-        Message.delete().where(Message.session == session_id).execute()
         CoreSession.delete().where(CoreSession.id == session_id).execute()
 
     def reassign_sessions_to_username(self, session_ids: list[int], username: str) -> None:
@@ -215,41 +213,24 @@ class SessionMixin:
         ]
         if not session_ids:
             return []
-        Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
-        Message.delete().where(Message.session.in_(session_ids)).execute()
         CoreSession.delete().where(CoreSession.id.in_(session_ids)).execute()
         return session_ids
 
     def delete_sessions_by_username_and_project(self, username: str, project_id: str) -> None:
         """The "Label sessions" view's per-branch × button, for any
         non-live branch (a Test user or an arbitrary imported username) —
-        scoped to this project only, and cleans up Message/Tracking rows
-        too, unlike CoreSession.delete() alone would."""
-        session_ids = [
-            row.id for row in CoreSession.select(CoreSession.id).where(
-                (CoreSession.project == project_id) & (CoreSession.username == username)
-            )
-        ]
-        if not session_ids:
-            return
-        Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
-        Message.delete().where(Message.session.in_(session_ids)).execute()
-        CoreSession.delete().where(CoreSession.id.in_(session_ids)).execute()
+        scoped to this project only."""
+        CoreSession.delete().where(
+            (CoreSession.project == project_id) & (CoreSession.username == username)
+        ).execute()
 
     def delete_imported_sessions(self, project_id: str) -> None:
         """The "Label sessions" view's "Delete all imported sessions"
         button — every imported session of the project, across every
-        user, cleaned up the same way delete_chat_session cleans up one."""
-        session_ids = [
-            row.id for row in CoreSession.select(CoreSession.id).where(
-                (CoreSession.project == project_id) & (CoreSession.type == 'imported')
-            )
-        ]
-        if not session_ids:
-            return
-        Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
-        Message.delete().where(Message.session.in_(session_ids)).execute()
-        CoreSession.delete().where(CoreSession.id.in_(session_ids)).execute()
+        user."""
+        CoreSession.delete().where(
+            (CoreSession.project == project_id) & (CoreSession.type == 'imported')
+        ).execute()
 
     def truncate_session(self, session_id: int, cutoff: datetime) -> None:
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.timestamp >= cutoff) & (Tracking.old_state.is_null(True) | (Tracking.old_state != ''))).execute()

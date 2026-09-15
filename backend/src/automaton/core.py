@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 import simpleeval
 
-from automaton.env_types import ENV_TYPES, UNDECLARED_ENV_TYPE
+from automaton.env_types import STORED_ENV_TYPES, UNDECLARED_ENV_TYPE
 from automaton.model import env_defaults_action
 from automaton.project_services import ProjectServices
 from automaton.scope import EvaluationScope
@@ -122,7 +122,7 @@ class CoreAutomaton(object):
         self.reactions = reactions or []
         self.env_keys = env_keys or []
         self.env_defaults_action = env_defaults_action(self.env_keys)
-        self._env_types = {env_key.name: ENV_TYPES[env_key.type] for env_key in self.env_keys}
+        self._env_types = {env_key.name: STORED_ENV_TYPES[env_key.type] for env_key in self.env_keys}
         self.sources = sources or []
         self.project_id = project_id
         self.family = project_family

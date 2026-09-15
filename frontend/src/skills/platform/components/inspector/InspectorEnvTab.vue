@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
-import { clearEnv, deleteEnvValue, getEnv, getOutput, putEnvValue } from '../../api.js'
+import { clearMemory, deleteEnvValue, getEnv, getOutput, putEnvValue } from '../../api.js'
 import { confirmDialog } from '../../../../dialogStore.js'
 
 const props = defineProps({
@@ -97,13 +97,13 @@ async function removeKey(key) {
 async function clearAll() {
   const ok = await confirmDialog({
     title: 'Clear memory',
-    body: 'Clear every memory note and every env value? This cannot be undone.',
+    body: 'Clear every memory note? This cannot be undone.',
     okLabel: 'Clear',
     danger: true
   })
   if (!ok) return
   try {
-    applyResult(await clearEnv(props.sessionId))
+    applyResult(await clearMemory(props.sessionId))
   } catch {
   }
 }

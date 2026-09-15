@@ -73,9 +73,16 @@ def test_an_on_exit_assignment_may_read_a_declared_choice_key_too():
      r"State a, action 'go': env expression for 'booked_slot' references choice.visits"),
     ("      - name: go\n        target: b\n        on-exit: env.booked_slot = choice.visits\n",
      r"State a, action 'go': on-exit references choice.visits — 'visits' is not an env key declared of type choice"),
+    ("      - name: go\n        target: b\n        trigger: \"choice.slot()\"\n",
+     r"State a, action 'go': trigger calls choice.slot\(\) — choice.<key> is the option pressed, a string, not a call"),
+    ("      - name: go\n        target: b\n        on-exit: env.booked_slot = choice.slot()\n",
+     r"State a, action 'go': on-exit calls choice.slot\(\)"),
     ("      - name: go\n        target: b\n        task: task.send_mail(user.email, choice.slot)\n",
      r"State a, action 'go': task references choice.slot — choice.\* is read in an action's trigger, env and on-exit only"),
-], ids=["not-a-choice-key", "undeclared-key", "three-segments", "env-not-a-choice-key", "on-exit-not-a-choice-key", "task"])
+], ids=[
+    "not-a-choice-key", "undeclared-key", "three-segments", "env-not-a-choice-key", "on-exit-not-a-choice-key",
+    "called-in-trigger", "called-in-on-exit", "task",
+])
 def test_build_rejects_a_chain_that_is_not_exactly_a_declared_choice_key_or_sits_in_a_script(actions_yaml, match):
     with pytest.raises(ValueError, match=match):
         _build(actions_yaml)

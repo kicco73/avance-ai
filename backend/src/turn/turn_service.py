@@ -477,9 +477,9 @@ class TurnService(object):
 		self._env_for_session(session_id).delete_key(key)
 		return self.get_env(session_id)
 
-	def clear_env(self, session_id: int) -> dict:
+	def clear_memory(self, session_id: int) -> dict:
 		self._ownership.require_own_session(session_id)
-		self._env_for_session(session_id).clear()
+		self._env_for_session(session_id).clear_memory()
 		return self.get_env(session_id)
 
 	def get_session_signals(self, session_id: int) -> list[dict]:

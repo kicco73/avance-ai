@@ -33,6 +33,15 @@ if TYPE_CHECKING:
     from project.project_service import ProjectService
 
 
+class UnbuildableRevision(object):
+
+    family = None
+    states: dict = {}
+
+    def reactions_enabled_for(self, state) -> bool:
+        return False
+
+
 class PlatformService(object):
 
     def __init__(self, project_service: "ProjectService") -> None:
@@ -205,13 +214,27 @@ class PlatformService(object):
         apps = []
         for app in self.db.list_projects_for_app_store(username, search):
             try:
-                apps.append(self._offered(app))
+                apps.append(self._offered(app, self._published_automaton(app["id"])))
             except AutomatonBuildError:
                 continue
         return apps
 
-    def _offered(self, app: dict) -> dict:
-        automaton = self.project_service.get_automaton(app["id"], self.project_service.get_published_revision(app["id"]))
+    def list_managed_apps(self, username: str, search: str | None = None) -> list[dict]:
+        return [
+            self._offered(app, self._published_automaton_or_unbuildable(app["id"]))
+            for app in self.db.list_projects_for_app_store(username, search)
+        ]
+
+    def _published_automaton(self, project_id: str) -> Automaton:
+        return self.project_service.get_automaton(project_id, self.project_service.get_published_revision(project_id))
+
+    def _published_automaton_or_unbuildable(self, project_id: str) -> Automaton | UnbuildableRevision:
+        try:
+            return self._published_automaton(project_id)
+        except AutomatonBuildError:
+            return UnbuildableRevision()
+
+    def _offered(self, app: dict, automaton: Automaton | UnbuildableRevision) -> dict:
         app["icon_file"] = self._find_app_icon_file(app["id"])
         app["family"] = automaton.family
         app["reactions_enabled"] = any(automaton.reactions_enabled_for(s) for s in automaton.states.values())

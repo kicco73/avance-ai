@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
 
 import pytest
 
-from db.models import CoreSession, Message
+from db import Db
+from db.models import CoreSession, Message, Tracking
 
 
 def _make_session(db, *, username="user", project_name="proj", start=datetime(2026, 1, 1, 10, 0, 0), end=None, start_state="start", end_state=None, **kwargs):
@@ -159,3 +161,62 @@ def test_set_session_labeled_toggles_only_the_given_session_starting_unlabeled(d
 
     db.set_session_labeled(marked, False)
     assert db.get_chat_session(marked)["labeled"] is False
+
+
+@pytest.mark.contract
+def test_deleting_a_session_deletes_its_signals_and_messages(db):
+    session_id = _make_session(db)
+    db.save_signal_snapshot({"temperature": 21}, session_id)
+    db.save_message("user", "hello", session_id)
+
+    db.delete_chat_session(session_id)
+
+    assert db.get_signals(session_id) == []
+    assert Tracking.select().where(Tracking.session == session_id).count() == 0
+    assert Message.select().where(Message.session == session_id).count() == 0
+
+
+@pytest.mark.regression
+def test_signals_orphaned_while_the_cascade_was_broken_are_dropped_at_the_next_boot(tmp_path):
+    path = tmp_path / "orphans.db"
+    url = f"sqlite:///{path}"
+    db = Db(url)
+    db.get_or_create_user("test", "sub-user", "user", "user", None)
+    session_id = _make_session(db)
+    db.save_signal_snapshot({"temperature": 21}, session_id)
+    message_id = db.save_message("user", "hello", session_id)
+    db.link_signal_to_message(db.get_signals(session_id)[0]["id"], message_id)
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("DELETE FROM CoreSession WHERE id = ?", (session_id,))
+    connection.commit()
+    connection.close()
+
+    reopened = Db(url)
+
+    assert reopened.get_signals(session_id) == []
+    assert Tracking.select().count() == 0
+    assert Message.select().count() == 0
+
+
+@pytest.mark.regression
+def test_a_row_whose_parent_is_gone_under_set_null_is_nulled_not_deleted(tmp_path):
+    path = tmp_path / "set_null.db"
+    url = f"sqlite:///{path}"
+    db = Db(url)
+    db.get_or_create_user("test", "sub-user", "user", "user", None)
+    session_id = _make_session(db)
+    message_id = db.save_message("user", "hello", session_id)
+    signal_id = db.save_signal_snapshot({"temperature": 21}, session_id, message_id=message_id)
+
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("DELETE FROM Message WHERE id = ?", (message_id,))
+    connection.commit()
+    connection.close()
+
+    reopened = Db(url)
+
+    assert [signal["id"] for signal in reopened.get_signals(session_id)] == [signal_id]
+    assert reopened.get_signals(session_id)[0]["message_id"] is None

@@ -14,7 +14,7 @@ from typing import ClassVar
 
 from typing_extensions import TypedDict, Literal, Any
 
-ENV_TYPE_DEFAULTS: dict[str, Any] = {"number": 0, "string": "", "bool": False, "choice": []}
+ENV_TYPE_DEFAULTS: dict[str, Any] = {"number": 0, "string": "", "bool": False, "choice": [], "undeclared": ""}
 ENV_DEFAULTS_ACTION_NAME = "env-defaults"
 
 class SourceDict(TypedDict):

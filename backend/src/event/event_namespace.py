@@ -4,6 +4,7 @@ import ast
 from typing import Any
 
 from automaton.automaton import Action, Automaton, EnvKey, State
+from automaton.builder.project_metadata import load_yaml
 from automaton.choice import ChoiceSelection
 from automaton.trigger_namespaces import TriggerNamespace
 from system import bus
@@ -77,26 +78,45 @@ class EventNamespace(TriggerNamespace):
         registry: dict[str, dict[str, str]] = {NAME: {}}
         if automaton.family is None:
             return registry
-        core = self._core()
-        db, project_service = core["db"], core["project_service"]
+        db = self._core()["db"]
         for other_id in db.list_projects():
             if other_id == automaton.project_id:
                 continue
-            try:
-                other = project_service.get_automaton(other_id, db.get_project_revision(other_id))
-            except Exception:  # noqa: BLE001
-                continue
-            if other.family != automaton.family:
+            declared = _declared_in(db.get_archive(other_id, "index.yml", revision=db.get_project_revision(other_id)))
+            if declared is None or declared.family != automaton.family:
                 continue
             registry[f"{NAME}.{other_id}"] = {"state": f"The '{other_id}' project's own current state."}
-            registry[f"{NAME}.{other_id}.env"] = {
-                env_key.name: env_key.ui_description or "" for env_key in other.env_keys
-            }
+            registry[f"{NAME}.{other_id}.env"] = declared.env_descriptions
         return registry
 
     @staticmethod
     def _core() -> dict:
         return bus.collect(POINT_CORE_SERVICES, {})
+
+
+class _Declared:
+    def __init__(self, family: str, env_descriptions: dict[str, str]) -> None:
+        self.family = family
+        self.env_descriptions = env_descriptions
+
+
+def _declared_in(index_yml: bytes | None) -> _Declared | None:
+    if index_yml is None:
+        return None
+    try:
+        raw = load_yaml(index_yml.decode("utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001
+        return None
+    project = raw.get("project") if isinstance(raw, dict) else None
+    family = project.get("family") if isinstance(project, dict) else None
+    if not isinstance(family, str):
+        return None
+    env = raw.get("env") if isinstance(raw.get("env"), dict) else {}
+    descriptions = {
+        str(name): str((fields or {}).get("ui-description") or "") if isinstance(fields, dict) else ""
+        for name, fields in env.items()
+    }
+    return _Declared(family, descriptions)
 
 
 class _ScopedEventNamespace:

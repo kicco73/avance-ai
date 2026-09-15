@@ -115,7 +115,7 @@ def choice_keys(state: "State") -> tuple[str, ...]:
     for action in state.actions:
         if action.trigger:
             for chain in expression_chains(action.trigger):
-                if len(chain) == 2:
+                if len(chain) == 2 and chain[1] != "()":
                     keys.setdefault(chain[1], None)
     return tuple(keys)
 

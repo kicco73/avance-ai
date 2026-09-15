@@ -6,6 +6,7 @@ from automaton.builder.archive_resolver import ProjectArchives
 from automaton.automaton import EnvKey, Source, State
 from automaton.builder.build_cursor import BuildCursor
 from automaton.choice_namespace import choice_key_names
+from automaton.env_types import STORED_ENV_TYPES
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.trigger_namespaces import TriggerNamespaces
@@ -37,7 +38,7 @@ class AutomatonValidator:
                 )
             if env_key.value:
                 value_kind = TriggerExpressionAnalyzer.expression_kind(env_key.value)
-                if value_kind is not None and value_kind != env_key.type:
+                if value_kind is not None and not STORED_ENV_TYPES[env_key.type].accepts_kind(value_kind):
                     raise ValueError(
                         f"env key '{name}' is declared {env_key.type} but its 'value' ('{env_key.value}') "
                         f"is a {value_kind}."
@@ -389,7 +390,7 @@ class AutomatonValidator:
     @staticmethod
     def validate_env_key_type(declared: EnvKey, expression: str, context: str) -> None:
         written_kind = TriggerExpressionAnalyzer.expression_kind(expression)
-        if written_kind is None or written_kind == declared.type:
+        if written_kind is None or STORED_ENV_TYPES[declared.type].accepts_kind(written_kind):
             return
         raise ValueError(
             f"{context}: env expression for '{declared.name}' ('{expression}') is a {written_kind}, but "

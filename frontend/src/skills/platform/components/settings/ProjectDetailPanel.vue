@@ -50,9 +50,11 @@ async function loadLatestSignals() {
 }
 
 watch(activeTab, (tab) => {
-  if (tab !== 'signals' || latestSignalsLoaded) return
-  latestSignalsLoaded = true
-  loadLatestSignals()
+  if (tab !== 'info') quitPreview()
+  if (tab === 'signals' && !latestSignalsLoaded) {
+    latestSignalsLoaded = true
+    loadLatestSignals()
+  }
 })
 
 const deleteMenuOpen = ref(false)

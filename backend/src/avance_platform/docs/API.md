@@ -46,6 +46,29 @@ switch, download/upload, delete), while `edit_project_controller.py` has
 any one field inside it. Manage projects is a Settings screen. Only the
 prefix changed.
 
+## `GET .../settings/projects/apps` exists so Manage projects can never go blank
+
+The store and the manage view ask the same question — what does the
+*published* revision of each project offer (icon, family, reactions,
+compiled) — and need opposite answers when that revision no longer
+builds. `app-store/apps` drops it: nobody should be able to install an
+app that cannot run. `settings/projects/apps` keeps it, built from an
+`UnbuildableRevision` in place of the automaton, because the admin
+looking at that project is the one person who can fix it.
+
+Manage projects read the store's list once. A project stopped because
+its published revision was broken then vanished from the centre panel,
+which said "hasn't been published yet", so the Publish button that would
+have shipped the repaired draft was not on screen — the one screen that
+can end the outage was the one screen that hid it.
+
+**This view must never again lose its panel for a broken project.**
+`manageProjectsBrokenPublishedRevision.test.js` selects such a project
+and asserts the panel, its revision and its Publish button; it fails the
+moment the view is pointed back at the store's catalogue. Do not rewire
+this data source — not while changing a transition, a layout, or a
+catalogue call that looks redundant.
+
 ## `PUT .../users/{id}/role` stayed a PUT
 
 It sets a field, which is what PUT is for. Not everything that was not

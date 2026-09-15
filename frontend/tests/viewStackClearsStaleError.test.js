@@ -8,7 +8,7 @@ describe('an error and the screen it belongs to', () => {
 
   beforeEach(() => {
     stack = useViewStack(ref('admin'))
-    enterScreen('edit:habitat')
+    enterScreen('edit', 'habitat')
     setApiError("Project 'habitat' no longer builds", 'nope')
   })
 
@@ -19,7 +19,7 @@ describe('an error and the screen it belongs to', () => {
   it('drops it when another project is opened', () => {
     stack.pushView('edit', { projectId: 'andre_the_game' })
 
-    expect(currentScreen.value).toBe('edit:andre_the_game')
+    expect(currentScreen.value.key).toBe('edit:andre_the_game')
     expect(errorMessage.value).toBe('')
   })
 
@@ -44,7 +44,7 @@ describe('an error and the screen it belongs to', () => {
     stack.popPushedView()
     expect(errorMessage.value).toBe('')
 
-    enterScreen('edit:habitat')
+    enterScreen('edit', 'habitat')
     setApiError('again', '')
     stack.openProfile()
     expect(errorMessage.value).toBe('')

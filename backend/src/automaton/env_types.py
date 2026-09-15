@@ -11,6 +11,9 @@ class EnvType:
     def accepts(self, value: Any) -> bool:
         raise NotImplementedError
 
+    def accepts_kind(self, kind: str) -> bool:
+        return kind == self.name
+
     def default_literal(self) -> str:
         return repr(ENV_TYPE_DEFAULTS[self.name])
 
@@ -49,9 +52,13 @@ class UndeclaredType(EnvType):
     def accepts(self, value: Any) -> bool:
         return True
 
+    def accepts_kind(self, kind: str) -> bool:
+        return True
+
 
 ENV_TYPES: dict[str, EnvType] = {
     env_type.name: env_type for env_type in (NumberType(), StringType(), BoolType(), ChoiceType())
 }
 UNDECLARED_ENV_TYPE = UndeclaredType()
 ENV_TYPE_NAMES = ", ".join(ENV_TYPES)
+STORED_ENV_TYPES: dict[str, EnvType] = {**ENV_TYPES, UNDECLARED_ENV_TYPE.name: UNDECLARED_ENV_TYPE}

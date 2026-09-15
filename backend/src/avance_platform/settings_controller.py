@@ -46,6 +46,10 @@ class SettingsController(BaseController):
         table."""
         return {"projects": self.platform_service.get_runtime_status()}
 
+    @get("/api/skills/platform/settings/projects/apps", role="admin")
+    def get_all_projects_as_apps(self):
+        return {"apps": self.platform_service.list_managed_apps(WebSession().user)}
+
     @get("/api/skills/platform/settings/warnings", role="admin")
     def get_warnings(self, kind: str | None = None):
         """Manage projects' own "broken project" warnings counter/list —

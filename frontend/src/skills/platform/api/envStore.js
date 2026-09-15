@@ -31,8 +31,8 @@ export function deleteEnvValue(sessionId, key) {
   })
 }
 
-export function clearEnv(sessionId) {
-  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/env`, {
+export function clearMemory(sessionId) {
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/memory`, {
     method: 'DELETE'
   })
 }

@@ -8,7 +8,7 @@ from automaton.builder.archive_resolver import ProjectArchives
 from automaton.builder.automaton_validator import AutomatonValidator, STATE_SOURCE_FIELDS
 from automaton.builder.build_cursor import BuildCursor
 from automaton.build_error import AutomatonBuildError
-from automaton.env_types import ENV_TYPES, ENV_TYPE_NAMES
+from automaton.env_types import ENV_TYPE_NAMES, STORED_ENV_TYPES, UNDECLARED_ENV_TYPE
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.builder.project_metadata import ProjectMetadata, load_yaml, peek_declared_revision, read_declared_project_id
 from automaton.trigger_namespaces import TriggerNamespaces
@@ -99,11 +99,10 @@ class AutomatonBuilder(object):
     def _build_env_key(self, name: str, raw_env_key: dict) -> EnvKey:
         raw_env_key = raw_env_key or {}
         self._check_fields(raw_env_key, ENV_KEY_FIELDS, "Env key", name)
-        env_type = raw_env_key.get("type")
-        if env_type not in ENV_TYPES:
+        env_type = raw_env_key.get("type") or UNDECLARED_ENV_TYPE.name
+        if env_type not in STORED_ENV_TYPES:
             raise ValueError(
-                f"Env key '{name}': 'type' is required and must be one of {ENV_TYPE_NAMES}"
-                + (f", got '{env_type}'." if env_type is not None else ".")
+                f"Env key '{name}': 'type' must be one of {ENV_TYPE_NAMES}, got '{env_type}'."
             )
         raw_value = raw_env_key.get("value", "")
         value = raw_value if isinstance(raw_value, str) else str(raw_value)

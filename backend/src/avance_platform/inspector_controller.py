@@ -52,11 +52,12 @@ class InspectorController(BaseController):
         the session's latest), for the Run Inspector's own Output card."""
         return self.turn_service.get_output(session_id, message_id)
 
-    @delete("/api/skills/platform/sessions/{session_id}/env")
-    def clear_env(self, session_id: int):
-        """Wipes every stored and action-set env key at once for
-        session_id (see TurnService.clear_env)."""
-        return self.turn_service.clear_env(session_id)
+    @delete("/api/skills/platform/sessions/{session_id}/memory")
+    def clear_memory(self, session_id: int):
+        """Wipes every one of the model's own memory notes for
+        session_id — never the automaton's own env keys (see
+        TurnService.clear_memory)."""
+        return self.turn_service.clear_memory(session_id)
 
     @put("/api/skills/platform/sessions/{session_id}/env/{key}")
     def put_env_value(self, session_id: int, key: str, req: SetEnvValueRequest):

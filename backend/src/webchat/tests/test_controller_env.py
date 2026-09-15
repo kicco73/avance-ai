@@ -92,13 +92,19 @@ def test_env_for_an_unknown_session_is_404(client):
     assert response.status_code == 404
 
 
-def test_clear_env_wipes_every_stored_key(client, hello_project):
+def test_clear_memory_wipes_every_stored_memory_note_but_leaves_the_action_set_alone(client, app_db, hello_project):
+    """The Inspector's own "Clear all" button, scoped to the AI Memory
+    block — it must never touch the automaton's own env keys (action_set),
+    even though both live behind the same GET .../env payload."""
     session_id = _session_id(client, hello_project)
     client.put(f"/api/skills/platform/sessions/{session_id}/env/favorite_color", json={"value": "blue"})
     client.put(f"/api/skills/platform/sessions/{session_id}/env/mood", json={"value": "happy"})
+    app_db.set_action_env(session_id, {"visits": 3})
 
-    response = client.delete(f"/api/skills/platform/sessions/{session_id}/env")
+    response = client.delete(f"/api/skills/platform/sessions/{session_id}/memory")
 
     assert response.status_code == 200
-    assert response.json()["memory"] == {}
-    assert client.get(f"/api/skills/platform/sessions/{session_id}/env").json()["memory"] == {}
+    assert response.json() == {"memory": {}, "action_set": {"visits": 3}, "ai_definition": {}}
+    fresh = client.get(f"/api/skills/platform/sessions/{session_id}/env").json()
+    assert fresh["memory"] == {}
+    assert fresh["action_set"] == {"visits": 3}

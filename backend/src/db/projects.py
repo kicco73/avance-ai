@@ -5,8 +5,8 @@ from typing import Any
 from peewee import Expression
 
 from .models import (
-    Archive, CoreSession, EditHistory, File, Invite, Message, Project, StateRemap,
-    SystemWarning, Test, TestAggregateResult, Tracking, User, UserProject, database,
+    Archive, CoreSession, EditHistory, File, Invite, Project, StateRemap,
+    SystemWarning, Test, TestAggregateResult, User, UserProject, database,
 )
 
 
@@ -69,9 +69,6 @@ class ProjectMixin:
         Project.update(ui_label=ui_label, ui_description=ui_description).where(Project.id == project_id).execute()
 
     def _delete_sessions_where(self, condition: Expression) -> None:
-        session_ids = CoreSession.select(CoreSession.id).where(condition)
-        Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
-        Message.delete().where(Message.session.in_(session_ids)).execute()
         CoreSession.delete().where(condition).execute()
 
     def reset_project(self, project_id: str) -> None:

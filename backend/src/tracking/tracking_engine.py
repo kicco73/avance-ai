@@ -218,7 +218,6 @@ class TrackingEngine:
             origin=origin,
             output_values=output_values,
         )
-        AI_MEMORY_STRATEGIES[automaton.get_state(action.target).ai_memory_strategy].on_entry(self._env)
         return tracking_id
 
     def apply_action_env(
@@ -257,6 +256,7 @@ class TrackingEngine:
         ActionTask itself and for the chat namespace's own push.
         `output_values`: structured output dict from this turn's AI
         generation, available in env expressions and task/on-exit scripts."""
+        AI_MEMORY_STRATEGIES[automaton.get_state(action.target).ai_memory_strategy].on_entry(self._env)
         if not action.env and not action.task and not action.on_exit:
             return {}
         scope = self._scope_builder.build(

@@ -79,6 +79,7 @@ class Db(
         self._backfill_projects()
         self._rename_channels_to_skill_keys()
         self._repoint_foreign_keys_to_renamed_tables()
+        self._repair_rows_orphaned_by_stale_foreign_keys()
 
     @staticmethod
     def _repoint_foreign_keys_to_renamed_tables() -> None:
@@ -118,6 +119,37 @@ class Db(
                 database.execute_sql(f'DROP TABLE "{name}__stale"')
             finally:
                 database.execute_sql('PRAGMA foreign_keys = ON')
+
+    @staticmethod
+    def _repair_rows_orphaned_by_stale_foreign_keys() -> None:
+        violations = database.execute_sql('PRAGMA foreign_key_check').fetchall()
+        for table, fk_id in sorted({(row[0], row[3]) for row in violations}):
+            _, _, parent, column, parent_column, _, on_delete, _ = next(
+                row for row in database.execute_sql(f'PRAGMA foreign_key_list("{table}")').fetchall()
+                if row[0] == fk_id
+            )
+            parent_column = parent_column or Db._primary_key_column(parent)
+            unmatched = (
+                f'"{column}" IS NOT NULL AND "{column}" NOT IN '
+                f'(SELECT "{parent_column}" FROM "{parent}")'
+            )
+            statement = (
+                f'UPDATE "{table}" SET "{column}" = NULL WHERE {unmatched}'
+                if (on_delete or "").upper() == "SET NULL"
+                else f'DELETE FROM "{table}" WHERE {unmatched}'
+            )
+            logger.warning(
+                "Repairing rows of %s whose %s names a %s that no longer exists (ON DELETE %s).",
+                table, column, parent, on_delete,
+            )
+            database.execute_sql(statement)
+
+    @staticmethod
+    def _primary_key_column(table: str) -> str:
+        return next(
+            row[1] for row in database.execute_sql(f'PRAGMA table_info("{table}")').fetchall()
+            if row[5]
+        )
 
     @staticmethod
     def _rename_channels_to_skill_keys() -> None:

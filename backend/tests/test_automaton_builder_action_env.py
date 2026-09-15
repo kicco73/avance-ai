@@ -102,3 +102,13 @@ def test_a_matching_type_and_a_statically_unknowable_expression_are_both_accepte
     assert _action_env(
         _env_write("counter", "env.other"), "env:\n  counter:\n    type: number\n    value: \"0\"\n  other:\n    type: number\n"
     ) == {"counter": "env.other"}
+
+
+def test_a_key_stored_without_a_type_takes_a_write_of_any_kind():
+    """A revision saved before env keys declared their type keeps
+    building: its keys are undeclared, and an undeclared key is the one
+    thing a write can never drift from."""
+    undeclared = "env:\n  nivel: {}\n"
+    assert _action_env(_env_write("nivel", '"3"'), undeclared) == {"nivel": "3"}
+    assert _action_env(_env_write("nivel", "\"'alto'\""), undeclared) == {"nivel": "'alto'"}
+    assert _action_env(_env_write("nivel", '"True"'), undeclared) == {"nivel": "True"}

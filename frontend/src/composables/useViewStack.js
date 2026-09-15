@@ -22,7 +22,7 @@ export function useViewStack(currentUserRole) {
 
   function pushView(view, context = {}) {
     setNavForward()
-    enterScreen(`${view}:${context.projectId ?? ''}`)
+    enterScreen(view, context.projectId ?? '')
     pushedViewContext.value = context
     if (view === 'chat') chatOpen.value = true
     else pushedView.value = view

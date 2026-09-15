@@ -64,15 +64,16 @@ def test_the_env_defaults_action_carries_each_keys_value_or_its_types_own_defaul
     assert action.name == ENV_DEFAULTS_ACTION_NAME
     assert action.env == {"visits": "3", "name": "''", "flag": "False", "slot": "[]", "total": "0"}
     assert action.task is None and action.on_exit is None
-    assert ENV_TYPE_DEFAULTS == {"number": 0, "string": "", "bool": False, "choice": []}
+    declarable = ("number", "string", "bool", "choice")
+    assert {name: ENV_TYPE_DEFAULTS[name] for name in declarable} == {
+        "number": 0, "string": "", "bool": False, "choice": [],
+    }
     assert _build("").env_defaults_action.env is None
 
 
 @pytest.mark.parametrize(("env_yaml", "match"), [
     ("env:\n  - not\n  - a\n  - mapping\n", "'env' must be a mapping"),
-    ("env:\n  visits:\n    value: \"0\"\n", "Env key 'visits': 'type' is required and must be one of number, string, bool, choice"),
-    ("env:\n  visits: {}\n", "Env key 'visits': 'type' is required and must be one of number, string, bool, choice"),
-    ("env:\n  visits:\n    type: integer\n", "Env key 'visits': 'type' is required and must be one of number, string, bool, choice, got 'integer'"),
+    ("env:\n  visits:\n    type: integer\n", "Env key 'visits': 'type' must be one of number, string, bool, choice, got 'integer'"),
     ("env:\n  visits:\n    type: number\n    value: \"'many'\"\n", "env key 'visits' is declared number but its 'value' \\('\'many\''\\) is a string"),
     ("env:\n  enabled:\n    type: bool\n    value: \"1\"\n", "env key 'enabled' is declared bool but its 'value' \\('1'\\) is a number"),
     ("env:\n  slot:\n    type: choice\n    value: \"['a']\"\n", "env key 'slot': a choice key takes no 'value'"),
@@ -81,10 +82,20 @@ def test_the_env_defaults_action_carries_each_keys_value_or_its_types_own_defaul
     ('env:\n  last_visit_count:\n    type: number\n    value: env.visits\n  visits:\n    type: number\n    value: "0"\n', "references env.visits before it's declared"),
     ("env:\n  visits:\n    type: number\n    value: env.visits\n", "references env.visits before it's declared"),
 ], ids=[
-    "not-a-mapping", "missing-type", "missing-type-bare-key", "type-out-of-list", "string-value-on-number",
+    "not-a-mapping", "type-out-of-list", "string-value-on-number",
     "number-value-on-bool", "value-on-choice", "undeclared-reference", "invalid-expression",
     "forward-reference", "self-reference",
 ])
-def test_build_rejects_a_malformed_section_a_missing_or_wrong_type_or_a_value_that_cannot_resolve(env_yaml, match):
+def test_build_rejects_a_malformed_section_a_wrong_type_or_a_value_that_cannot_resolve(env_yaml, match):
     with pytest.raises(ValueError, match=match):
         _build(env_yaml)
+
+
+@pytest.mark.parametrize("env_yaml", [
+    "env:\n  nivel:\n    value: \"1\"\n",
+    "env:\n  nivel: {}\n",
+], ids=["with-value", "bare-key"])
+def test_a_key_that_declares_no_type_builds_as_undeclared_and_takes_a_value_of_any_kind(env_yaml):
+    key = _build(env_yaml).env_keys[0]
+    assert key.name == "nivel"
+    assert key.type == "undeclared"

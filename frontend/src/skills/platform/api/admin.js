@@ -7,6 +7,10 @@ export function getProjectsRuntimeStatus() {
   return apiFetch(`${API_URL}/skills/platform/settings/projects/runtime-status`)
 }
 
+export function getManagedProjectApps() {
+  return apiFetch(`${API_URL}/skills/platform/settings/projects/apps`)
+}
+
 
 export function putUserRole(userId, role) {
   return apiFetch(`${API_URL}/skills/platform/users/${encodeURIComponent(userId)}/role`, {

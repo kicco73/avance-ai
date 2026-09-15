@@ -169,3 +169,18 @@ def test_a_project_whose_published_revision_no_longer_builds_leaves_the_rest_of_
 
     assert [app["id"] for app in apps] == ["healthy"]
     assert apps[0]["compiled"] is False
+
+
+def test_manage_projects_still_lists_a_project_whose_published_revision_no_longer_builds(db):
+    service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
+    _publish_buildable(db, "healthy")
+    _publish_buildable(db, "rotten")
+    _break_published_revision(db, service, "rotten")
+
+    apps = PlatformService(service).list_managed_apps("user")
+
+    assert [app["id"] for app in apps] == ["healthy", "rotten"]
+    rotten = apps[1]
+    assert rotten["compiled"] is False
+    assert rotten["reactions_enabled"] is False
+    assert rotten["family"] is None

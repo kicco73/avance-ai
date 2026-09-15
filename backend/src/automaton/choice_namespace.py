@@ -16,6 +16,7 @@ CHOICE_TYPE = "choice"
 
 def chains(tree: ast.AST) -> list[tuple[str, ...]]:
     nested = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+    called = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
     found: list[tuple[tuple[int, int], tuple[str, ...]]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Attribute) or id(node) in nested:
@@ -26,7 +27,8 @@ def chains(tree: ast.AST) -> list[tuple[str, ...]]:
             attrs.append(cur.attr)
             cur = cur.value
         if isinstance(cur, ast.Name) and cur.id == NAME:
-            found.append(((cur.lineno, cur.col_offset), (cur.id, *reversed(attrs))))
+            chain = (cur.id, *reversed(attrs)) + (("()",) if id(node) in called else ())
+            found.append(((cur.lineno, cur.col_offset), chain))
     return [chain for _position, chain in sorted(found, key=lambda item: item[0])]
 
 
@@ -76,6 +78,12 @@ class ChoiceNamespace(TriggerNamespace):
 
     @staticmethod
     def _check_chain(context: str, field_name: str, chain: tuple[str, ...], declared: set[str]) -> None:
+        if chain[-1] == "()":
+            raise ValueError(
+                f"{context}: {field_name} calls {'.'.join(chain[:-1])}() — "
+                f"{NAME}.<key> is the option pressed, a string, not a call: compare it, e.g. "
+                f"{NAME}.{chain[1]} != ''."
+            )
         if len(chain) != 2:
             raise ValueError(
                 f"{context}: {field_name} references {'.'.join(chain)} — {NAME}.<key> is the whole of it, "

@@ -44,14 +44,22 @@ async function readBlobWithProgress(res, onProgress) {
   return new Blob(chunks, { type: res.headers.get('Content-Type') ?? '' })
 }
 
+const PROJECT_IN_PATH = /\/projects\/([^/?#]+)\//
+
+function projectAskedAbout(url) {
+  const match = String(url).match(PROJECT_IN_PATH)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
 export async function apiFetch(url, options, { parse = 'json', onProgress, onCommitted } = {}) {
   const askedFrom = currentScreen.value
+  const aboutProject = projectAskedAbout(url)
   let res
   try {
     res = await fetch(url, { ...options, credentials: 'include' })
   } catch (err) {
     if (err.name === 'AbortError') throw err
-    setApiError('Unable to reach the backend.', err.message, askedFrom)
+    setApiError('Unable to reach the backend.', err.message, askedFrom, aboutProject)
     throw err
   }
 
@@ -74,7 +82,7 @@ export async function apiFetch(url, options, { parse = 'json', onProgress, onCom
     if (res.status === 401) {
       requireLogin()
     } else {
-      setApiError(message, detail, askedFrom)
+      setApiError(message, detail, askedFrom, aboutProject)
     }
     const err = new Error(message)
     err.status = res.status

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getAppStoreApps, getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
+import { getManagedProjectApps, getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog, customDialog } from '../../../../dialogStore.js'
 import { setCanvasColor, restoreCanvasColor } from '../../../../canvasColor.js'
 import { findIconFile } from '../../../../projectIcon.js'
@@ -64,7 +64,7 @@ function deselectProject() {
 
 async function loadAppStoreApps() {
   try {
-    const { apps } = await getAppStoreApps()
+    const { apps } = await getManagedProjectApps()
     appStoreAppById.value = Object.fromEntries(apps.map((app) => [app.id, app]))
   } catch {
   }

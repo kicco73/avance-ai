@@ -33,9 +33,10 @@ export function excludingNamespaces(registry, excluded) {
   return Object.fromEntries(Object.entries(registry).filter(([ns]) => !isExcluded(ns)))
 }
 
+const VALUE_NAMESPACES = new Set(['signal', 'env', 'user', 'event', 'choice', 'datetime.timezone'])
+
 export function isProxyNamespace(namespace) {
-  return namespace !== 'signal' && namespace !== 'env' && namespace !== 'user' &&
-    namespace !== 'event' && namespace !== 'datetime.timezone' && !namespace.startsWith('event.')
+  return !VALUE_NAMESPACES.has(namespace) && !namespace.startsWith('event.')
 }
 
 export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|metric|event|choice|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'

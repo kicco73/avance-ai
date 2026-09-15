@@ -25,7 +25,7 @@ vi.mock('../api.js', async (importOriginal) => ({
   getProjectsRuntimeStatus: () => Promise.resolve({ projects: [
     { id: 'proj', status: 'running', revision: backend.revision, published_revision: backend.published, broken: { published: null, draft: null } },
   ] }),
-  getAppStoreApps: () => Promise.resolve({ apps: [listedApp()] }),
+  getManagedProjectApps: () => Promise.resolve({ apps: [listedApp()] }),
   projectFileContentUrl: () => '',
   getPublishPreview: () => Promise.resolve({ needs_remap: false, has_active_sessions: false }),
   postPublishProject: () => {
