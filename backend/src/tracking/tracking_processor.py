@@ -189,7 +189,11 @@ class TrackingProcessor(object):
 			"assistant", self.out.reply, self.user.session_id,
 			audio_text=self.metadata.audio, tokens=self.metadata.output_tokens,
 		)
-		self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
+		landed_on_a_cleared_state_with_no_reply_after_the_clear = (
+			self.out.action is not None and self.out.state.ai_memory_strategy == "clear" and not self.moved_before_reply
+		)
+		if not landed_on_a_cleared_state_with_no_reply_after_the_clear:
+			self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
 		self.db.mark_messages_answered(self._fragment_ids, assistant_id)
 
 		if self.metadata.tool_calls:
@@ -497,7 +501,7 @@ class TrackingProcessor(object):
 		if state.fixed_message:
 			logger.warning("Translating fixed_message for state '%s'.", state.key)
 			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, None, None, []
-		output_definition = build_output_definition_for_names(automaton, state.output)
+		output_definition = build_output_definition_for_names(automaton, state.output, state.input)
 		signals = Signals(FixedProjectContext(automaton), self.db)
 		signal_names = automaton.tracked_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
@@ -600,7 +604,7 @@ def estimate_state_prompt(
 		reaction_definition = None
 		turn_attachments: list = []
 	else:
-		output_definition = build_output_definition_for_names(automaton, state.output)
+		output_definition = build_output_definition_for_names(automaton, state.output, state.input)
 		signals = Signals(FixedProjectContext(automaton), None)
 		signal_definition = signals.get_definition(automaton.tracked_signal_names(state.key))
 		reaction_definition = (

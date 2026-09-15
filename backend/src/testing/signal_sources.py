@@ -59,7 +59,7 @@ class TurnByTurnSignalSource:
         env_block = EnvPromptBlock.for_state(self._env, self._automaton, state)
         if env_block is not None:
             base_prompt = f"{base_prompt}\n\n{env_block.text()}"
-        output_definition = build_output_definition_for_names(self._automaton, state.output)
+        output_definition = build_output_definition_for_names(self._automaton, state.output, state.input)
         if output_definition:
             base_prompt = f"{base_prompt}\n\n{output_definition}"
 
@@ -167,7 +167,8 @@ class BatchSignalSource(object):
         if env_block is not None:
             base_prompt = f"{base_prompt}\n\n{env_block.text()}"
         output_names = {name for state in self._automaton.states.values() for name in state.output}
-        output_definition = build_output_definition_for_names(self._automaton, output_names)
+        input_names = {name for state in self._automaton.states.values() for name in state.input}
+        output_definition = build_output_definition_for_names(self._automaton, output_names, input_names)
         if output_definition:
             base_prompt = f"{base_prompt}\n\n{output_definition}"
         base_prompt = f"{base_prompt}\n\nConversation transcript:\n{self._build_conversation_text(turn_ids)}"

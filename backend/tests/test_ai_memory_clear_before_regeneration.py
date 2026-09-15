@@ -19,6 +19,7 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.prompt import EMBED_MEMORY_TAG_HEADER
 from tracking.session_facts import SessionFacts
 from tracking.tracking_processor import UserVariables
+from tracking.tracking_processor_ai import TrackingProcessorAfterAiMessage
 from tracking.tracking_processor_user import TrackingProcessorAfterUserMessage
 from tracking.user_facts import UserFacts
 
@@ -61,6 +62,32 @@ class RecordingAiService:
             yield "final "
 
 
+def _automaton_tracking_on_ai_message() -> Automaton:
+    mood = Signal(name="mood", ui_label="Mood", definition="mood")
+    advance = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50")
+    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[advance])
+    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="there", ai_memory_strategy="clear")
+    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
+    return Automaton(
+        init_action=init_action,
+        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
+        general_prompt="", signals=[mood], general_attachments=(), autotracking_on_ai_message=True,
+    )
+
+
+class SingleCallAiService:
+    def is_provider_with_schema(self) -> bool:
+        return True
+
+    def get_models_info(self) -> dict:
+        return {"auto": True, "current_index": 0, "models": []}
+
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
+        on_metadata("memory", "fresh: note")
+        on_metadata("signals", '{"mood": 80}')
+        yield "final "
+
+
 def _memory_block(prompt: str) -> str:
     return prompt[prompt.index(EMBED_MEMORY_TAG_HEADER):] if EMBED_MEMORY_TAG_HEADER in prompt else ""
 
@@ -89,3 +116,26 @@ async def test_the_regenerated_reply_is_prompted_with_the_memory_already_cleared
     assert "old note" in _memory_block(ai_service.prompts[0])
     assert "old note" not in _memory_block(ai_service.prompts[1])
     assert env.memory() == {"fresh": "note"}
+
+
+async def test_a_transition_decided_after_the_only_reply_still_clears_the_memory_it_reported(db):
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    session_id = db.create_chat_session(
+        username=USERNAME, project_id=PROJECT_ID, revision=db.get_project_published_revision(PROJECT_ID),
+        datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(), start_state="a", end_state="a",
+    )
+    automaton = _automaton_tracking_on_ai_message()
+    context = FixedProjectContext(project_id=PROJECT_ID)
+    env = PersistedEnv(db, context, session_id)
+    env.update({"stale": "old note"})
+    ai_service = SingleCallAiService()
+    scope_builder = EvaluationScopeBuilder(env, MetricService(db, context), SessionFacts(db, context), UserFacts(db), db)
+    processor = TrackingProcessorAfterAiMessage(
+        ai_service, scope_builder, env, db,
+        UserVariables(automaton=automaton, state=automaton.states["a"], project_id=PROJECT_ID, session_id=session_id),
+    )
+
+    await processor.process("hello")
+
+    assert env.memory() == {}

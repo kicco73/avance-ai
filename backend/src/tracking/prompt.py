@@ -41,16 +41,21 @@ def _fail(channel: str, message: str, raw: str | None) -> NoReturn:
 	raise MetadataTurnMismatch(full_message)
 
 
-def build_output_definition_for_names(automaton: Automaton, names: Iterable[str]) -> str | None:
+def build_output_definition_for_names(automaton: Automaton, names: Iterable[str], already_shown: Iterable[str] = ()) -> str | None:
 	"""The `- Definition of output fields:` block for exactly `names`
 	(declaration order, deduplicated) — None once `names` is empty."""
 	unique_names = list(dict.fromkeys(names))
 	if not unique_names:
 		return None
+	already_shown = set(already_shown)
 	env_keys_by_name = {env_key.name: env_key for env_key in automaton.env_keys}
-	return "- Definition of output fields:\n" + "\n\n".join(
-		f'\t- Output "{name}":\n{env_keys_by_name[name].ai_definition}' for name in unique_names
-	)
+
+	def render(name: str) -> str:
+		if name in already_shown:
+			return f'\t- Output "{name}": defined above, in "Current environment".'
+		return f'\t- Output "{name}":\n{env_keys_by_name[name].ai_definition}'
+
+	return "- Definition of output fields:\n" + "\n\n".join(render(name) for name in unique_names)
 
 
 def _turns_in_order(channel: str, by_turn: dict[int, Any], expected_turns: int, terminated: bool, raw: str | None) -> list[Any]:
@@ -275,8 +280,10 @@ class ReactionPrompt(Prompt):
 EMBED_OUTPUT_TAG_PROMPT = """
 Definition of output fields:
 	- a JSON object, formatted as valid JSON text (e.g. "{\\"rating\\": 4.5, \\"pnr\\": \\"ABC123\\"}").
-	- fill in each output field declared in this state with the structured value the model should produce.
-	- leave empty ({}) if no output fields apply to this turn.
+	- it is vitally important to check each output field declared below against this turn, every turn
+	  — never skip one because it seemed unlikely to apply.
+	- fill in a field the moment this turn actually gives its value; leave a field out of the object
+	  only once you have checked it and this turn truly gives none.
 
 Always fill in the 'output' field of your structured response:
 """
@@ -491,12 +498,14 @@ Definition of output metadata:
 	- each declared output field is an automaton env variable the model
 	  itself directly produces — see the field definitions given
 	  separately below for which fields exist and what each one means.
+	- it is vitally important to check every declared output field against every turn — never skip one
+	  because it seemed unlikely to apply.
 	- plain text, not JSON. One line per turn holding just that turn's own
 	  number followed by a colon — the same number shown on its "[Turn N]"
 	  marker in the conversation transcript — then, on the following lines,
-	  one "key=value" pair per line for each output field this turn
-	  actually produces a value for (zero of them when none apply — not
-	  every declared field applies to every turn). The transcript's turn
+	  one "key=value" pair per line for each output field that turn
+	  actually has a value for (none of them only once every field has
+	  been checked and that turn truly gives none). The transcript's turn
 	  numbers always run 1, 2, 3, ... with no gaps, so with 3 marked turns
 	  you write exactly 3 turn headers:
 	  1:
