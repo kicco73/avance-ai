@@ -10,7 +10,7 @@ import { chatChannel, liveChatObservers, messageListeners, modelSelectors, state
 import { observeMessages } from '../messageNotifier.js'
 import { installModelSelector, modelSelector } from '../modelSelector.js'
 import { installChatChannel } from '../liveChatChannel.js'
-import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, liveStore, observeLiveChat } from '../chatStore.js'
+import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, observeLiveChat } from '../chatStore.js'
 
 export function useAppBoot(
   currentUserProfile, currentUserRole, landingProjectId,
