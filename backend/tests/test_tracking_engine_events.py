@@ -41,7 +41,7 @@ class FakeEnv:
 
 class FakeScopeBuilder:
     def build(self, automaton, state_key, signal_values, session_id=None, output_values=None):
-        return {}
+        return EvaluationScope({}, automaton=automaton, state_key=state_key)
 
 
 class FakeChatNamespaceRecorder(FakeChatNamespace):

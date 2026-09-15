@@ -100,8 +100,7 @@ METHOD_SCHEMAS: dict[str, dict] = {
         "required": ["values", "fields"],
     },
 }
-READ_METHODS = ("select_rows_containing", "select_rows_where", "select_rows_in_range")
-READ_METHOD = READ_METHODS[0]
+READ_METHOD = "select_rows_containing"
 WRITE_METHOD = "update"
 _FIXED_PARAMS: dict[str, tuple[str, ...]] = {
     "select_rows_where": ("column", "operator", "value"),
@@ -111,7 +110,7 @@ _FIXED_PARAMS: dict[str, tuple[str, ...]] = {
 
 class ToolSet:
     """The model's own callable catalog for one turn — one tool per
-    READ_METHODS method its driver supports for every source a state
+    read method its driver lists in TOOL_METHODS for every source a state
     names in ai-may-read-sources/ai-must-read-sources,
     `update` for every one in ai-may-write-sources (see automaton.State),
     resolved through the same SourceNamespace instance (and so the same
@@ -137,13 +136,13 @@ class ToolSet:
             self._add_read_tools(source, required=True)
         for source in may_write or []:
             driver = self._namespace.driver_for(source)
-            if WRITE_METHOD not in driver.SUPPORTED_METHODS:
+            if WRITE_METHOD not in driver.TOOL_METHODS:
                 raise ValueError(f"source.{source.name}.{WRITE_METHOD}(...): not supported by this source.")
             self._add_tool(source, driver, WRITE_METHOD, required=False)
 
     def _add_read_tools(self, source: Source, *, required: bool) -> None:
         driver = self._namespace.driver_for(source)
-        supported = [method for method in READ_METHODS if method in driver.SUPPORTED_METHODS]
+        supported = [method for method in driver.TOOL_METHODS if method != WRITE_METHOD]
         if not supported:
             raise ValueError(f"source.{source.name}.{READ_METHOD}(...): not supported by this source.")
         for method in supported:

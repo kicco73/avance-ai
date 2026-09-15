@@ -13,7 +13,7 @@ const props = defineProps({
 
 const TAB_DEFS = [
   { key: 'trigger', label: 'Trigger', field: 'trigger', excludeNamespaces: ['task', 'chat'], hint: 'A Python expression, evaluated server-side, deciding whether this action is available.' },
-  { key: 'on-exit', label: 'On Exit', field: 'on-exit', excludeNamespaces: ['task'], hint: 'One "env.key = expression" write per line, or a bare "chat.<method>(...)" call, evaluated when the action fires and before landing to next state.' },
+  { key: 'on-exit', label: 'On Exit', field: 'on-exit', excludeNamespaces: ['task'], hint: 'One "env.key = expression" write, "name = expression" local, or bare "chat.<method>(...)" call per line, evaluated when the action fires and before landing to next state. Locals are dropped when the script ends.' },
   { key: 'task', label: 'Task', field: 'task', excludeNamespaces: ['session', 'chat'], hint: 'Script executed when running the action and before landing to next state.' }
 ]
 

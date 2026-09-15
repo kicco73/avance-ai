@@ -15,7 +15,13 @@ matching the filter returns "" — not even the header — so
 `select_rows_containing(...) != ''` is a real existence check.
 `value(*values, key=...)`: the `key` cell of the first matching row, as a scalar string, for
 scripts/triggers that want one value rather than a table to parse —
-never a model tool. A whole-file read is
+never a model tool. `column(column, *values)`: every `column` cell of
+the matching rows, as a list, for a script that wants the whole column
+to look into — never a model tool either. `row_where(column, operator,
+value, *strings)`: the first row `select_rows_where` would return, as a
+`{column: cell}` dict, for a script that wants one whole record without
+parsing a table — never a model tool either: TOOL_METHODS is the driver's
+own say on which of its methods the model gets. A whole-file read is
 `attachment.read(name)`'s job (on-exit/task only, see
 tracking.actuators.attachment_namespace) — SourceDriver itself has no
 such method at all: every method here must return a bounded result, and
@@ -29,10 +35,13 @@ package's own data/ directory."""
 from __future__ import annotations
 
 import csv
-import io
 
-from .base import SourceContext, SourceDriver
+from system.logging_factory import LoggerFactory
+
+from .base import MAX_SOURCE_RESULT_CHARS, SourceContext, SourceDriver
 from .comparison import OPERATORS, ColumnComparison, ColumnRange
+
+logger = LoggerFactory.get_logger(__name__)
 
 SCHEME = "avance"
 
@@ -41,8 +50,9 @@ _DELIMITERS = ",;\t|"
 
 class AvanceArchiveSource(SourceDriver):
     SUPPORTED_METHODS = frozenset({
-        "select_rows_containing", "select_rows_where", "select_rows_in_range", "value",
+        "select_rows_containing", "select_rows_where", "select_rows_in_range", "value", "column", "row_where",
     })
+    TOOL_METHODS = ("select_rows_containing", "select_rows_where", "select_rows_in_range")
     METHOD_DESCRIPTIONS = {
         "select_rows_containing": (
             "Return rows containing ALL specified strings anywhere in the row. Case-insensitive substring "
@@ -64,6 +74,17 @@ class AvanceArchiveSource(SourceDriver):
             "The `key` column of the first row matching *every* given value, case-insensitive, as a "
             "single scalar — e.g. source.<name>.value('VY3003', key='data_partenza'). \"\" if no row "
             "matches. Scripts/triggers only, never a model tool — the model reads with the select_rows_* tools."
+        ),
+        "column": (
+            "Every `column` cell of the rows matching *every* given value, case-insensitive, as a list — "
+            "e.g. source.<name>.column('codice_volo', 'Barcelona'); no values means the whole column. "
+            "[] if no row matches or the column doesn't exist. Scripts/triggers only, never a model tool."
+        ),
+        "row_where": (
+            "The first row where a column satisfies a comparison (same operators and `*strings` as "
+            "select_rows_where), as a {column: cell} dict — e.g. source.<name>.row_where('caso', '=', 1). "
+            "{} if no row matches, if the column or operator is unknown, or if the row exceeds the size bound. "
+            "Scripts/triggers only, never a model tool."
         ),
     }
 
@@ -96,83 +117,115 @@ class AvanceArchiveSource(SourceDriver):
         except csv.Error:
             return ","
 
-    def _project(self, lines: list[str], keys: list[str]) -> str:
-        """`lines` (header first) reduced to just the `keys` columns, in
-        that order, re-emitted with the file's own delimiter. An unknown
-        column name is reported as text — the model asked for it and can
-        correct itself — never raised."""
-        delimiter = self._delimiter(lines[0])
-        rows = list(csv.reader(lines, delimiter=delimiter))
-        header = [column.strip() for column in rows[0]]
-        unknown = [key for key in keys if key not in header]
-        if unknown:
-            return (
-                f"error: unknown column(s) {', '.join(repr(key) for key in unknown)} — "
-                f"available: {', '.join(header)}"
-            )
-        indexes = [header.index(key) for key in keys]
-        out = io.StringIO()
-        writer = csv.writer(out, delimiter=delimiter, lineterminator="\n")
-        for row in rows:
-            writer.writerow([row[index] if index < len(row) else "" for index in indexes])
-        return out.getvalue()
-
-    def _matches(self, values: tuple[str, ...]) -> tuple[list[str], list[str]] | None:
-        """(header line, matching data lines) for `values`' own filter, or
-        None for an empty file — the one piece every read here shares."""
+    def _records(self) -> tuple[str, str, list[str], list[tuple[str, list[str]]]] | None:
         lines = self._read_text().splitlines(keepends=True)
         if not lines:
             return None
-        needles = [value.lower() for value in values]
-        matches = [line for line in lines[1:] if all(needle in line.lower() for needle in needles)]
-        return [lines[0]], matches
+        delimiter = self._delimiter(lines[0])
+        reader = csv.reader(lines, delimiter=delimiter)
+        records: list[tuple[str, list[str]]] = []
+        start = 0
+        for cells in reader:
+            records.append(("".join(lines[start:reader.line_num]), cells))
+            start = reader.line_num
+        header_text, header_cells = records[0]
+        return header_text, delimiter, [name.strip() for name in header_cells], records[1:]
 
-    def select_rows_containing(self, *values: str) -> str:
+    def _matches(self, values: tuple[str | float, ...]) -> tuple[str, str, list[str], list[tuple[str, list[str]]]] | None:
+        found = self._records()
+        if found is None:
+            return None
+        header_text, delimiter, names, records = found
+        needles = [str(value).lower() for value in values]
+        matches = [record for record in records if all(needle in record[0].lower() for needle in needles)]
+        return header_text, delimiter, names, matches
+
+    @staticmethod
+    def _unknown_column(column: str, names: list[str]) -> str:
+        return f"error: unknown column(s) {column!r} — available: {', '.join(names)}"
+
+    def select_rows_containing(self, *values: str | float) -> str:
         found = self._matches(values)
         if found is None:
             return ""
-        header, matches = found
+        header_text, _, _, matches = found
         if not matches:
             return ""
-        return self._bounded(header[0] + "".join(matches), header=header[0])
+        return self._bounded(header_text + "".join(text for text, _ in matches), header=header_text)
 
-    def select_rows_where(self, column: str, operator: str, value: str, *strings: str) -> str:
+    def select_rows_where(self, column: str, operator: str, value: str | float, *strings: str | float) -> str:
         if operator not in OPERATORS:
             return f"error: unknown operator {operator!r} — available: {', '.join(OPERATORS)}"
         return self._rows_where_column(column, ColumnComparison(operator, value), strings)
 
-    def select_rows_in_range(self, column: str, start: str, end: str, *strings: str) -> str:
+    def select_rows_in_range(self, column: str, start: str | float, end: str | float, *strings: str | float) -> str:
         return self._rows_where_column(column, ColumnRange(start, end), strings)
 
     def _rows_where_column(
-        self, column: str, condition: ColumnComparison | ColumnRange, strings: tuple[str, ...] = (),
+        self, column: str, condition: ColumnComparison | ColumnRange, strings: tuple[str | float, ...] = (),
     ) -> str:
         found = self._matches(strings)
         if found is None:
             return ""
-        header, rows = found
-        delimiter = self._delimiter(header[0])
-        names = [name.strip() for name in next(csv.reader(header, delimiter=delimiter))]
+        header_text, _, names, records = found
         if column not in names:
-            return f"error: unknown column(s) {column!r} — available: {', '.join(names)}"
-        index = names.index(column)
-        matches = []
-        for line in rows:
-            cells = next(csv.reader([line], delimiter=delimiter), [])
-            if index < len(cells) and condition.matches(cells[index]):
-                matches.append(line)
+            return self._unknown_column(column, names)
+        matches = [text for text, _ in self._records_where_column(names, records, column, condition)]
         if not matches:
             return ""
-        return self._bounded(header[0] + "".join(matches), header=header[0])
+        return self._bounded(header_text + "".join(matches), header=header_text)
 
-    def value(self, *values: str, key: str) -> str:
+    @staticmethod
+    def _records_where_column(
+        names: list[str], records: list[tuple[str, list[str]]], column: str, condition: ColumnComparison | ColumnRange,
+    ) -> list[tuple[str, list[str]]]:
+        index = names.index(column)
+        return [(text, cells) for text, cells in records if index < len(cells) and condition.matches(cells[index])]
+
+    def row_where(self, column: str, operator: str, value: str | float, *strings: str | float) -> dict[str, str]:
+        if operator not in OPERATORS:
+            logger.warning("source.%s.row_where: unknown operator %r — available: %s", self._name, operator, ", ".join(OPERATORS))
+            return {}
+        found = self._matches(strings)
+        if found is None:
+            return {}
+        _, _, names, records = found
+        if column not in names:
+            logger.warning("source.%s.row_where(%r): unknown column — available: %s", self._name, column, ", ".join(names))
+            return {}
+        matches = self._records_where_column(names, records, column, ColumnComparison(operator, value))
+        if not matches:
+            return {}
+        text, cells = matches[0]
+        if len(text) > MAX_SOURCE_RESULT_CHARS:
+            logger.warning("source.%s.row_where(%r): row over %d chars", self._name, column, MAX_SOURCE_RESULT_CHARS)
+            return {}
+        return {name: cells[index] if index < len(cells) else "" for index, name in enumerate(names)}
+
+    def column(self, column: str, *values: str | float) -> list[str]:
+        found = self._matches(values)
+        if found is None:
+            return []
+        _, delimiter, names, matches = found
+        if column not in names:
+            logger.warning("source.%s.column(%r): unknown column — available: %s", self._name, column, ", ".join(names))
+            return []
+        index = names.index(column)
+        values_found = [cells[index] if index < len(cells) else "" for _, cells in matches]
+        if len(delimiter.join(values_found)) > MAX_SOURCE_RESULT_CHARS:
+            logger.warning("source.%s.column(%r): result over %d chars — narrow it with values", self._name, column, MAX_SOURCE_RESULT_CHARS)
+            return []
+        return values_found
+
+    def value(self, *values: str | float, key: str) -> str:
         found = self._matches(values)
         if found is None:
             return ""
-        header, matches = found
+        _, _, names, matches = found
         if not matches:
             return ""
-        projected = self._project([header[0], matches[0]], [key])
-        if projected.startswith("error:"):
-            return projected
-        return projected.splitlines()[1]
+        if key not in names:
+            return self._unknown_column(key, names)
+        index = names.index(key)
+        cells = matches[0][1]
+        return cells[index] if index < len(cells) else ""

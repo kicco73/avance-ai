@@ -7,7 +7,7 @@ in-memory copy, so every test here seeds real Archive rows instead of
 building a MemoryArchive.
 
 select_rows_containing()/select_rows_where()/
-select_rows_in_range()/value() are the only methods this
+select_rows_in_range()/value()/column()/row_where() are the only methods this
 driver implements (see SourceDriver's own docstring on why a whole-file
 read isn't a source.* capability at all — and `update`, part of the
 uniform interface, stays unsupported here).
@@ -145,6 +145,16 @@ def test_select_rows_where_compares_numbers_iso_dates_and_text_returning_whole_r
     assert numbers.select_rows_where("flight", "=", "vy2") == "flight,free_seats\nVY2,9\n"
 
 
+def test_the_filtered_reads_accept_a_bare_number_where_a_script_passes_one(db):
+    numbers, _ = _seeded_driver(db, "seats.csv", "flight,free_seats\nVY1,12\nVY2,9\nVY3,100\n")
+    assert numbers.select_rows_where("free_seats", "=", 12) == "flight,free_seats\nVY1,12\n"
+    assert numbers.select_rows_where("free_seats", ">", 9.5, 1) == "flight,free_seats\nVY1,12\nVY3,100\n"
+    assert numbers.select_rows_in_range("free_seats", 9, 12) == "flight,free_seats\nVY1,12\nVY2,9\n"
+    assert numbers.select_rows_containing(100) == "flight,free_seats\nVY3,100\n"
+    assert numbers.value(9, key="flight") == "VY2"
+    assert numbers.column("flight", 12) == ["VY1"]
+
+
 def test_select_rows_where_reports_an_unknown_column_or_operator_as_text_never_an_exception(db):
     driver, _ = _seeded_driver(db, "flights.csv", FLIGHTS)
 
@@ -221,6 +231,52 @@ def test_value_returns_the_key_cell_of_the_first_matching_row_or_the_empty_strin
     assert driver.value("VY3003", key="data_partenza") == "2026-08-16"
     assert driver.value("VY9999", key="data_partenza") == ""
     assert driver.value("VY3003", key="nope").startswith("error: unknown column(s) 'nope'")
+
+
+def test_column_returns_every_cell_of_the_matching_rows_as_a_list_the_whole_column_with_no_filter_and_nothing_for_an_unknown_column(db):
+    driver, _ = _seeded_driver(db, "flights.csv", "codice_volo,data_partenza\nVY3003,2026-08-16\nVY3003,2026-08-17\nVY4000,2026-08-16\n")
+
+    assert driver.column("codice_volo") == ["VY3003", "VY3003", "VY4000"]
+    assert driver.column("data_partenza", "VY3003") == ["2026-08-16", "2026-08-17"]
+    assert driver.column("data_partenza", "VY9999") == []
+    assert driver.column("nope") == []
+    assert "VY4000" in driver.column("codice_volo")
+
+
+def test_row_where_returns_the_first_matching_row_as_a_dict_and_an_empty_dict_for_no_match_or_an_unknown_column_or_operator(db):
+    driver, _ = _seeded_driver(db, "casos.csv", 'caso,nombre,texto\n1,Manuel,"- Eres Manuel.\nDos lineas."\n2,Laura,corto\n1,Otro,x\n')
+
+    assert driver.row_where("caso", "=", 1) == {"caso": "1", "nombre": "Manuel", "texto": "- Eres Manuel.\nDos lineas."}
+    assert driver.row_where("caso", ">", 1) == {"caso": "2", "nombre": "Laura", "texto": "corto"}
+    assert driver.row_where("caso", "=", 1, "Otro") == {"caso": "1", "nombre": "Otro", "texto": "x"}
+    assert driver.row_where("caso", "=", 9) == {}
+    assert driver.row_where("nope", "=", 1) == {}
+    assert driver.row_where("caso", "~", 1) == {}
+
+
+def test_row_where_over_the_char_limit_is_refused_as_an_empty_dict(db):
+    driver, _ = _seeded_driver(db, "big.csv", "code,text\nA," + "x" * (MAX_SOURCE_RESULT_CHARS + 1) + "\nB,short\n")
+
+    assert driver.row_where("code", "=", "A") == {}
+    assert driver.row_where("code", "=", "B") == {"code": "B", "text": "short"}
+
+
+def test_every_read_works_on_csv_records_not_physical_lines_when_a_quoted_field_spans_lines(db):
+    content = 'archivo,texto\ncaso_01.md,"- Eres Manuel.\nPrimera linea.\nSegunda linea."\ncaso_02.md,"- Eres Ana.\nOtra linea."\n'
+    driver, _ = _seeded_driver(db, "casos.csv", content)
+
+    assert driver.column("archivo") == ["caso_01.md", "caso_02.md"]
+    assert driver.value("Ana", key="archivo") == "caso_02.md"
+    assert driver.select_rows_containing("Segunda") == 'archivo,texto\ncaso_01.md,"- Eres Manuel.\nPrimera linea.\nSegunda linea."\n'
+    assert driver.select_rows_where("archivo", "=", "caso_02.md") == 'archivo,texto\ncaso_02.md,"- Eres Ana.\nOtra linea."\n'
+
+
+def test_column_over_the_char_limit_is_refused_as_an_empty_list(db):
+    rows = "".join(f"C{i:05d},x\n" for i in range(2000))
+    driver, _ = _seeded_driver(db, "big.csv", "code,other\n" + rows)
+
+    assert driver.column("code") == []
+    assert driver.column("code", "C00001") == ["C00001"]
 
 
 def test_source_namespace_resolves_a_declared_name_to_its_driver_and_raises_for_an_undeclared_one(db):

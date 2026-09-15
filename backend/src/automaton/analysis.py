@@ -99,7 +99,10 @@ def referenced_signal_names(state: "State", declared_signal_names: set[str]) -> 
                 referenced |= TriggerExpressionAnalyzer.signal_names(expression)
         if action.on_exit:
             for _line_number, statement in TriggerExpressionAnalyzer.task_statements(action.on_exit):
-                assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
+                assignment = (
+                    TriggerExpressionAnalyzer.on_exit_assignment(statement)
+                    or TriggerExpressionAnalyzer.task_assignment(statement)
+                )
                 if assignment is not None:
                     referenced |= TriggerExpressionAnalyzer.signal_names(assignment[1])
     return referenced & declared_signal_names

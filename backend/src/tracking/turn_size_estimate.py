@@ -44,8 +44,8 @@ def estimate_turn_request(
     for key, value in env.memory().items():
         entries.append(SizeEntry("memory", key, estimate_tokens(f"{key}: {value}")))
     if env_block is not None:
-        for key, value in env_block.lines().items():
-            entries.append(SizeEntry("env", key, estimate_tokens(f"{key}: {value}")))
+        for key, text in env_block.lines().items():
+            entries.append(SizeEntry("env", key, estimate_tokens(text)))
     for attachment in attachments:
         data = attachment.source.get("data") or ""
         entries.append(SizeEntry("attachment", attachment.filename, estimate_tokens(data)))

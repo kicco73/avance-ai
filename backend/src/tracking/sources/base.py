@@ -54,6 +54,7 @@ class SourceContext:
 
 class SourceDriver:
     SUPPORTED_METHODS: frozenset[str] = frozenset()
+    TOOL_METHODS: tuple[str, ...] = ()
     METHOD_DESCRIPTIONS: dict[str, str] = {}
 
     def __init__(self, context: SourceContext, name: str, path: str) -> None:
@@ -82,7 +83,7 @@ class SourceDriver:
             return f"{message}\n{header.rstrip(chr(10))}"
         return message
 
-    def select_rows_containing(self, *values: str) -> str:
+    def select_rows_containing(self, *values: str | float) -> str:
         """Header row plus every row containing *every* value (case-
         insensitive substring, AND'd), the whole row each time. No values
         at all means every row, exactly as tracking.sources.
@@ -94,13 +95,13 @@ class SourceDriver:
         select_rows_containing())."""
         raise self._unsupported("select_rows_containing")
 
-    def select_rows_where(self, column: str, operator: str, value: str, *strings: str) -> str:
+    def select_rows_where(self, column: str, operator: str, value: str | float, *strings: str | float) -> str:
         raise self._unsupported("select_rows_where")
 
-    def select_rows_in_range(self, column: str, start: str, end: str, *strings: str) -> str:
+    def select_rows_in_range(self, column: str, start: str | float, end: str | float, *strings: str | float) -> str:
         raise self._unsupported("select_rows_in_range")
 
-    def value(self, *values: str, key: str) -> str:
+    def value(self, *values: str | float, key: str) -> str:
         """The `key` cell of the *first* row containing every value
         (same filter as select_rows_containing), as a string — "" if no row satisfies it,
         an error *text* if `key` isn't a real column. Never a ToolSet
@@ -109,6 +110,12 @@ class SourceDriver:
         single scalar reads better than parsing a select_rows_* table's
         own text."""
         raise self._unsupported("value")
+
+    def column(self, column: str, *values: str) -> list[str]:
+        raise self._unsupported("column")
+
+    def row_where(self, column: str, operator: str, value: str | float, *strings: str | float) -> dict[str, str]:
+        raise self._unsupported("row_where")
 
     def update(self, *values: str, fields: dict[str, str]) -> str:
         """Assigns `fields` (column -> new value) to every row containing

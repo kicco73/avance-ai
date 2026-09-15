@@ -338,7 +338,8 @@ and independent of `ai-may-read-sources`/`ai-may-write-sources` above
 - **`input`** — read-only. A state with a non-empty `input` gets its
   system prompt's own "Current environment" block appended, one
   `key: value` line per name in `input` (declaration order, each value
-  truncated to 200 characters), placed last so its per-turn changes never
+  truncated to 200 characters) with the key's `ai-definition` indented
+  beneath it, placed last so its per-turn changes never
   invalidate the cacheable prefix. A state with an empty `input` gets no
   block at all — not even empty. There is no model-facing write path
   through this block: the model is told to change these only through
@@ -383,7 +384,7 @@ actions:
 | `target` | no | string | this action's own state | Destination state; must be a real key (or the current state itself). Omitted/self-referential ⇒ self-loop (only the action's own effects happen). |
 | `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
 | `task` | no | string | `None` | One or more `task.<name>(...)` calls, one per line — side effect of firing, run in the background off the request (§5.4). Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
-| `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines and/or bare `chat.<method>(...)` calls, one per line — same timing as `env:` (and its future replacement for the write half), run synchronously, in this same request. §5.3bis. |
+| `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, `name = expression` locals and/or bare `chat.<method>(...)` calls, one per line — same timing as `env:` (and its future replacement for the write half), run synchronously, in this same request. §5.3bis. |
 | `env` | no | mapping key → expression | `None` | Updates the project's environment memory when this action fires. §5.3. Legacy — new actions should write the same updates as `on-exit` lines instead. |
 | `ui-label` | no | string | `name` | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, then `name` | Manual-action button text. |
@@ -485,8 +486,10 @@ match set. A given driver only
 ever implements the methods that make sense for it (its
 `SUPPORTED_METHODS`); calling one it doesn't — in a script or through a
 state's tool fields — is rejected at build time the same way an
-undeclared source is. There is no hierarchy of source kinds: method
-support is the whole compatibility story.
+undeclared source is. The driver also decides, on its own, which of
+those the model gets as tools (its `TOOL_METHODS`): a script sees every
+supported method, the model only the listed ones. There is no hierarchy
+of source kinds: method support is the whole compatibility story.
 
 - `select_rows_containing(*values)` — grep-like lookup: the header row
   plus every **whole** row containing **every** given value
@@ -500,7 +503,8 @@ support is the whole compatibility story.
   plus every whole row whose `column` satisfies the comparison, further
   narrowed by `*strings` with the very same AND'd, case-insensitive
   substring semantics as `select_rows_containing`.
-  Operators: `=`, `!=`, `>`, `>=`, `<`, `<=`. Both sides are compared as
+  Operators: `=`, `!=`, `>`, `>=`, `<`, `<=`. `value` may be a bare
+  number as well as a string. Both sides are compared as
   numbers when both parse as numbers, as moments in time when both parse
   as ISO dates/datetimes (`YYYY-MM-DD`, `YYYY-MM-DD HH:MM`), and
   case-insensitively as text otherwise — so
@@ -518,6 +522,20 @@ support is the whole compatibility story.
   which reads through the `select_rows_*` tools instead.
   `source.pino.value('VY3003', key='flight')` reads one field without
   parsing a table.
+- `column(column, *values)` — every `column` cell of the rows satisfying
+  the same filter as `select_rows_containing`, as a **list** (no values
+  at all: the whole column); `[]` if no row matches, if `column` isn't a
+  real column, or if the result would exceed the size bound. Scripts and
+  trigger/env: expressions only — never exposed to the model.
+  `'ABC-1' in source.casos.column('archivo')` is a membership check, and
+  `env.casos = source.casos.column('archivo')` keeps the list.
+- `row_where(column, operator, value, *strings)` — the *first* row
+  `select_rows_where` would return, as a **dict** (`{column: cell}`, every
+  column of the file); `{}` if no row matches, if `column` or `operator`
+  isn't real, or if the row would exceed the size bound. Scripts and
+  trigger/env: expressions only — never exposed to the model.
+  `env.caso = source.casos.row_where('caso', '=', 1)` keeps one whole
+  record, and the prompt's env block renders it as JSON.
 - `update(*values, fields={...})` — assigns `fields` (column → new value)
   to every row containing every value; returns how many rows it touched
   (`"1 row updated"`). Unsupported by a driver that can't write.
@@ -626,7 +644,7 @@ state whose own `input` is non-empty (§4.3); there, the system prompt
 ends with a "Current environment" block — one `key: value` line per name
 in `input`, every value cut to 200 characters with a
 `[response too long — provide more specific filters via a select_rows_* read]` pointer,
-placed last so its per-turn changes never invalidate the cacheable prefix. Anywhere else the
+the key's `ai-definition` indented beneath it, placed last so its per-turn changes never invalidate the cacheable prefix. Anywhere else the
 block does not exist, not even empty. The memory block is a separate
 block with its own heading, and the model is told to change variables
 only through `output` (§4.3), never in the `memory` field — a *declared*
@@ -721,12 +739,15 @@ span several lines, and a `#` comment just works). Each line is
   the RHS may itself reference `env.<key>` (its own last stored value,
   from *before* this action fired) exactly like a `env:` mapping entry
   could; **or**
+- a `name = expression` local — `task`'s own assignment shape (§5.4):
+  `name` may not shadow a reserved namespace or core metric, may only be
+  read by a *later* line, and is dropped once the script ends — it never
+  reaches the env, the task that follows, or the next turn; **or**
 - a bare `chat.<method>(...)` call — `on-exit`'s own side effect,
   described below.
 
-Unlike `task` (§5.4), a line here may only be one of those two shapes
-— no bare local variables, and no `task.<name>(...)` calls: `task:`'s
-own `task.<name>(...)` calls stay off-limits, that remains `task`'s own
+Unlike `task` (§5.4), no `task.<name>(...)` calls: `task:`'s own
+`task.<name>(...)` calls stay off-limits, that remains `task`'s own
 job. `attachment.read(name)` (§5.2, data sources) is available in either shape, under
 the same build-time checks — a string-literal name, an existing text
 file, under the size limit — so an action can store a file in an env
@@ -738,10 +759,11 @@ key or show one, e.g. `chat.show(attachment.read('rules.md'))`:
         target: b
         trigger: "signal.mood >= 70"
         on-exit: |
+          steps = env.number_of_steps + 1
           env.reset_counter = True
-          env.number_of_steps = env.number_of_steps + 1
+          env.number_of_steps = steps
           chat.celebrate()
-          chat.notify('Nice!', 'You reached **state B**.')
+          chat.notify('Nice!', 'You reached **state B** in ' + str(steps) + ' steps.')
 ```
 
 An action may declare `env:` and `on-exit` at once (only already-published
@@ -963,12 +985,19 @@ of how you're likely to hit them:
   same way plus its own argument-count check; an assignment's `name` may
   not shadow a reserved namespace or core metric, and may only be
   referenced by a *later* line.
-- Every action's `on-exit`, if given: one `env.<key> = expr` assignment
-  or bare `chat.<method>(...)` call per non-blank line — §5.3bis — each
-  assignment's `key` already declared under top-level `env:` and its
-  expression validated the same way as `env:`'s own (including its
-  type-consistency check against that key's declared default), each
-  `chat.*` call validated the same way plus its own argument-count check.
+- Every action's `on-exit`, if given: one `env.<key> = expr` assignment,
+  `name = expr` local or bare `chat.<method>(...)` call per non-blank
+  line — §5.3bis — each env assignment's `key` already declared under
+  top-level `env:` and its expression validated the same way as `env:`'s
+  own (including its type-consistency check against that key's declared
+  default), each local under task's own rules (no reserved name, read
+  only by a later line), each `chat.*` call validated the same way plus
+  its own argument-count check.
+- Every `source.<name>.<method>(...)` call, wherever it appears: its
+  arguments must bind to the driver method's own signature — a missing or
+  unexpected argument names itself in the build error, alongside the
+  expected signature — and two adjacent string literals in an argument
+  (`'caso' '='`, a missing comma Python would silently join) are refused.
 - No signal named after a reserved core metric (§2).
 - Every `attachments:` entry (global/signal/state — actions have none) names a file actually present alongside `index.yml`.
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance:<path>`) its path names a file actually present alongside `index.yml`.

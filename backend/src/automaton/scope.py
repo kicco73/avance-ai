@@ -28,6 +28,12 @@ class EvaluationScope(dict):
         self.state_key = state_key
         self.action_name = action_name
 
+    def for_on_exit(self, action_name: str | None = None) -> "EvaluationScope":
+        """The view an on-exit script runs in: the same names, in a copy
+        of its own, so the locals the script assigns live there and die
+        with it — never in the scope the caller goes on to hand to task."""
+        return EvaluationScope(self, automaton=self.automaton, state_key=self.state_key, action_name=action_name)
+
     def for_task(self, action_name: str | None = None) -> "EvaluationScope":
         from automaton.identifier_registry import IdentifierRegistry
         names = IdentifierRegistry.excluding(self, IdentifierRegistry.TASK_SCOPE_EXCLUDES)

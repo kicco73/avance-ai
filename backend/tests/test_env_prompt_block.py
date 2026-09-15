@@ -1,6 +1,7 @@
 """tracking.env_prompt_block.EnvPromptBlock — the system prompt's own env
 block: shown to a state whenever it declares at least one `input` name,
-carrying only those keys, values truncated to MAX_ENV_VALUE_CHARS, and
+carrying only those keys, each with its own ai_definition beneath it,
+values truncated to MAX_ENV_VALUE_CHARS, and
 nothing at all (not even an empty block) for a state with no `input`.
 The model's memory is never part of it (see Env.memory_as_text).
 """
@@ -44,7 +45,9 @@ def test_a_state_declaring_input_gets_a_block_carrying_only_those_keys():
 
     block = EnvPromptBlock.for_state(env, automaton, STATE_A)
     assert block is not None
-    assert block.text() == f"{ENV_BLOCK_HEADER}\nflight: VY3003\ncustomer_email: "
+    assert block.text() == (
+        f"{ENV_BLOCK_HEADER}\nflight: VY3003\n\tThe flight code.\ncustomer_email: \n\tThe customer's email."
+    )
     assert "secret" not in block.text() and "note" not in block.text()
 
     assert EnvPromptBlock.for_state(env, automaton, STATE_B) is not None
@@ -62,11 +65,30 @@ def test_a_value_beyond_the_cap_is_cut_with_a_pointer_at_the_column_reads_while_
 
     long_value = Env(action_set={"flight": "x" * (MAX_ENV_VALUE_CHARS + 37)})
     assert EnvPromptBlock.for_state(long_value, automaton, STATE_A).lines()["flight"] == (
-        "x" * MAX_ENV_VALUE_CHARS + "[response too long — provide more specific filters via a select_rows_* read]"
+        "flight: " + "x" * MAX_ENV_VALUE_CHARS
+        + "[response too long — provide more specific filters via a select_rows_* read]\n\tThe flight code."
     )
 
     exact = Env(action_set={"flight": "x" * MAX_ENV_VALUE_CHARS})
-    assert EnvPromptBlock.for_state(exact, automaton, STATE_A).lines()["flight"] == "x" * MAX_ENV_VALUE_CHARS
+    assert EnvPromptBlock.for_state(exact, automaton, STATE_A).lines()["flight"] == (
+        "flight: " + "x" * MAX_ENV_VALUE_CHARS + "\n\tThe flight code."
+    )
+
+
+def test_a_dict_or_list_value_renders_as_json_not_a_python_repr():
+    state = State(key="d", ui_label="D", final=True, contextual_prompt="hi", input=("_flight_record",))
+    env = Env(action_set={"_flight_record": {"caso": "1", "nombre": "Manuel"}})
+
+    assert EnvPromptBlock.for_state(env, _automaton(state), state).lines()["_flight_record"] == (
+        '_flight_record: {"caso": "1", "nombre": "Manuel"}'
+    )
+
+
+def test_a_key_without_a_definition_renders_its_value_line_alone():
+    state = State(key="d", ui_label="D", final=True, contextual_prompt="hi", input=("_flight_record",))
+    block = EnvPromptBlock.for_state(Env(action_set={"_flight_record": "r"}), _automaton(state), state)
+
+    assert block.text() == f"{ENV_BLOCK_HEADER}\n_flight_record: r"
 
 
 def test_the_turn_size_estimate_counts_memory_and_the_blocks_own_lines_separately_and_nothing_at_all_without_a_block():

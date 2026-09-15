@@ -47,18 +47,18 @@ def compare(cell: str, operator: str, value: str) -> bool:
 
 
 class ColumnComparison:
-    def __init__(self, operator: str, value: str) -> None:
+    def __init__(self, operator: str, value: str | float) -> None:
         self._operator = operator
-        self._value = value
+        self._value = str(value)
 
     def matches(self, cell: str) -> bool:
         return compare(cell, self._operator, self._value)
 
 
 class ColumnRange:
-    def __init__(self, start: str, end: str) -> None:
-        self._start = start
-        self._end = end
+    def __init__(self, start: str | float, end: str | float) -> None:
+        self._start = str(start)
+        self._end = str(end)
 
     def matches(self, cell: str) -> bool:
         return compare(cell, ">=", self._start) and compare(cell, "<=", self._end)

@@ -79,7 +79,47 @@ class AutomatonValidator:
             if read_on_a_source:
                 message += " — a whole-file read is attachment.read(name)'s job (on-exit/task only), not source.*."
             raise ValueError(message)
+        cls.validate_merged_string_arguments(expression, context)
+        cls.validate_source_call_arguments(expression, context, sources)
         cls.validate_expression_types(expression, context)
+
+    @staticmethod
+    def validate_merged_string_arguments(expression: str, context: str) -> None:
+        merged = TriggerExpressionAnalyzer.merged_string_arguments(expression)
+        if merged:
+            raise ValueError(
+                f"{context} ('{expression}'): {merged[0]} is two string literals with no comma between them — "
+                "Python joins them into a single argument. Separate them with a comma."
+            )
+
+    @classmethod
+    def validate_source_call_arguments(cls, expression: str, context: str, sources: dict[str, Source]) -> None:
+        """Every `source.<name>.<method>(...)` call must bind to the
+        driver method's own signature — same idea as
+        _validate_namespace_call_arity, but through inspect's own bind,
+        since a driver method takes *strings and keyword-only arguments
+        a fixed count can't describe. The message is inspect's own: it
+        names the missing argument."""
+        for source_name, method_name, positional, keywords, unpacks in TriggerExpressionAnalyzer.source_calls(expression):
+            source = sources.get(source_name)
+            if source is None or unpacks:
+                continue
+            try:
+                method = getattr(driver_class_for(source.url), method_name)
+            except (ValueError, KeyError, AttributeError):
+                continue
+            try:
+                inspect.signature(method).bind(None, *([None] * positional), **{name: None for name in keywords})
+            except TypeError as exc:
+                raise ValueError(
+                    f"{context} ('{expression}'): source.{source_name}.{method_name}(...) {exc} — "
+                    f"expected source.{source_name}.{method_name}{cls._signature_text(method)}"
+                ) from exc
+
+    @staticmethod
+    def _signature_text(method) -> str:
+        parameters = list(inspect.signature(method).parameters.values())[1:]
+        return "(" + ", ".join(str(parameter).split(":")[0].split("=")[0] for parameter in parameters) + ")"
 
     @staticmethod
     def _validate_namespace_call_arity(expression: str, context: str, namespace: str, methods_class: type) -> None:
@@ -167,15 +207,17 @@ class AutomatonValidator:
         (TriggerExpressionAnalyzer.task_statements — same multi-line-
         call/'#'-comment handling), but the mixed grammar its own
         statements accept differs from task's own: each statement must
-        be *either* an `env.<key> = expr` assignment
+        be an `env.<key> = expr` assignment
         (TriggerExpressionAnalyzer.on_exit_assignment), checked exactly
         like one of the declarative `env:` map's own entries (env key
-        must already be declared, validate_env_key_type included), *or*
-        a bare `chat.<method>(...)` call (TriggerExpressionAnalyzer.
-        bare_namespace_call) — on-exit's own side effect, arity-checked
-        the same way task's own namespaced calls are (see
-        validate_chat_arity). `registry` here is expected to be the
-        for_on_exit() view: `chat` visible, `task` excluded
+        must already be declared, validate_env_key_type included), a
+        `name = expr` local (TriggerExpressionAnalyzer.task_assignment,
+        under task's own rules: no reserved name, readable only by a
+        later line), or a bare `chat.<method>(...)` call
+        (TriggerExpressionAnalyzer.bare_namespace_call) — on-exit's own
+        side effect, arity-checked the same way task's own namespaced
+        calls are (see validate_chat_arity). `registry` here is expected
+        to be the for_on_exit() view: `chat` visible, `task` excluded
         — on-exit can't call task.*'s own send_mail/whatsapp/defer/prompt,
         that's task's own job."""
         if not on_exit:
@@ -184,6 +226,7 @@ class AutomatonValidator:
             statements = TriggerExpressionAnalyzer.task_statements(on_exit)
         except SyntaxError as exc:
             raise ValueError(f"{context} ('{on_exit}') is not valid on-exit source: {exc}") from exc
+        known_locals: set[str] = set()
         for line_number, statement in statements:
             line_context = f"{context}, on-exit line {line_number}"
             assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
@@ -194,16 +237,28 @@ class AutomatonValidator:
                         f"{line_context}: env key '{env_key}' is not declared in the project's own "
                         "'env' section — declare it there first."
                     )
-                cls.validate_namespaced_expression(expression, line_context, registry, sources)
+                cls.validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
                 cls.validate_attachment_read(expression, line_context, archives)
                 cls.validate_env_key_type(env_keys[env_key], expression, line_context)
                 continue
+            local = TriggerExpressionAnalyzer.task_assignment(statement)
+            if local is not None:
+                target, expression = local
+                if target in TriggerExpressionAnalyzer.RESERVED_NAMESPACES or target in metric_names():
+                    raise ValueError(
+                        f"{line_context} ('{statement}'): '{target}' is a reserved name "
+                        "(a namespace or core metric) and can't be used as an on-exit local variable."
+                    )
+                cls.validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
+                cls.validate_attachment_read(expression, line_context, archives)
+                known_locals.add(target)
+                continue
             if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") is None:
                 raise ValueError(
-                    f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments "
-                    "or a bare 'chat.<method>(...)' call."
+                    f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments, "
+                    "'name = expr' locals, or a bare 'chat.<method>(...)' call."
                 )
-            cls.validate_namespaced_expression(statement, line_context, registry, sources)
+            cls.validate_namespaced_expression(statement, line_context, registry, sources, frozenset(known_locals))
             cls.validate_attachment_read(statement, line_context, archives)
             cls.validate_chat_arity(statement, line_context)
 

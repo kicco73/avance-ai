@@ -5,6 +5,8 @@ comparison mixes incompatible static types. Used both by AutomatonBuilder
 from __future__ import annotations
 
 import ast
+import io
+import tokenize
 from typing import Iterable
 
 from automaton.model import Signal
@@ -61,14 +63,20 @@ class TriggerExpressionAnalyzer:
     def bare_names(cls, expression: str, namespaces: Iterable[str] = ()) -> set[str]:
         """Every identifier referenced *outside* one of the reserved
         namespaces (see RESERVED_NAMESPACES) or `namespaces` — in practice a core metric name.
-        A nested-namespace root (see NESTED_NAMESPACES) is excluded too."""
+        A nested-namespace root (see NESTED_NAMESPACES) is excluded too,
+        and so is a name a comprehension binds itself (`for key, value in
+        ...`) — that one exists only inside the expression."""
         tree = ast.parse(expression, mode="eval")
         reserved = set(cls.RESERVED_NAMESPACES) | set(namespaces)
         namespace_bases = {
             node.value.id for node in ast.walk(tree)
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in reserved
         }
-        return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - namespace_bases
+        comprehension_targets = {
+            name.id for node in ast.walk(tree) if isinstance(node, ast.comprehension)
+            for name in ast.walk(node.target) if isinstance(name, ast.Name)
+        }
+        return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - namespace_bases - comprehension_targets
 
     @staticmethod
     def source_refs(expression: str) -> dict[str, set[str]]:
@@ -87,6 +95,51 @@ class TriggerExpressionAnalyzer:
                 continue
             refs.setdefault(name_node.attr, set()).add(node.attr)
         return refs
+
+    @staticmethod
+    def source_calls(expression: str) -> list[tuple[str, str, int, tuple[str, ...], bool]]:
+        """Every `source.<name>.<method>(...)` call in `expression`, as
+        (source_name, method, positional_count, keyword_names, unpacks)
+        — `unpacks` when a `*args`/`**kwargs` argument makes the count
+        unknowable before evaluation."""
+        tree = ast.parse(expression, mode="eval").body
+        calls = []
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                continue
+            name_node = node.func.value
+            if not (
+                isinstance(name_node, ast.Attribute) and isinstance(name_node.value, ast.Name)
+                and name_node.value.id == "source"
+            ):
+                continue
+            unpacks = any(isinstance(arg, ast.Starred) for arg in node.args) or any(kw.arg is None for kw in node.keywords)
+            keywords = tuple(kw.arg for kw in node.keywords if kw.arg is not None)
+            calls.append((name_node.attr, node.func.attr, len(node.args), keywords, unpacks))
+        return calls
+
+    @staticmethod
+    def merged_string_arguments(expression: str) -> list[str]:
+        """Every call argument written as two or more adjacent string
+        literals (`'caso' '='`) — Python silently joins them into one
+        argument, which is almost always a missing comma. Returned as the
+        argument's own source text, for the error message."""
+        tree = ast.parse(expression, mode="eval").body
+        merged = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for arg in list(node.args) + [kw.value for kw in node.keywords]:
+                if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
+                    continue
+                segment = ast.get_source_segment(expression, arg) or ""
+                strings = [
+                    token for token in tokenize.generate_tokens(io.StringIO(segment).readline)
+                    if token.type == tokenize.STRING
+                ]
+                if len(strings) > 1:
+                    merged.append(segment)
+        return merged
 
     @classmethod
     def namespace_refs(cls, expression: str) -> dict[str, set[str]]:
@@ -161,15 +214,13 @@ class TriggerExpressionAnalyzer:
     def on_exit_assignment(statement: str) -> tuple[str, str] | None:
         """(env_key, rhs_source) if `statement` (one already-split
         task_statements() segment) is an `env.<key> = <expr>`
-        assignment — the only shape an on-exit line may take (see
+        assignment — on-exit's env write (see
         AutomatonValidator.validate_on_exit/Automaton.eval_action_on_exit)
-        — None for anything else (a bare name target, a chained
-        `a = b = ...`, a tuple/subscript target, or an attribute target on
-        anything other than bare `env`). Mirrors task_assignment's own
-        shape but requires the explicit `env.` prefix — on-exit has no
-        local-variable concept of its own, only env writes, so the target
-        is always a real env key, spelled the same way an expression reads
-        one back (`env.<key>`), never a bare name. Never raises on
+        — None for anything else (a chained `a = b = ...`, a
+        tuple/subscript target, or an attribute target on anything other
+        than bare `env`). A bare-name target is task_assignment's shape,
+        which on-exit shares for its own locals: a value kept for the
+        rest of the script and dropped once it ends. Never raises on
         `statement` itself: it already parsed once, as part of
         task_statements()."""
         tree = ast.parse(statement, mode="exec")

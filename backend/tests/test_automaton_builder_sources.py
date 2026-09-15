@@ -67,6 +67,24 @@ def test_build_rejects_a_malformed_sources_section_a_bad_url_or_a_reference_to_a
         _build(sources_yaml, trigger=trigger)
 
 
+@pytest.mark.parametrize(("trigger", "match"), [
+    ("source.pino.row_where('caso' '=', 1) == {}", r"'caso' '=' is two string literals with no comma between them"),
+    ("source.pino.row_where('caso', '=') == {}", r"row_where\(\.\.\.\) missing a required argument: 'value' — expected source.pino.row_where\(column, operator, value, \*strings\)"),
+    ("source.pino.value('x') == ''", r"value\(\.\.\.\) missing a required argument: 'key'"),
+    ("source.pino.value('x', key='a', extra=1) == ''", r"value\(\.\.\.\) got an unexpected keyword argument 'extra'"),
+    ("source.pino.column() == []", r"column\(\.\.\.\) missing a required argument: 'column'"),
+], ids=["merged-literals", "missing-positional", "missing-keyword", "unexpected-keyword", "no-arguments"])
+def test_build_rejects_a_source_call_whose_arguments_do_not_fit_the_drivers_signature_and_says_which(trigger, match):
+    with pytest.raises(ValueError, match=match):
+        _build(_PINO_FLIGHTS, trigger=trigger, contents=_FLIGHTS)
+
+
+def test_a_source_call_with_a_full_argument_list_or_extra_strings_builds():
+    assert _build(_PINO_FLIGHTS, trigger="source.pino.row_where('a', '=', 1, 'x') == {}", contents=_FLIGHTS)
+    assert _build(_PINO_FLIGHTS, trigger="source.pino.value('x', 'y', key='a') == ''", contents=_FLIGHTS)
+    assert _build(_PINO_FLIGHTS, trigger="source.pino.select_rows_containing() == ''", contents=_FLIGHTS)
+
+
 def test_an_avance_url_is_provisioned_empty_when_never_seen_and_a_trigger_may_call_a_declared_sources_select():
     """'avance' is the project's own embedded default driver — a source
     naming an archive it hasn't seen yet still builds, backed by an

@@ -6,6 +6,7 @@ import 'tabulator-tables/dist/css/tabulator.min.css'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile, postSourceWebImport } from '../../../../api.js'
 import { promptDialog } from '../../../../../../dialogStore.js'
 import { parseCsvRows } from '../../../../csvTable.js'
+import { csvColumn } from './csvCells.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -35,7 +36,7 @@ let requestToken = 0
 
 function parseCsv(text) {
   const { fields, data } = parseCsvRows(text)
-  return { columns: fields.map((field) => ({ title: field, field, editor: 'input' })), data }
+  return { columns: fields.map(csvColumn), data }
 }
 
 function serializeTable() {
@@ -261,6 +262,9 @@ onBeforeUnmount(() => {
 .source-content-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
 .source-content-status { margin: 0; padding: 1rem; color: #444; }
 .source-content-table { flex: 1; min-height: 0; overflow: auto; }
+.source-content-table :deep(.csv-cell-editor) { position: relative; height: 100%; }
+.source-content-table :deep(.csv-cell-editor-switch) { position: absolute; top: 2px; right: 2px; width: 1.3rem; height: 1.3rem; padding: 0; border-radius: 4px; border: 1px solid #ccc; background: white; color: #4a6fa5; cursor: pointer; font-size: 0.8rem; line-height: 1; }
+.source-content-table :deep(.csv-cell-editor-switch:hover) { background: #eef2f9; }
 .undo-redo-btn { padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; font-size: 0.9rem; }
 .undo-redo-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .add-row-btn, .source-content-download-btn, .source-content-upload-btn { padding: 0.35rem 0.7rem; border-radius: 6px; border: 1px solid #4a6fa5; background: white; color: #4a6fa5; cursor: pointer; font-size: 0.82rem; }

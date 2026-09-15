@@ -1,12 +1,10 @@
 """on-exit is an action's own field (Action.on_exit), not the state's —
 same "which action, not which destination state" ownership as task
 (see test_automaton_builder_task.py). Its own grammar is mixed: every
-line is either an `env.<key> = expr` assignment writing an already
-declared env key (it shares task's own statement splitting,
-TriggerExpressionAnalyzer.task_statements, but not its assignment
-shape — on_exit_assignment requires the explicit `env.` target, since
-on-exit has no local-variable concept of its own, only env writes — the
-future replacement for the declarative `env:` map) or a bare
+line is an `env.<key> = expr` assignment writing an already declared
+env key (the future replacement for the declarative `env:` map), a
+`name = expr` local — task's own assignment shape, kept for the rest
+of the script and dropped once it ends — or a bare
 `chat.<method>(...)` call — on-exit's own side effect namespace (see
 AutomatonValidator.validate_on_exit). `task:`'s own namespace
 (send_mail/whatsapp/defer/prompt) stays off-limits here, same as
@@ -91,8 +89,11 @@ def test_on_exit_accepts_chat_switch_to_human_and_switch_to_ai():
 
 
 @pytest.mark.parametrize(("on_exit", "match"), [
-    ("counter = 1", r"on-exit only supports 'env.<key> = expr' assignments"),
     ("counter", r"on-exit only supports 'env.<key> = expr' assignments"),
+    ("env.counter = row + 1", r"references undefined name\(s\): row"),
+    ("|\n          env.counter = row\n          row = 1", r"on-exit line 1.*references undefined name\(s\): row"),
+    ("env = 1", r"'env' is a reserved name"),
+    ("chat = 1", r"'chat' is a reserved name"),
     ("task.send_mail(user.email, 'hi')", r"on-exit only supports 'env.<key> = expr' assignments"),
     ("chat.celebrate(1)", r"chat.celebrate\(\.\.\.\) takes 0 argument\(s\), got 1"),
     ("env.unknown_key = 1", r"env key 'unknown_key' is not declared"),
@@ -102,6 +103,46 @@ def test_on_exit_accepts_chat_switch_to_human_and_switch_to_ai():
 def test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines(on_exit, match):
     with pytest.raises(ValueError, match=match):
         _build(_go(f"        on-exit: {on_exit}\n"))
+
+
+def test_on_exit_accepts_a_local_assigned_before_the_lines_that_read_it():
+    on_exit = "|\n          next = env.counter + 1\n          env.counter = next\n          chat.notify('Step', 'now ' + next)"
+    automaton = _build(_go(f"        on-exit: {on_exit}\n"))
+
+    assert automaton.states["a"].actions[0].on_exit.startswith("next = env.counter + 1")
+    assert automaton.declared_env_key_names() == {"counter", "flight"}
+
+
+def test_on_exit_accepts_a_comprehension_whose_loop_variables_are_its_own():
+    on_exit = (
+        "|\n          caso = {'a': 1}\n"
+        "          lista = ['%s = %s' % (key, value) for key, value in caso.items()]\n"
+        "          env.flight = ' '.join(lista)"
+    )
+    automaton = _build(_go(f"        on-exit: {on_exit}\n"))
+
+    assert "lista" in automaton.states["a"].actions[0].on_exit
+
+    with pytest.raises(ValueError, match=r"references undefined name\(s\): other"):
+        _build(_go("        on-exit: env.flight = ' '.join([key for key in other])\n"))
+
+
+def test_eval_action_on_exit_keeps_a_local_for_the_script_and_drops_it_afterwards():
+    from automaton.automaton import Action, Automaton
+    from automaton.scope import EvaluationScope
+    from tracking.actuators.chat_namespace import FakeChatNamespace
+
+    action = Action(
+        name="go", ui_label="go", ui_button="go", target="b",
+        on_exit="row = {'caso': '1', 'nombre': 'Manuel'}\nenv.flight = row['nombre']\nchat.notify('Caso', row['caso'])",
+    )
+    scope = EvaluationScope({"env": {"counter": 5}, "chat": FakeChatNamespace(project_id="p")}, automaton=None, state_key="a")
+
+    updates, chat_snippets = Automaton.eval_action_on_exit(action, scope)
+
+    assert updates == {"flight": "Manuel"}
+    assert chat_snippets == 'notify("Caso", "1")'
+    assert "row" not in scope
 
 
 def test_build_rejects_a_task_call_from_on_exit():
@@ -150,7 +191,10 @@ def test_eval_action_on_exit_evaluates_assignments_against_scope_and_skips_bad_o
         name="go", ui_label="go", ui_button="go", target="b",
         on_exit="env.counter = env.counter + 1\nenv.flight = env.does_not_exist",
     )
-    updates, chat_snippets = Automaton.eval_action_on_exit(action, {"env": {"counter": 5}})
+    from automaton.scope import EvaluationScope
+
+    scope = EvaluationScope({"env": {"counter": 5}}, automaton=None, state_key="a")
+    updates, chat_snippets = Automaton.eval_action_on_exit(action, scope)
     assert updates == {"counter": 6}
     assert chat_snippets is None
 

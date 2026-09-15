@@ -395,7 +395,10 @@ def _compiled(table, text, kind):
             for expression in (action.env or {}).values():
                 expressions[expression] = None
             for _line, statement in TriggerExpressionAnalyzer.task_statements(action.on_exit or ""):
-                assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
+                assignment = (
+                    TriggerExpressionAnalyzer.on_exit_assignment(statement)
+                    or TriggerExpressionAnalyzer.task_assignment(statement)
+                )
                 if assignment is not None:
                     expressions[assignment[1]] = None
                 else:

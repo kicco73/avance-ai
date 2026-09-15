@@ -1,6 +1,7 @@
 """The system prompt's own env block — this state's own `input` variables
 (see automaton.State.input), rendered as `key: value` lines, truncated to
-MAX_ENV_VALUE_CHARS. A state that declares no `input` gets no block at
+MAX_ENV_VALUE_CHARS, each followed by the key's own `ai_definition`
+(see automaton.EnvKey) indented beneath it. A state that declares no `input` gets no block at
 all — not even empty. The model's own memory is a separate block with its
 own heading (see TurnProtocol), never merged with this one. Read-only,
 full stop: there is no model-facing write path for these — an action's
@@ -8,6 +9,7 @@ own `env:` script (or this same state's own `output`, copied back once
 the turn completes — see TrackingProcessor.process) is what changes one."""
 from __future__ import annotations
 
+import json
 from typing import Any, Iterable
 
 from automaton.automaton import Automaton, State
@@ -22,8 +24,9 @@ ENV_BLOCK_HEADER = (
 
 
 class EnvPromptBlock:
-    def __init__(self, values: dict[str, Any]) -> None:
+    def __init__(self, values: dict[str, Any], definitions: dict[str, str | None]) -> None:
         self._values = values
+        self._definitions = definitions
 
     @classmethod
     def for_state(cls, env: Env, automaton: Automaton, state: State) -> "EnvPromptBlock | None":
@@ -32,8 +35,7 @@ class EnvPromptBlock:
         read would return."""
         if not state.input:
             return None
-        current = env.action_set()
-        return cls({name: current.get(name, "") for name in state.input})
+        return cls._for_names(env, automaton, state.input)
 
     @classmethod
     def for_states(cls, env: Env, automaton: Automaton, states: Iterable[State]) -> "EnvPromptBlock | None":
@@ -44,22 +46,35 @@ class EnvPromptBlock:
         input_names = dict.fromkeys(name for state in states for name in state.input)
         if not input_names:
             return None
+        return cls._for_names(env, automaton, input_names)
+
+    @classmethod
+    def _for_names(cls, env: Env, automaton: Automaton, names: Iterable[str]) -> "EnvPromptBlock":
         current = env.action_set()
-        return cls({name: current.get(name, "") for name in input_names})
+        definitions = {env_key.name: env_key.ai_definition for env_key in automaton.env_keys}
+        return cls(
+            {name: current.get(name, "") for name in names},
+            {name: definitions.get(name) for name in names},
+        )
 
     @staticmethod
     def _render_value(value: Any) -> str:
-        text = "" if value is None else str(value)
+        text = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else "" if value is None else str(value)
         if len(text) <= MAX_ENV_VALUE_CHARS:
             return text
         return f"{text[:MAX_ENV_VALUE_CHARS]}[response too long — provide more specific filters via a select_rows_* read]"
 
+    def _render_key(self, key: str) -> str:
+        line = f"{key}: {self._render_value(self._values[key])}"
+        definition = self._definitions.get(key)
+        return f"{line}\n\t{definition}" if definition else line
+
     def lines(self) -> dict[str, str]:
-        """key -> rendered (already truncated) value, in declaration order
-        — what text() joins, exposed for the per-key token estimate (see
+        """key -> that key's own rendered text (`key: value`, already
+        truncated, plus its definition), in declaration order — what
+        text() joins, exposed for the per-key token estimate (see
         tracking.turn_size_estimate)."""
-        return {key: self._render_value(value) for key, value in self._values.items()}
+        return {key: self._render_key(key) for key in self._values}
 
     def text(self) -> str:
-        body = "\n".join(f"{key}: {value}" for key, value in self.lines().items())
-        return f"{ENV_BLOCK_HEADER}\n{body}"
+        return f"{ENV_BLOCK_HEADER}\n" + "\n".join(self.lines().values())

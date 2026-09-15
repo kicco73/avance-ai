@@ -210,28 +210,30 @@ class CoreAutomaton(object):
         return result
 
     @classmethod
-    def eval_action_on_exit(cls, action: "Action", scope: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    def eval_action_on_exit(cls, action: "Action", scope: EvaluationScope) -> tuple[dict[str, Any], str | None]:
         """`action.on_exit`'s own mixed grammar, evaluated against
         `scope` and split into statements with task's own grammar
         (TriggerExpressionAnalyzer.task_statements) so on-exit reads
         exactly like task: one statement per line, a single call may
         span several lines, and a '#' comment just works. Each
-        statement is either an `env.<key> = expr` assignment
+        statement is an `env.<key> = expr` assignment
         (TriggerExpressionAnalyzer.on_exit_assignment — eval_action_env's
         own contract: only successfully evaluated keys are returned, a
-        bad expression logs and is skipped) or a bare `chat.<method>(...)`
-        call, evaluated the same way render_task_script evaluates a
-        task line's own non-assignment statement — its return value is
-        collected only when it's a JsSnippet, everything else
-        contributes nothing. A statement that's neither a valid
-        assignment nor a `chat.*` call producing a JsSnippet is logged
-        and skipped, never raised — build-time validation
-        (AutomatonValidator.validate_on_exit) already rules out anything
-        else reaching here. Note what on-exit still can't do:
-        task.*'s own send_mail/whatsapp/defer/prompt remain task's job
-        alone — on-exit may only write env and call chat.*. Returns
-        (env_updates, joined_chat_snippets_or_None), the second element
-        exactly what `render_task_script` puts in its own `snippets`."""
+        bad expression logs and is skipped), a `name = expr` local
+        (TriggerExpressionAnalyzer.task_assignment — stored on the
+        script's own scope view, see EvaluationScope.for_on_exit, so a
+        later line reads it bare, and gone once the script ends), or a
+        bare `chat.<method>(...)` call, evaluated the same way
+        render_task_script evaluates a task line's own non-assignment
+        statement — its return value is collected only when it's a
+        JsSnippet, everything else contributes nothing. A statement
+        that's none of those is logged and skipped, never raised —
+        build-time validation (AutomatonValidator.validate_on_exit)
+        already rules out anything else reaching here. Note what on-exit
+        still can't do: task.*'s own send_mail/whatsapp/defer/prompt
+        remain task's job alone. Returns (env_updates,
+        joined_chat_snippets_or_None), the second element exactly what
+        `render_task_script` puts in its own `snippets`."""
         if not action.on_exit:
             return {}, None
         try:
@@ -239,19 +241,26 @@ class CoreAutomaton(object):
         except SyntaxError as exc:
             logger.warning("on-exit parsing failed for action '%s': %s", action.name, exc)
             return {}, None
+        scope = scope.for_on_exit(action.name)
         result: dict[str, Any] = {}
         snippets: list[str] = []
         for _line_number, statement in statements:
             assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
-            if assignment is not None:
-                key, expression = assignment
+            local = TriggerExpressionAnalyzer.task_assignment(statement)
+            if assignment is not None or local is not None:
+                key, expression = assignment or local
                 try:
-                    result[key] = cls._evaluate_expression(expression, scope)
+                    value = cls._evaluate_expression(expression, scope)
                 except Exception as exc:
                     logger.warning(
                         "on-exit expression evaluation failed for action '%s', key '%s' ('%s'): %s",
                         action.name, key, expression, exc,
                     )
+                    continue
+                if assignment is not None:
+                    result[key] = value
+                else:
+                    scope[key] = value
                 continue
             try:
                 value = cls._evaluate_statement(statement, scope)

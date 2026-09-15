@@ -1,10 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Crepe } from '@milkdown/crepe'
-import { remarkStringifyOptionsCtx } from '@milkdown/kit/core'
 import { replaceAll } from '@milkdown/kit/utils'
-import '@milkdown/crepe/theme/common/style.css'
-import '@milkdown/crepe/theme/frame.css'
+import { createCrepe } from './markdownCrepe.js'
 import DocInfoButton from '../../components/DocInfoButton.vue'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from './api.js'
 
@@ -31,12 +28,7 @@ let crepe = null
 let requestToken = 0
 
 async function createEditor(doc) {
-  crepe = new Crepe({
-    root: editorHost.value,
-    defaultValue: doc,
-    features: { [Crepe.Feature.Latex]: false, [Crepe.Feature.TopBar]: true }
-  })
-  crepe.editor.config((ctx) => { ctx.update(remarkStringifyOptionsCtx, (options) => ({ ...options, bullet: '-' })) })
+  crepe = createCrepe({ root: editorHost.value, defaultValue: doc })
   crepe.on((listener) => {
     listener.markdownUpdated((_ctx, markdown) => { content.value = markdown })
   })

@@ -12,7 +12,8 @@ import pytest
 
 from automaton.automaton import Action, Automaton, EnvKey, Source, State
 from db.db import Db
-from tracking.sources import METHOD_SCHEMAS, READ_METHODS, SourceNamespace
+from tracking.sources import METHOD_SCHEMAS, WRITE_METHOD, SourceNamespace
+from tracking.sources.avance_archive import AvanceArchiveSource
 from tracking.project_files import PROJECT_FILE_CACHE
 
 pytestmark = pytest.mark.contract
@@ -69,7 +70,7 @@ def _names(tool_set) -> set[str]:
 
 
 def _read_names(source_name: str) -> list[str]:
-    return [f"source_{source_name}_{method}" for method in READ_METHODS]
+    return [f"source_{source_name}_{method}" for method in AvanceArchiveSource.TOOL_METHODS if method != WRITE_METHOD]
 
 
 def _spec(tool_set, name: str):
@@ -82,6 +83,15 @@ def test_specs_cover_only_the_named_sources_with_every_supported_read_and_update
         *_read_names("flights"), *_read_names("tickets"),
     }
     assert _names(SourceNamespace(db, two).tool_set(["flights"])) == set(_read_names("flights"))
+
+
+def test_the_driver_alone_says_which_of_its_methods_the_model_gets(db):
+    two = _two_sources(db)
+    names = _names(SourceNamespace(db, two).tool_set(["flights"]))
+
+    assert names == {"source_flights_select_rows_containing", "source_flights_select_rows_where", "source_flights_select_rows_in_range"}
+    assert {"value", "column"} <= AvanceArchiveSource.SUPPORTED_METHODS
+    assert not {"value", "column"} & set(AvanceArchiveSource.TOOL_METHODS)
 
 
 def test_an_unknown_name_anywhere_or_a_write_on_a_driver_without_update_raises(db):
