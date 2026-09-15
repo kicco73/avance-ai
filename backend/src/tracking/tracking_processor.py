@@ -212,9 +212,9 @@ class TrackingProcessor(object):
 
 		return self._build_turn_response(user_message_id, assistant_id)
 
-	def _apply_output_to_env(self) -> None:
+	def _apply_output_to_env(self, state: State) -> None:
 		output_for_env = {
-			name: value for name, value in self.metadata.output.items() if name in self.user.state.output
+			name: value for name, value in self.metadata.output.items() if name in state.output
 		}
 		if output_for_env:
 			self.env.update_action_set(output_for_env, origin="output")
@@ -378,14 +378,12 @@ class TrackingProcessor(object):
 			return True
 		return not self.db.has_assistant_message_since(self.user.session_id, since)
 
-	def _build_base_prompt_and_history(self, state: State) -> tuple[str, list[dict], "EnvPromptBlock | None"]:
-		"""Same base_prompt/chat_history/env_block the transition-
+	def _build_base_prompt_and_history(self, state: State) -> tuple[Prompt, list[dict], "EnvPromptBlock | None"]:
+		"""The same (prompt, chat_history, env_block) the transition-
 		regeneration path (TrackingProcessorAfterUserMessage) actually
 		sends for `state` — exposed single-underscore (rather than
-		name-mangled) so that caller can get those pieces on their own,
-		sized against the same (audio, text, memory, [translations])
-		prompt build_regeneration_prompt itself builds, not the full gated
-		one generate_reply would use.
+		name-mangled) so the caller sends this call's own prompt, not a
+		second one rebuilt from its pieces.
 		`env_block` is handed back rather than recomputed by the caller —
 		EnvPromptBlock.for_state reads through self.env/automaton, no
 		reason to do that twice for one regeneration call.
@@ -396,12 +394,12 @@ class TrackingProcessor(object):
 		base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(
 			self.user.automaton, state, False,
 		)
-		prompt = self.build_regeneration_prompt(state, base_prompt)
+		prompt = self.build_regeneration_prompt(state, base_prompt, output_definition)
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(
 			base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
 		)
-		return base_prompt, self._build_chat_history(turn_attachments, remaining_history_budget), env_block
+		return prompt, self._build_chat_history(turn_attachments, remaining_history_budget), env_block
 
 	def _build_chat_history(self, turn_attachments: list, token_budget: int | None) -> list[dict]:
 		priming_messages = build_priming_messages(turn_attachments)
@@ -465,15 +463,20 @@ class TrackingProcessor(object):
 			not (has_to_evaluate_signals_before_ai_reply and self.user.has_ai_started_conversation)
 		) and bool(self.user.automaton.tracked_signal_names(state.key))
 
-	def build_regeneration_prompt(self, state: State, base_prompt: str) -> Prompt:
-		"""The fixed (audio, text, memory) Prompt the transition-
-		regeneration call has always sent — signals are already known from
-		the first call and must not be re-requested; talk_enabled/reaction
-		gating never applied here either (pre-existing behavior, preserved
-		as-is). `state` is the real post-transition state — the one call
-		site that actually knows it at prompt-build time — so this is
-		where button translation is genuinely correct after a transition."""
-		prompt = Prompt.chain(AudioPrompt(), TextPrompt(base_prompt), MemoryPrompt(self.env))
+	def build_regeneration_prompt(self, state: State, base_prompt: str, output_definition: str | None = None) -> Prompt:
+		"""The (audio, text, output, memory) Prompt the transition-
+		regeneration call sends — signals are already known from the first
+		call and must not be re-requested; talk_enabled/reaction gating
+		never applied here either (pre-existing behavior, preserved as-is).
+		Output is requested when `state` (the real post-transition state)
+		declares any: the first call only ever asked for the state the turn
+		started in, so a state reached mid-turn, only through a trigger, has
+		never had its own output fields offered to the model before this
+		call. `state` is also the one call site that actually knows the
+		post-transition state at prompt-build time — so this is where
+		button translation is genuinely correct after a transition."""
+		output = OutputPrompt(output_definition) if state.output else None
+		prompt = Prompt.chain(AudioPrompt(), TextPrompt(base_prompt), output, MemoryPrompt(self.env))
 		return self._append_translate_prompt(prompt, state)
 
 	def _append_translate_prompt(self, prompt: Prompt, state: State) -> Prompt:

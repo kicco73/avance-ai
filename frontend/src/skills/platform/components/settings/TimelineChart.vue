@@ -285,7 +285,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="timeline-chart">
     <p v-if="loading" class="timeline-chart-status">Loading…</p>
-    <p v-else-if="!history.length" class="timeline-chart-status">No timeline recorded yet for this user in this project.</p>
+    <p v-else-if="!history.length" class="timeline-chart-status">No timeline recorded yet.</p>
     <div v-else class="timeline-chart-canvas-wrap">
       <button v-if="isZoomed" class="trend-reset-zoom-btn" @click="resetZoom">Reset zoom</button>
       <canvas ref="canvasEl" @mousemove="onCanvasMouseMove" @mouseleave="onCanvasMouseLeave"></canvas>

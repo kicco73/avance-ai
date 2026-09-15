@@ -1,12 +1,16 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { deleteInstallApp } from '../../api.js'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { deleteInstallApp, getProjectSignals, getUserLatestSignals } from '../../api.js'
 import { getAppSessionSummaries } from '../../api/appStore.js'
 import { confirmDialog } from '../../../../dialogStore.js'
 import { renderMarkdown } from '../../../../markdown.js'
+import InspectorSignalList from '../inspector/InspectorSignalList.vue'
+import TimelineChart from '../settings/TimelineChart.vue'
+import { valuesToSignalValues } from '../../../../testTimeline.js'
 
 const props = defineProps({
-  app: { type: Object, required: true }
+  app: { type: Object, required: true },
+  profile: { type: Object, default: null }
 })
 
 const emit = defineEmits(['open'])
@@ -15,6 +19,39 @@ const uninstalling = ref(false)
 const uninstallMenuOpen = ref(false)
 const uninstallMenuRootEl = ref(null)
 const sessionSummaries = ref([])
+
+const tabs = [{ id: 'summary', label: 'Summary' }, { id: 'signals', label: 'Signals' }]
+const activeTab = ref('summary')
+
+const signalsUsername = computed(() => props.profile?.email ?? props.profile?.id ?? null)
+const signalColorMap = ref(null)
+const latestSignals = ref({ last_session: null, session_id: null, values: null })
+const latestSignalsLoading = ref(false)
+const latestSignalValues = computed(() => valuesToSignalValues(latestSignals.value.values))
+const signalDefs = ref([])
+const relevantSignals = computed(() => signalDefs.value.filter((s) => s.relevant))
+let latestSignalsLoaded = false
+
+async function loadLatestSignals() {
+  if (!signalsUsername.value) return
+  latestSignalsLoading.value = true
+  try {
+    latestSignals.value = await getUserLatestSignals(props.app.id, signalsUsername.value)
+    signalDefs.value = (await getProjectSignals(props.app.id, null, latestSignals.value.session_id)).signals
+  } catch {
+    latestSignals.value = { last_session: null, session_id: null, values: null }
+    signalDefs.value = []
+  } finally {
+    latestSignalsLoading.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'signals' && !latestSignalsLoaded) {
+    latestSignalsLoaded = true
+    loadLatestSignals()
+  }
+})
 
 function formatClosedAt(iso) {
   if (!iso) return ''
@@ -69,50 +106,126 @@ async function selectUninstallFromMenu() {
 </script>
 
 <template>
-  <div class="customer-app-detail-header-row">
-    <h2 class="customer-app-detail-title">Summary</h2>
-    <div class="customer-app-detail-menu" ref="uninstallMenuRootEl">
-      <button type="button" class="customer-app-detail-menu-btn" title="More actions" @click="toggleUninstallMenu">⋮</button>
-      <Transition name="customer-app-detail-menu-panel">
-        <ul v-if="uninstallMenuOpen" class="customer-app-detail-menu-list">
-          <li>
-            <button type="button" class="customer-app-detail-menu-item" :disabled="uninstalling" @click="selectUninstallFromMenu">Uninstall</button>
-          </li>
-        </ul>
-      </Transition>
-    </div>
+  <div class="customer-app-detail-tabbar">
+    <button
+      v-for="tab in tabs"
+      :key="tab.id"
+      type="button"
+      class="customer-app-detail-tab"
+      :class="{ 'customer-app-detail-tab-active': activeTab === tab.id }"
+      @click="activeTab = tab.id"
+    >{{ tab.label }}</button>
   </div>
 
-  <div v-if="app.ai_summary" class="customer-app-detail-ai-summary" v-html="renderMarkdown(app.ai_summary)"></div>
-
-  <button type="button" class="customer-app-detail-chat-now-btn" @click="emit('open', app.id)">Open</button>
-
-  <hr v-if="sessionSummaries.length" class="customer-app-detail-divider" />
-  <h3 v-if="sessionSummaries.length" class="customer-app-detail-subtitle">Last sessions</h3>
-  <div v-if="sessionSummaries.length" class="customer-app-detail-session-summaries">
-    <div v-for="session in sessionSummaries" :key="session.id" class="customer-app-detail-session-summary">
-      <div class="customer-app-detail-session-summary-header">
-        <span class="customer-app-detail-session-summary-title">{{ session.title }}</span>
-        <span class="customer-app-detail-session-summary-date">{{ formatClosedAt(session.closed_at) }}</span>
+  <template v-if="activeTab === 'summary'">
+    <div class="customer-app-detail-header-row">
+      <div class="customer-app-detail-menu" ref="uninstallMenuRootEl">
+        <button type="button" class="customer-app-detail-menu-btn" title="More actions" @click="toggleUninstallMenu">⋮</button>
+        <Transition name="customer-app-detail-menu-panel">
+          <ul v-if="uninstallMenuOpen" class="customer-app-detail-menu-list">
+            <li>
+              <button type="button" class="customer-app-detail-menu-item" :disabled="uninstalling" @click="selectUninstallFromMenu">Uninstall</button>
+            </li>
+          </ul>
+        </Transition>
       </div>
-      <div class="customer-app-detail-session-summary-text" v-html="renderMarkdown(session.ai_summary)"></div>
     </div>
+
+    <div v-if="app.ai_summary" class="customer-app-detail-ai-summary" v-html="renderMarkdown(app.ai_summary)"></div>
+
+    <button type="button" class="customer-app-detail-chat-now-btn" @click="emit('open', app.id)">Open</button>
+
+    <hr v-if="sessionSummaries.length" class="customer-app-detail-divider" />
+    <h3 v-if="sessionSummaries.length" class="customer-app-detail-subtitle">Last sessions</h3>
+    <div v-if="sessionSummaries.length" class="customer-app-detail-session-summaries">
+      <div v-for="session in sessionSummaries" :key="session.id" class="customer-app-detail-session-summary">
+        <div class="customer-app-detail-session-summary-header">
+          <span class="customer-app-detail-session-summary-title">{{ session.title }}</span>
+          <span class="customer-app-detail-session-summary-date">{{ formatClosedAt(session.closed_at) }}</span>
+        </div>
+        <div class="customer-app-detail-session-summary-text" v-html="renderMarkdown(session.ai_summary)"></div>
+      </div>
+    </div>
+  </template>
+
+  <div v-else-if="activeTab === 'signals'" class="customer-app-detail-signals-tab">
+    <p v-if="!signalsUsername" class="customer-app-detail-status">Your profile has no email on file.</p>
+    <template v-else>
+      <div class="customer-app-detail-trends-block">
+        <TimelineChart :project-id="app.id" :username="signalsUsername" @colors="signalColorMap = $event" />
+      </div>
+      <p v-if="latestSignalsLoading" class="customer-app-detail-status">Loading…</p>
+      <p v-else-if="!latestSignals.last_session" class="customer-app-detail-status">
+        You have no live sessions in this app yet.
+      </p>
+      <p v-else-if="!relevantSignals.length" class="customer-app-detail-status">No signals computed yet.</p>
+      <InspectorSignalList
+        v-else
+        :signals="relevantSignals"
+        :signal-values="latestSignalValues"
+        :signal-colors="signalColorMap"
+      />
+    </template>
   </div>
 </template>
 
 <style scoped>
+.customer-app-detail-tabbar {
+  flex-shrink: 0;
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.customer-app-detail-tab {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: #666;
+}
+
+.customer-app-detail-tab:hover {
+  color: #333;
+}
+
+.customer-app-detail-tab-active {
+  color: #2c4d7a;
+  font-weight: 600;
+  border-bottom-color: #4a6fa5;
+}
+
+.customer-app-detail-signals-tab {
+  flex: 1;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.customer-app-detail-trends-block {
+  width: 100%;
+  height: 200px;
+  max-height: 200px;
+  flex-shrink: 0;
+  margin-bottom: 1rem;
+}
+
+.customer-app-detail-status {
+  margin: 0;
+  padding: 0.75rem 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
 .customer-app-detail-header-row {
   flex-shrink: 0;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.5rem;
-}
-
-.customer-app-detail-title {
-  margin: 0;
-  font-size: 1.2rem;
-  color: #333;
 }
 
 .customer-app-detail-divider {

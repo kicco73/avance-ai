@@ -152,6 +152,7 @@ defineExpose({ refresh: load })
             v-if="selectedApp && subscribedOnly"
             :key="`customer-${selectedApp.id}`"
             :app="selectedApp"
+            :profile="profile"
             @open="handleDetailOpen"
           />
           <AppDetailPanel

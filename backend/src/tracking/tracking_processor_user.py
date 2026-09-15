@@ -33,7 +33,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			self.out.reply = buffered_text_before_signals_resolved
 			self.metadata.on_metadata('chunk', buffered_text_before_signals_resolved)
 
-		self._apply_output_to_env()
+		self._apply_output_to_env(self.user.state)
 		transitioned = self.user.state != self.out.state
 		self.moved_before_reply = transitioned
 
@@ -45,8 +45,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 				username=WebSession().user, project_id=self.user.project_id, session_id=self.user.session_id,
 				output_values=self.metadata.output,
 			))
-			base_prompt, chat_history, env_block = self._build_base_prompt_and_history(self.out.state)
-			prompt = self.build_regeneration_prompt(self.out.state, base_prompt)
+			prompt, chat_history, env_block = self._build_base_prompt_and_history(self.out.state)
 			async for chunk in self.assistant_talker.chat(
 				prompt, chat_history, on_metadata=self.on_receiving_metadata,
 				tool_set=self.build_tool_set(self.out.state),
@@ -55,6 +54,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)
+			self._apply_output_to_env(self.out.state)
 
 		if self._records_evaluation():
 			has_real_user_message = not self.user.has_ai_started_conversation
