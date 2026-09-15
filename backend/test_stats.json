@@ -13353,10 +13353,10 @@
     "first_run": "2026-09-15T08:43:49+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-15T12:06:18+00:00",
+    "last_run": "2026-09-15T12:35:33+00:00",
     "last_seconds": 0.001,
-    "runs": 9,
-    "seconds": 0.011,
+    "runs": 10,
+    "seconds": 0.012,
     "skips": 0
   },
   "tests/test_env_prompt_block.py::test_a_key_without_a_definition_renders_its_value_line_alone": {
@@ -13364,10 +13364,20 @@
     "first_run": "2026-09-15T08:30:45+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-15T12:06:18+00:00",
+    "last_run": "2026-09-15T12:35:33+00:00",
     "last_seconds": 0.001,
-    "runs": 10,
-    "seconds": 0.011,
+    "runs": 11,
+    "seconds": 0.012,
+    "skips": 0
+  },
+  "tests/test_env_prompt_block.py::test_a_long_value_renders_in_full_uncut": {
+    "failures": 0,
+    "first_run": "2026-09-15T12:35:33+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-15T12:35:33+00:00",
+    "runs": 1,
+    "seconds": 0.001,
     "skips": 0
   },
   "tests/test_env_prompt_block.py::test_a_state_declaring_input_gets_a_block_carrying_only_those_keys": {
@@ -13375,10 +13385,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-15T12:06:18+00:00",
+    "last_run": "2026-09-15T12:35:33+00:00",
     "last_seconds": 0.001,
-    "runs": 28,
-    "seconds": 0.034,
+    "runs": 29,
+    "seconds": 0.036,
     "skips": 0
   },
   "tests/test_env_prompt_block.py::test_a_state_with_no_input_gets_no_block_at_all": {
@@ -13386,10 +13396,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-15T12:06:18+00:00",
+    "last_run": "2026-09-15T12:35:33+00:00",
     "last_seconds": 0.001,
-    "runs": 28,
-    "seconds": 0.032,
+    "runs": 29,
+    "seconds": 0.033,
     "skips": 0
   },
   "tests/test_env_prompt_block.py::test_a_value_beyond_the_cap_is_cut_with_a_pointer_at_the_column_reads_while_one_exactly_at_it_is_left_alone": {
@@ -13408,10 +13418,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-15T12:06:18+00:00",
+    "last_run": "2026-09-15T12:35:33+00:00",
     "last_seconds": 0.003,
-    "runs": 28,
-    "seconds": 0.142,
+    "runs": 29,
+    "seconds": 0.148,
     "skips": 0
   },
   "tests/test_env_prompt_block.py::test_the_turn_size_estimate_counts_memory_and_the_blocks_own_lines_separately_and_nothing_at_all_without_a_block": {
@@ -13419,10 +13429,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-15T12:06:18+00:00",
+    "last_run": "2026-09-15T12:35:33+00:00",
     "last_seconds": 0.001,
-    "runs": 29,
-    "seconds": 0.034,
+    "runs": 30,
+    "seconds": 0.036,
     "skips": 0
   },
   "tests/test_ephemeral_env.py::test_a_test_sessions_env_lives_only_in_memory_isolated_from_the_live_one_and_from_the_next_test_session": {
@@ -13430,10 +13440,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": "2026-09-15T10:12:12+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-15T11:52:52+00:00",
+    "last_run": "2026-09-15T12:19:19+00:00",
     "last_seconds": 0.237,
-    "runs": 32,
-    "seconds": 4.115,
+    "runs": 34,
+    "seconds": 4.407,
     "skips": 0
   },
   "tests/test_ephemeral_env.py::test_resetting_deleting_or_closing_a_test_session_discards_its_ephemeral_env[close]": {
@@ -13441,10 +13451,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-15T11:52:52+00:00",
+    "last_run": "2026-09-15T12:19:19+00:00",
     "last_seconds": 0.08,
-    "runs": 32,
-    "seconds": 3.335,
+    "runs": 34,
+    "seconds": 3.559,
     "skips": 0
   },
   "tests/test_ephemeral_env.py::test_resetting_deleting_or_closing_a_test_session_discards_its_ephemeral_env[delete]": {
@@ -13452,10 +13462,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-15T11:52:52+00:00",
+    "last_run": "2026-09-15T12:19:19+00:00",
     "last_seconds": 0.081,
-    "runs": 32,
-    "seconds": 3.022,
+    "runs": 34,
+    "seconds": 3.234,
     "skips": 0
   },
   "tests/test_ephemeral_env.py::test_resetting_deleting_or_closing_a_test_session_discards_its_ephemeral_env[reset]": {
@@ -13463,10 +13473,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-15T11:52:52+00:00",
+    "last_run": "2026-09-15T12:19:19+00:00",
     "last_seconds": 0.086,
-    "runs": 32,
-    "seconds": 3.186,
+    "runs": 34,
+    "seconds": 3.396,
     "skips": 0
   },
   "tests/test_evaluation_scope.py::test_a_declared_source_is_readable_from_an_env_expression_end_to_end": {

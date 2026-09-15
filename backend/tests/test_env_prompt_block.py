@@ -1,9 +1,9 @@
 """tracking.env_prompt_block.EnvPromptBlock — the system prompt's own env
 block: shown to a state whenever it declares at least one `input` name,
-carrying only those keys, each with its own ai_definition beneath it,
-values truncated to MAX_ENV_VALUE_CHARS, and
-nothing at all (not even an empty block) for a state with no `input`.
-The model's memory is never part of it (see Env.memory_as_text).
+carrying only those keys, each rendered in full with its own
+ai_definition beneath it, and nothing at all (not even an empty block)
+for a state with no `input`. The model's memory is never part of it (see
+Env.memory_as_text).
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 from automaton.automaton import Action, Automaton, EnvKey, State
 from automaton.automaton_builder import AutomatonBuilder
 from tracking.env import Env
-from tracking.env_prompt_block import ENV_BLOCK_HEADER, MAX_ENV_VALUE_CHARS, EnvPromptBlock
+from tracking.env_prompt_block import ENV_BLOCK_HEADER, EnvPromptBlock
 from tracking.turn_size_estimate import estimate_turn_request
 
 pytestmark = pytest.mark.contract
@@ -60,18 +60,12 @@ def test_a_state_with_no_input_gets_no_block_at_all():
     assert EnvPromptBlock.for_state(env, automaton, STATE_C) is None
 
 
-def test_a_value_beyond_the_cap_is_cut_with_a_pointer_at_the_column_reads_while_one_exactly_at_it_is_left_alone():
+def test_a_long_value_renders_in_full_uncut():
     automaton = _automaton(STATE_A)
 
-    long_value = Env(action_set={"flight": "x" * (MAX_ENV_VALUE_CHARS + 37)})
+    long_value = Env(action_set={"flight": "x" * 5000})
     assert EnvPromptBlock.for_state(long_value, automaton, STATE_A).lines()["flight"] == (
-        "flight: " + "x" * MAX_ENV_VALUE_CHARS
-        + "[response too long — provide more specific filters via a select_rows_* read]\n\tThe flight code."
-    )
-
-    exact = Env(action_set={"flight": "x" * MAX_ENV_VALUE_CHARS})
-    assert EnvPromptBlock.for_state(exact, automaton, STATE_A).lines()["flight"] == (
-        "flight: " + "x" * MAX_ENV_VALUE_CHARS + "\n\tThe flight code."
+        "flight: " + "x" * 5000 + "\n\tThe flight code."
     )
 
 

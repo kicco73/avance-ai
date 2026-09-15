@@ -348,6 +348,7 @@ function handleBack() {
 async function openInspect() {
   await nextTick()
   await refreshSignalsLog()
+  await inspectorRef.value?.refresh()
 }
 
 function handleInspectorCollapsedChange(collapsed) {

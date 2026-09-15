@@ -699,9 +699,11 @@ other keys are written. Nothing is coerced.
 **The prompt's env block.** The model sees the automaton's env only in a
 state whose own `input` is non-empty (§4.3); there, the system prompt
 ends with a "Current environment" block — one `key: value` line per name
-in `input`, every value cut to 200 characters with a
-`[response too long — provide more specific filters via a select_rows_* read]` pointer,
-the key's `ai-definition` indented beneath it, placed last so its per-turn changes never invalidate the cacheable prefix. Anywhere else the
+in `input`, the value rendered in full, the key's `ai-definition`
+indented beneath it, placed last so its per-turn changes never
+invalidate the cacheable prefix. A block too large to fit fails the
+turn outright, through the request's own input-token-budget-per-turn
+cap, rather than silently handing the model a cut value. Anywhere else the
 block does not exist, not even empty. The memory block is a separate
 block with its own heading, and the model is told to change variables
 only through `output` (§4.3), never in the `memory` field — a *declared*

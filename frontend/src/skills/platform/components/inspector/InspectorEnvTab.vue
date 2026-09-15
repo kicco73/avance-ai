@@ -1,7 +1,9 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { clearMemory, deleteEnvValue, getEnv, getOutput, putEnvValue } from '../../api.js'
-import { confirmDialog } from '../../../../dialogStore.js'
+import { confirmDialog, customDialog } from '../../../../dialogStore.js'
+import CellMarkdownDialog from '../project/edit/design/CellMarkdownDialog.vue'
+import { DISPLAY_LIMIT } from '../project/edit/design/csvCells.js'
 
 const props = defineProps({
   sessionId: { type: [Number, String], default: null },
@@ -112,6 +114,23 @@ async function refresh() {
   await Promise.all([loadEnv(), loadOutput()])
 }
 
+function isTruncated(value) {
+  return typeof value === 'string' && value.length > DISPLAY_LIMIT
+}
+
+function displayValue(value) {
+  if (value === null) return '—'
+  return isTruncated(value) ? `${value.slice(0, DISPLAY_LIMIT)}…` : value
+}
+
+function openValueDialog(key, value) {
+  customDialog({
+    component: CellMarkdownDialog,
+    props: { title: key, initialValue: String(value ?? '') },
+    wide: true
+  })
+}
+
 defineExpose({ loadEnv, refresh })
 </script>
 
@@ -130,7 +149,12 @@ defineExpose({ loadEnv, refresh })
         </p>
         <div v-for="[key, value] in outputEntries" :key="key" class="inspector-env-row">
           <strong class="inspector-env-key">{{ key }}:</strong>
-          <span class="inspector-env-value">{{ value === null ? '—' : value }}</span>
+          <span
+            class="inspector-env-value"
+            :class="{ 'inspector-env-value-truncated': isTruncated(value) }"
+            :title="isTruncated(value) ? 'Click to view full value' : undefined"
+            @click="isTruncated(value) && openValueDialog(key, value)"
+          >{{ displayValue(value) }}</span>
         </div>
       </div>
 
@@ -142,7 +166,12 @@ defineExpose({ loadEnv, refresh })
         <p v-if="!envEntries.length" class="inspector-env-empty">No values defined yet.</p>
         <div v-for="[key, value] in envEntries" :key="key" class="inspector-env-row">
           <strong class="inspector-env-key">{{ key }}:</strong>
-          <span class="inspector-env-value">{{ value === null ? '—' : value }}</span>
+          <span
+            class="inspector-env-value"
+            :class="{ 'inspector-env-value-truncated': isTruncated(value) }"
+            :title="isTruncated(value) ? 'Click to view full value' : undefined"
+            @click="isTruncated(value) && openValueDialog(key, value)"
+          >{{ displayValue(value) }}</span>
         </div>
       </div>
 
@@ -209,6 +238,8 @@ defineExpose({ loadEnv, refresh })
 .inspector-env-value { flex: 1; word-break: break-word; border-radius: 4px; padding: 0.05rem 0.3rem; margin: -0.05rem -0.3rem; }
 .inspector-env-value-editable { cursor: text; }
 .inspector-env-value-editable:hover { background: #eef2f9; }
+.inspector-env-value-truncated { cursor: pointer; }
+.inspector-env-value-truncated:hover { background: #eef2f9; }
 .inspector-env-input { flex: 1; font: inherit; color: inherit; border: 1px solid #4a6fa5; border-radius: 4px; padding: 0.05rem 0.3rem; background: white; min-width: 0; }
 .inspector-env-delete-btn { flex-shrink: 0; width: 1.1rem; height: 1.1rem; line-height: 1; border: none; border-radius: 50%; background: none; color: #999; cursor: pointer; font-size: 0.85rem; padding: 0; }
 .inspector-env-delete-btn:hover { background: #fdecea; color: #c62828; }

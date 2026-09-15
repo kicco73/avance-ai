@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { vAutosize } from '../../../../components/skillkit/textareaAutosize.js'
 import CardMenu from '../../../../components/skillkit/CardMenu.vue'
+import SegmentedControl from '../../../../components/skillkit/SegmentedControl.vue'
 import TriggerEditor from '../../../../components/skillkit/TriggerEditor.vue'
 import { handleEnterNext } from '../../../../components/skillkit/enterToNextField.js'
 
@@ -18,6 +19,7 @@ function handleDeleteEnvKey(name) {
 }
 
 const ENV_TYPES = ['number', 'string', 'bool', 'choice']
+const ENV_TYPE_OPTIONS = ENV_TYPES.map((envType) => ({ id: envType, label: envType }))
 
 const expandedName = ref(null)
 const editName = ref('')
@@ -141,14 +143,12 @@ function commitField(field, currentValue, originalValue) {
             <div class="inspector-env-value-row">
               <div class="inspector-env-type">
                 <label class="inspector-signal-form-label">Type</label>
-                <select
-                  v-model="editType"
-                  class="inspector-env-type-select"
+                <SegmentedControl
+                  :model-value="editType"
+                  :options="ENV_TYPE_OPTIONS"
                   @click.stop
-                  @change="commitField('type', editType, envKey.type ?? '')"
-                >
-                  <option v-for="envType in ENV_TYPES" :key="envType" :value="envType">{{ envType }}</option>
-                </select>
+                  @update:model-value="(value) => { editType = value; commitField('type', value, envKey.type ?? '') }"
+                />
               </div>
               <div class="inspector-env-value">
                 <label class="inspector-signal-form-label" title="A Python expression, evaluated server-side">
@@ -207,7 +207,6 @@ function commitField(field, currentValue, originalValue) {
 .inspector-env-value-row { display: flex; gap: 0.6rem; align-items: flex-start; }
 .inspector-env-type { flex-shrink: 0; display: flex; flex-direction: column; }
 .inspector-env-value { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.inspector-env-type-select { font: inherit; font-size: 0.78rem; padding: 0.3rem 0.4rem; border-radius: 6px; border: 1px solid #ccc; background: white; }
 .inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
 .inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
 .inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }
@@ -217,7 +216,7 @@ function commitField(field, currentValue, originalValue) {
 .inspector-signal-ui_description { display: block; margin-top: 0.3rem; font-size: 0.78rem; color: #666; line-height: 1.4; }
 .inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; margin-top: 0.15rem; }
 .inspector-signal-ai_definition { display: flex; align-items: flex-start; gap: 0.35rem; margin-top: 0.3rem; font-size: 0.78rem; color: #555; line-height: 1.4; }
-.inspector-detail-code { display: block; margin-top: 0.3rem; font-size: 0.78rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; color: #444; word-break: break-word; white-space: pre-wrap; }
+.inspector-detail-code { display: block; margin-top: 0.3rem; font-size: 0.78rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; color: #444; word-break: break-word; white-space: pre-wrap; user-select: none; }
 .crossfade-enter-active, .crossfade-leave-active { transition: opacity 0.15s ease; }
 .crossfade-enter-from, .crossfade-leave-to { opacity: 0; }
 </style>

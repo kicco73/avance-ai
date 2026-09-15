@@ -1,12 +1,12 @@
 """The system prompt's own env block — this state's own `input` variables
-(see automaton.State.input), rendered as `key: value` lines, truncated to
-MAX_ENV_VALUE_CHARS, each followed by the key's own `ai_definition`
-(see automaton.EnvKey) indented beneath it. A state that declares no `input` gets no block at
-all — not even empty. The model's own memory is a separate block with its
-own heading (see TurnProtocol), never merged with this one. Read-only,
-full stop: there is no model-facing write path for these — an action's
-own `env:` script (or this same state's own `output`, copied back once
-the turn completes — see TrackingProcessor.process) is what changes one."""
+(see automaton.State.input), rendered as `key: value` lines in full, each
+followed by the key's own `ai_definition` (see automaton.EnvKey) indented
+beneath it. A state that declares no `input` gets no block at all — not
+even empty. The model's own memory is a separate block with its own
+heading (see TurnProtocol), never merged with this one. Read-only, full
+stop: there is no model-facing write path for these — an action's own
+`env:` script (or this same state's own `output`, copied back once the
+turn completes — see TrackingProcessor.process) is what changes one."""
 from __future__ import annotations
 
 import json
@@ -14,8 +14,6 @@ from typing import Any, Iterable
 
 from automaton.automaton import Automaton, State
 from tracking.env import Env
-
-MAX_ENV_VALUE_CHARS = 200
 
 ENV_BLOCK_HEADER = (
     "Current environment — the automaton's own variables (name: value). Read-only: never write these in "
@@ -59,10 +57,7 @@ class EnvPromptBlock:
 
     @staticmethod
     def _render_value(value: Any) -> str:
-        text = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else "" if value is None else str(value)
-        if len(text) <= MAX_ENV_VALUE_CHARS:
-            return text
-        return f"{text[:MAX_ENV_VALUE_CHARS]}[response too long — provide more specific filters via a select_rows_* read]"
+        return json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else "" if value is None else str(value)
 
     def _render_key(self, key: str) -> str:
         line = f"{key}: {self._render_value(self._values[key])}"
