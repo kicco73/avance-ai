@@ -27,7 +27,7 @@ from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.tracking_service import TrackingService
 from tracking.user_facts import UserFacts
 
-from event.event_namespace import watched_from
+from event.event_namespace import watched_from, NAME
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -92,10 +92,14 @@ class EventService:
 
     def _watches(self, username: str, observer_project_id: str, watched_project_id: str) -> bool:
         session = self._db.get_latest_chat_session(username, observer_project_id)
-        if session is None:
+        if session is None or not self._mentions_events(observer_project_id, session["project_revision"]):
             return False
         automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
         return watched_project_id in watched_from(automaton, state.key)
+
+    def _mentions_events(self, project_id: str, revision: int) -> bool:
+        index_yml = self._db.get_archive(project_id, "index.yml", revision=revision)
+        return index_yml is not None and f"{NAME}." in index_yml.decode("utf-8", errors="replace")
 
     async def _reevaluate_and_apply(self, username: str, observer_project_id: str) -> None:
         """Re-derives `observer_project_id`'s own current scope from

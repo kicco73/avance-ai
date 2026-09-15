@@ -435,7 +435,7 @@ user.role == "admin"
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
 | `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select_rows_containing(...)`/`.update(...)` |
 | `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `task.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
-| `choice.<key>` | `<key>` an env key declared of type `choice` (§5.3): the option just pressed, for the one trigger evaluation the press starts — `""` in every other evaluation and under every other `choice` key. Exactly `choice.<key>`, in `trigger:` and `env:` only — never in `on-exit:`/`task:` | attribute |
+| `choice.<key>` | `<key>` an env key declared of type `choice` (§5.3): the option just pressed, for the one trigger evaluation the press starts — `""` in every other evaluation and under every other `choice` key. Exactly `choice.<key>`, in `trigger:`, `env:` and `on-exit:` — never in `task:`, which runs later, against a scope of its own | attribute |
 
 A **bare** name is only ever a core metric (§2) — nothing else may appear
 unnamespaced. An installed feature may declare one more namespace of its
@@ -657,8 +657,9 @@ actions (see BUS.md, `state.buttons`). Pressing one writes nothing: the
 option is the value of `choice.<key>` for the single trigger evaluation
 the press starts — `""` everywhere else, in every other evaluation and
 under every other `choice` key — and the first action whose trigger
-answers transitions as a manual action does, its own `env:` reading the
-same `choice.<key>`. No trigger answering, nothing happens. The pattern:
+answers transitions as a manual action does, its own `env:` and
+`on-exit` reading the same `choice.<key>`. No trigger answering, nothing
+happens. The pattern:
 
 ```yaml
 env:

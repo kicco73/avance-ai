@@ -53,6 +53,15 @@ def test_a_trigger_and_an_env_expression_may_read_a_declared_choice_key():
     assert action.env == {"booked_slot": "choice.slot"}
 
 
+def test_an_on_exit_assignment_may_read_a_declared_choice_key_too():
+    on_exit = "picked = choice.slot\nenv.booked_slot = picked\nchat.notify('Booked', choice.slot)"
+    action = _build(
+        "      - name: book\n        target: b\n        trigger: \"choice.slot != ''\"\n        on-exit: |\n"
+        + "".join(f"          {line}\n" for line in on_exit.split("\n"))
+    ).states["a"].actions[0]
+    assert action.on_exit.strip() == on_exit
+
+
 @pytest.mark.parametrize(("actions_yaml", "match"), [
     ("      - name: go\n        target: b\n        trigger: \"choice.visits != ''\"\n",
      r"State a, action 'go': trigger references choice.visits — 'visits' is not an env key declared of type choice"),
@@ -62,11 +71,11 @@ def test_a_trigger_and_an_env_expression_may_read_a_declared_choice_key():
      r"State a, action 'go': trigger references choice.slot.first — choice.<key> is the whole of it"),
     ("      - name: go\n        target: b\n        env:\n          booked_slot: choice.visits\n",
      r"State a, action 'go': env expression for 'booked_slot' references choice.visits"),
-    ("      - name: go\n        target: b\n        on-exit: env.booked_slot = choice.slot\n",
-     r"State a, action 'go': on-exit references choice.slot — choice.\* is read in an action's trigger and env only"),
+    ("      - name: go\n        target: b\n        on-exit: env.booked_slot = choice.visits\n",
+     r"State a, action 'go': on-exit references choice.visits — 'visits' is not an env key declared of type choice"),
     ("      - name: go\n        target: b\n        task: task.send_mail(user.email, choice.slot)\n",
-     r"State a, action 'go': task references choice.slot — choice.\* is read in an action's trigger and env only"),
-], ids=["not-a-choice-key", "undeclared-key", "three-segments", "env-not-a-choice-key", "on-exit", "task"])
+     r"State a, action 'go': task references choice.slot — choice.\* is read in an action's trigger, env and on-exit only"),
+], ids=["not-a-choice-key", "undeclared-key", "three-segments", "env-not-a-choice-key", "on-exit-not-a-choice-key", "task"])
 def test_build_rejects_a_chain_that_is_not_exactly_a_declared_choice_key_or_sits_in_a_script(actions_yaml, match):
     with pytest.raises(ValueError, match=match):
         _build(actions_yaml)

@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
             Apply aspect
           </label>
         </div>
-        <button type="button" class="run-clear-session-btn" title="Delete this session and start a new one" @click="onClearSession">Clear</button>
+        <button type="button" class="run-clear-session-btn" title="Delete this session and start a new one" @click="onClearSession">Restart</button>
       </div>
       <Teleport to="body">
         <span v-if="tokensTooltipVisible" class="run-tokens-tooltip-floating" :style="tokensTooltipStyle">Token burnt: {{ sessionTokensBurnt }}</span>

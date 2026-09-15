@@ -1,15 +1,20 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ChatView from '../../../../components/chat/ChatView.vue'
 import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppStoreFrozenPreview from '../appStore/AppStoreFrozenPreview.vue'
+import InspectorSignalsTab from '../inspector/InspectorSignalsTab.vue'
+import TimelineChart from './TimelineChart.vue'
 import { holdSkin } from '../../../../chatSkin.js'
+import { valuesToSignalValues } from '../../../../testTimeline.js'
 import { ProjectSkinSource } from '../../projectSkinSource.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
+import { getUserLatestSignals } from '../../api.js'
 import { projectActions } from '../../../registry.js'
 
 const props = defineProps({
   app: { type: Object, required: true },
+  profile: { type: Object, default: null },
   publishedRevision: { type: Number, default: null },
   revision: { type: Number, default: null }
 })
@@ -21,6 +26,34 @@ const previewing = ref(false)
 function appTitle(app) {
   return app?.ui_label || app?.id || ''
 }
+
+const tabs = [{ id: 'info', label: 'Info' }, { id: 'signals', label: 'Signals' }]
+const activeTab = ref('info')
+
+const signalsUsername = computed(() => props.profile?.email ?? props.profile?.id ?? null)
+const signalColorMap = ref(null)
+const latestSignals = ref({ last_session: null, session_id: null, values: null })
+const latestSignalsLoading = ref(false)
+const latestSignalValues = computed(() => valuesToSignalValues(latestSignals.value.values))
+let latestSignalsLoaded = false
+
+async function loadLatestSignals() {
+  if (!signalsUsername.value) return
+  latestSignalsLoading.value = true
+  try {
+    latestSignals.value = await getUserLatestSignals(props.app.id, signalsUsername.value)
+  } catch {
+    latestSignals.value = { last_session: null, session_id: null, values: null }
+  } finally {
+    latestSignalsLoading.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab !== 'signals' || latestSignalsLoaded) return
+  latestSignalsLoaded = true
+  loadLatestSignals()
+})
 
 const deleteMenuOpen = ref(false)
 const deleteMenuRootEl = ref(null)
@@ -68,67 +101,150 @@ onBeforeUnmount(async () => {
 </script>
 
 <template>
-  <div class="project-detail-header-row">
-    <div class="project-detail-title-row">
-      <h2 class="project-detail-title">{{ appTitle(app) }}</h2>
-      <span v-if="publishedRevision != null" class="project-detail-rev">rev. {{ publishedRevision }}</span>
-    </div>
-    <div class="project-detail-menu" ref="deleteMenuRootEl">
-      <button type="button" class="project-detail-menu-btn" title="More actions" @click="toggleDeleteMenu">⋮</button>
-      <Transition name="project-detail-menu-panel">
-        <ul v-if="deleteMenuOpen" class="project-detail-menu-list">
-          <li>
-            <button type="button" class="project-detail-menu-item" @click="selectDeleteFromMenu">Delete</button>
-          </li>
-        </ul>
-      </Transition>
-    </div>
-  </div>
-  <div class="project-detail-badges">
-    <span class="project-detail-badge">MULTILINGUAL</span>
-    <span v-if="app.reactions_enabled" class="project-detail-badge">REACTIONS</span>
-    <span v-if="app.compiled" class="project-detail-badge">COMPILED</span>
-  </div>
-  <p class="project-detail-desc">{{ app.ui_description }}</p>
-
-  <div class="project-detail-actions">
+  <div class="project-detail-tabbar">
     <button
+      v-for="tab in tabs"
+      :key="tab.id"
       type="button"
-      class="project-detail-try-btn"
-      :class="{ 'project-detail-try-btn-active': previewing }"
-      @click="previewing ? quitPreview() : startPreview()"
-    >{{ previewing ? 'Quit' : 'Test' }}</button>
-    <button v-if="previewing" type="button" class="project-detail-secondary-btn" :disabled="!historyLoaded" @click="restartPreview">Restart</button>
-    <button type="button" class="project-detail-secondary-btn" @click="emit('edit', app.id)">Edit</button>
-    <button type="button" class="project-detail-secondary-btn" @click="emit('label', app.id)">Label</button>
-    <button type="button" class="project-detail-secondary-btn" @click="emit('download', app.id)">Export</button>
-    <button type="button" class="project-detail-secondary-btn" @click="emit('share', app.id)">Invite</button>
-    <button
-      v-if="revision !== publishedRevision"
-      type="button"
-      class="project-detail-secondary-btn"
-      title="Publish this project's current revision, then compile it if this backend can"
-      @click="emit('publish', app.id)"
-    >Publish</button>
-    <component
-      v-for="action in projectActions"
-      :is="action.component"
-      :key="action.id"
-      :project-id="app.id"
-      :published-revision="publishedRevision"
-      :revision="revision"
-      @activate="emit('open-skill-view', action.opens, app.id)"
-    />
+      class="project-detail-tab"
+      :class="{ 'project-detail-tab-active': activeTab === tab.id }"
+      @click="activeTab = tab.id"
+    >{{ tab.label }}</button>
   </div>
 
-  <div class="project-detail-try-panel">
-    <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" />
-    <ChatView v-if="previewing && historyLoaded" hide-sessions-panel :store="appStorePreviewStore" />
-    <ChatWaitingPanel v-if="previewing && !historyLoaded" />
+  <template v-if="activeTab === 'info'">
+    <div class="project-detail-header-row">
+      <div class="project-detail-title-row">
+        <h2 class="project-detail-title">{{ appTitle(app) }}</h2>
+        <span v-if="publishedRevision != null" class="project-detail-rev">rev. {{ publishedRevision }}</span>
+      </div>
+      <div class="project-detail-menu" ref="deleteMenuRootEl">
+        <button type="button" class="project-detail-menu-btn" title="More actions" @click="toggleDeleteMenu">⋮</button>
+        <Transition name="project-detail-menu-panel">
+          <ul v-if="deleteMenuOpen" class="project-detail-menu-list">
+            <li>
+              <button type="button" class="project-detail-menu-item" @click="selectDeleteFromMenu">Delete</button>
+            </li>
+          </ul>
+        </Transition>
+      </div>
+    </div>
+    <div class="project-detail-badges">
+      <span class="project-detail-badge">MULTILINGUAL</span>
+      <span v-if="app.reactions_enabled" class="project-detail-badge">REACTIONS</span>
+      <span v-if="app.compiled" class="project-detail-badge">COMPILED</span>
+    </div>
+    <p class="project-detail-desc">{{ app.ui_description }}</p>
+
+    <div class="project-detail-actions">
+      <button
+        type="button"
+        class="project-detail-try-btn"
+        :class="{ 'project-detail-try-btn-active': previewing }"
+        @click="previewing ? quitPreview() : startPreview()"
+      >{{ previewing ? 'Quit' : 'Test' }}</button>
+      <button v-if="previewing" type="button" class="project-detail-secondary-btn" :disabled="!historyLoaded" @click="restartPreview">Restart</button>
+      <button type="button" class="project-detail-secondary-btn" @click="emit('edit', app.id)">Edit</button>
+      <button type="button" class="project-detail-secondary-btn" @click="emit('label', app.id)">Label</button>
+      <button type="button" class="project-detail-secondary-btn" @click="emit('download', app.id)">Export</button>
+      <button type="button" class="project-detail-secondary-btn" @click="emit('share', app.id)">Invite</button>
+      <button
+        v-if="revision !== publishedRevision"
+        type="button"
+        class="project-detail-secondary-btn"
+        title="Publish this project's current revision, then compile it if this backend can"
+        @click="emit('publish', app.id)"
+      >Publish</button>
+      <component
+        v-for="action in projectActions"
+        :is="action.component"
+        :key="action.id"
+        :project-id="app.id"
+        :published-revision="publishedRevision"
+        :revision="revision"
+        @activate="emit('open-skill-view', action.opens, app.id)"
+      />
+    </div>
+
+    <div class="project-detail-try-panel">
+      <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" />
+      <ChatView v-if="previewing && historyLoaded" hide-sessions-panel :store="appStorePreviewStore" />
+      <ChatWaitingPanel v-if="previewing && !historyLoaded" />
+    </div>
+  </template>
+
+  <div v-else-if="activeTab === 'signals'" class="project-detail-signals-tab">
+    <p v-if="!signalsUsername" class="project-detail-status">Your profile has no email on file.</p>
+    <template v-else>
+      <div class="project-detail-trends-block">
+        <TimelineChart :project-id="app.id" :username="signalsUsername" @colors="signalColorMap = $event" />
+      </div>
+      <p v-if="latestSignalsLoading" class="project-detail-status">Loading…</p>
+      <p v-else-if="!latestSignals.last_session" class="project-detail-status">
+        You have no live sessions in this app yet.
+      </p>
+      <InspectorSignalsTab
+        v-else
+        :project-id="app.id"
+        :signal-values="latestSignalValues"
+        :session-id="latestSignals.session_id"
+        :signal-colors="signalColorMap"
+      />
+    </template>
   </div>
 </template>
 
 <style scoped>
+.project-detail-tabbar {
+  flex-shrink: 0;
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.project-detail-tab {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: #666;
+}
+
+.project-detail-tab:hover {
+  color: #333;
+}
+
+.project-detail-tab-active {
+  color: #2c4d7a;
+  font-weight: 600;
+  border-bottom-color: #4a6fa5;
+}
+
+.project-detail-signals-tab {
+  flex: 1;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-detail-trends-block {
+  width: 100%;
+  height: 200px;
+  max-height: 200px;
+  flex-shrink: 0;
+  margin-bottom: 1rem;
+}
+
+.project-detail-status {
+  margin: 0;
+  padding: 0.75rem 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
 .project-detail-header-row {
   flex-shrink: 0;
   display: flex;

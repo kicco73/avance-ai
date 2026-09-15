@@ -218,7 +218,7 @@ class AutomatonValidator:
     @classmethod
     def validate_on_exit(
         cls, on_exit: str | None, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
-        env_keys: dict[str, EnvKey], archives: ProjectArchives,
+        env_keys: dict[str, EnvKey], archives: ProjectArchives, namespaces: frozenset[str],
     ) -> None:
         """`on-exit` shares task's own statement splitting
         (TriggerExpressionAnalyzer.task_statements — same multi-line-
@@ -254,7 +254,9 @@ class AutomatonValidator:
                         f"{line_context}: env key '{env_key}' is not declared in the project's own "
                         "'env' section — declare it there first."
                     )
-                cls.validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
+                cls.validate_namespaced_expression(
+                    expression, line_context, registry, sources, frozenset(known_locals), namespaces,
+                )
                 cls.validate_attachment_read(expression, line_context, archives)
                 cls.validate_env_key_type(env_keys[env_key], expression, line_context)
                 continue
@@ -266,7 +268,9 @@ class AutomatonValidator:
                         f"{line_context} ('{statement}'): '{target}' is a reserved name "
                         "(a namespace or core metric) and can't be used as an on-exit local variable."
                     )
-                cls.validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
+                cls.validate_namespaced_expression(
+                    expression, line_context, registry, sources, frozenset(known_locals), namespaces,
+                )
                 cls.validate_attachment_read(expression, line_context, archives)
                 known_locals.add(target)
                 continue
@@ -275,7 +279,9 @@ class AutomatonValidator:
                     f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments, "
                     "'name = expr' locals, or a bare 'chat.<method>(...)' call."
                 )
-            cls.validate_namespaced_expression(statement, line_context, registry, sources, frozenset(known_locals))
+            cls.validate_namespaced_expression(
+                statement, line_context, registry, sources, frozenset(known_locals), namespaces,
+            )
             cls.validate_attachment_read(statement, line_context, archives)
             cls.validate_chat_arity(statement, line_context)
 
@@ -331,7 +337,9 @@ class AutomatonValidator:
             if action.task:
                 self.validate_task(action.task, action_context, registry_for_task, sources, archives)
             if action.on_exit:
-                self.validate_on_exit(action.on_exit, action_context, registry_for_on_exit, sources, env_keys, archives)
+                self.validate_on_exit(
+                    action.on_exit, action_context, registry_for_on_exit, sources, env_keys, archives, namespaces.names,
+                )
 
     def validate_state_io(self, state: State, env_keys: dict[str, EnvKey]) -> None:
         choice_keys = choice_key_names(env_keys)

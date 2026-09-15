@@ -1,17 +1,13 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getMetrics, getProjectGraph, getProjects, getUserLatestSignals, getUsers, putUserRole } from '../../api.js'
-import { valuesToSignalValues } from '../../../../testTimeline.js'
 import { confirmDialog } from '../../../../dialogStore.js'
 import { roleSatisfies } from '../../../../roles.js'
 import DocInfoButton from '../../../../components/DocInfoButton.vue'
-import ProjectsMenu from '../../../../components/ProjectsMenu.vue'
 import ProfileMenu from '../../../../components/ProfileMenu.vue'
-import InspectorSignalsTab from '../inspector/InspectorSignalsTab.vue'
 import InspectorUserInfoCard from '../../../../components/skillkit/InspectorUserInfoCard.vue'
 import MetricDetail from '../../../../components/skillkit/MetricDetail.vue'
 import MetricsTrendsChart from './MetricsTrendsChart.vue'
-import TimelineChart from './TimelineChart.vue'
 
 const props = defineProps({
   currentUserRole: { type: String, default: null },
@@ -99,10 +95,9 @@ async function loadStats(projectId, user) {
   }
 }
 
-const mainTabs = [{ id: 'info', label: 'Info' }, { id: 'signals', label: 'Timeline' }, { id: 'metrics', label: 'Metrics' }]
+const mainTabs = [{ id: 'info', label: 'Info' }, { id: 'metrics', label: 'Metrics' }]
 const activeMainTab = ref('info')
 
-const signalColorMap = ref(null)
 const metricColorMap = ref(null)
 
 function metricBadgeColor(name) {
@@ -111,8 +106,6 @@ function metricBadgeColor(name) {
 }
 
 const latestSignals = ref({ last_session: null, session_id: null, values: null })
-const latestSignalsLoading = ref(false)
-const latestSignalValues = computed(() => valuesToSignalValues(latestSignals.value.values))
 
 const projectGraphNodes = ref([])
 const lastSessionStateNode = computed(() => {
@@ -127,15 +120,12 @@ async function loadLatestSignals(projectId, user) {
     projectGraphNodes.value = []
     return
   }
-  latestSignalsLoading.value = true
   try {
     latestSignals.value = await getUserLatestSignals(projectId, user.email ?? user.id)
     projectGraphNodes.value = (await getProjectGraph(projectId, latestSignals.value.last_session?.id)).nodes
   } catch {
     latestSignals.value = { last_session: null, session_id: null, values: null }
     projectGraphNodes.value = []
-  } finally {
-    latestSignalsLoading.value = false
   }
 }
 
@@ -171,7 +161,6 @@ defineExpose({ refresh: load })
   <div class="manage-users-overlay">
     <div class="manage-users-header">
       <button class="back-btn" title="Back" @click="emit('close')">«</button>
-      <ProjectsMenu align="left" :selected-name="statsProjectId" @select="statsProjectId = $event" />
       <h2 class="manage-users-header-title">Users</h2>
       <div class="manage-users-header-actions">
         <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
@@ -246,31 +235,6 @@ defineExpose({ refresh: load })
                 <span v-if="lastSessionStateNode.state.ui_description" class="inspector-signal-ui_description">{{ lastSessionStateNode.state.ui_description }}</span>
               </div>
             </div>
-          </template>
-        </div>
-
-        <div v-else-if="activeMainTab === 'signals'" class="manage-users-stats">
-          <p v-if="!statsProjectId" class="manage-users-stats-status">Select a project to see timelines.</p>
-          <p v-else-if="!selectedUser" class="manage-users-stats-status">Select a user to see their timeline.</p>
-          <template v-else>
-            <div class="manage-users-trends-block">
-              <TimelineChart
-                :project-id="statsProjectId"
-                :username="selectedUser.email ?? selectedUser.id"
-                @colors="signalColorMap = $event"
-              />
-            </div>
-            <p v-if="latestSignalsLoading" class="manage-users-stats-status">Loading…</p>
-            <p v-else-if="!latestSignals.last_session" class="manage-users-stats-status">
-              This user has no live sessions in this project yet.
-            </p>
-            <InspectorSignalsTab
-              v-else
-              :project-id="statsProjectId"
-              :signal-values="latestSignalValues"
-              :session-id="latestSignals.session_id"
-              :signal-colors="signalColorMap"
-            />
           </template>
         </div>
 

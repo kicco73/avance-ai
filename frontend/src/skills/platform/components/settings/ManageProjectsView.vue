@@ -327,6 +327,7 @@ onBeforeUnmount(() => {
             v-if="selectedAppStoreApp"
             :key="selectedAppStoreApp.id"
             :app="selectedAppStoreApp"
+            :profile="profile"
             :published-revision="selectedRow?.published_revision ?? null"
             :revision="selectedRow?.revision ?? null"
             @edit="selectEdit"

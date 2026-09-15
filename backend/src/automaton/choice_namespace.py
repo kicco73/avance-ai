@@ -52,18 +52,18 @@ class ChoiceNamespace(TriggerNamespace):
     def check_action(self, state: "State", action: "Action", env_keys: "dict[str, EnvKey]") -> None:
         context = f"State {state.key}, action '{action.name}'"
         declared = choice_key_names(env_keys)
-        readable = [("trigger", action.trigger)] + [
-            (f"env expression for '{key}'", expression) for key, expression in (action.env or {}).items()
-        ]
-        for field_name, expression in readable:
-            for chain in self._chains_of(expression, expression_chains):
+        readable = [("trigger", action.trigger, expression_chains)] + [
+            (f"env expression for '{key}'", expression, expression_chains)
+            for key, expression in (action.env or {}).items()
+        ] + [("on-exit", action.on_exit, script_chains)]
+        for field_name, source, parser in readable:
+            for chain in self._chains_of(source, parser):
                 self._check_chain(context, field_name, chain, declared)
-        for field_name, script in (("on-exit", action.on_exit), ("task", action.task)):
-            for chain in self._chains_of(script, script_chains):
-                raise ValueError(
-                    f"{context}: {field_name} references {'.'.join(chain)} — "
-                    f"{NAME}.* is read in an action's trigger and env only."
-                )
+        for chain in self._chains_of(action.task, script_chains):
+            raise ValueError(
+                f"{context}: task references {'.'.join(chain)} — "
+                f"{NAME}.* is read in an action's trigger, env and on-exit only."
+            )
 
     @staticmethod
     def _chains_of(source: str | None, parser) -> list[tuple[str, ...]]:

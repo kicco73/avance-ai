@@ -7,6 +7,7 @@ its triggers fires the self-loop, recording a new transition.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
 import pytest
@@ -207,6 +208,46 @@ def test_publishing_state_changed_wakes_up_every_observer_that_has_a_session(app
     assert len(rows) == 1
     assert rows[0]["old_state"] == "x"
     assert rows[0]["new_state"] == "x"
+
+
+BYSTANDER_YML = """
+project:
+  id: bystander
+env:
+  visits:
+    value: "0"
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+"""
+
+
+def test_a_project_that_never_names_event_is_not_built_when_another_one_moves(app_db, caplog):
+    """Whether a project watches anything is written in its own index.yml:
+    one that never says `event.` cannot, so the sweep never builds it —
+    a broken bystander is never refused, and never reported, while
+    another project moves."""
+    db = app_db
+    project_service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
+    watcher_session = _both_projects(db, project_service)
+    db.ensure_project("bystander")
+    db.save_project_files("bystander", {"index.yml": BYSTANDER_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
+    db.publish_project("bystander")
+    bystander_session_id = db.create_chat_session(
+        username=USERNAME, project_id="bystander", revision=db.get_project_published_revision("bystander"),
+    )
+
+    service = EventService(db, project_service, make_test_scheduler_service(db), _namespace_factory(db))
+    service.register()
+
+    with caplog.at_level(logging.WARNING):
+        _publish_state_changed()
+        assert len(_signals_once_woken(db, watcher_session["id"])) == 1
+
+    assert db.get_chat_session(bystander_session_id)["closed_at"] is None
+    assert [record.message for record in caplog.records if "bystander" in record.message] == []
 
 
 def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):

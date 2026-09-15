@@ -48,7 +48,7 @@ def _automaton(trigger: str = "choice.slot != ''") -> Automaton:
     auto = Action(name="auto", ui_label="Auto", ui_button="Auto", target="a", trigger="False")
     book = Action(
         name="book", ui_label="Book", ui_button="Book", target="a", trigger=trigger,
-        env={"booked_slot": "choice.slot"},
+        env={"booked_slot": "choice.slot"}, on_exit="env.note = 'picked ' + choice.slot",
     )
     init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a")
     state_a = State(
@@ -62,6 +62,7 @@ def _automaton(trigger: str = "choice.slot != ''") -> Automaton:
         env_keys=[
             EnvKey(name="slot", type="choice", ui_description="The appointment slot."),
             EnvKey(name="booked_slot", type="string"),
+            EnvKey(name="note", type="string"),
         ],
     )
 
@@ -145,7 +146,8 @@ async def test_pressing_an_option_fires_the_action_whose_trigger_reads_it_as_a_m
 
     by_type = {frame.type: frame.body for frame in frames}
     assert by_type["state.changed"]["triggered_action"] == "book"
-    assert by_type["env.changed"] == {"key": "booked_slot", "value": "evening"}
+    written = {frame.body["key"]: frame.body["value"] for frame in frames if frame.type == "env.changed"}
+    assert written == {"booked_slot": "evening", "note": "picked evening"}
     assert _env_for(db, session_id).action_set()["booked_slot"] == "evening"
     assert _env_for(db, session_id).action_set()["slot"] == ["morning", "evening"]
     assert [(row.old_state, row.action, row.new_state) for row in _manual_rows(session_id)] == [("a", "book", "a")]
@@ -197,4 +199,4 @@ async def test_a_press_fires_even_with_auto_tracking_off(turn_service_for):
     result = await turn_service.apply_choice(ChoiceSelection(key="slot", option="morning"), session_id)
 
     assert result is not None and result["triggered_action"] == "book"
-    assert result["env_changed"] == {"booked_slot": "morning"}
+    assert result["env_changed"] == {"booked_slot": "morning", "note": "picked morning"}
