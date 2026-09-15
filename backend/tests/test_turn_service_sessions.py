@@ -71,12 +71,12 @@ async def test_get_messages_raises_for_someone_elses_session(turn_service, db):
         turn_service.read_history(session_id)
 
 
-def test_delete_session_raises_for_unknown_session(turn_service):
+async def test_delete_session_raises_for_unknown_session(turn_service):
     with pytest.raises(TurnServiceError):
-        turn_service.delete_session(999999)
+        await turn_service.delete_session(999999)
 
 
-def test_delete_session_raises_for_someone_elses_session(turn_service, db):
+async def test_delete_session_raises_for_someone_elses_session(turn_service, db):
     WebSession().role = "user"
     db.ensure_project("proj")
     db.publish_project("proj")
@@ -91,6 +91,6 @@ def test_delete_session_raises_for_someone_elses_session(turn_service, db):
     )
 
     with pytest.raises(TurnServiceError):
-        turn_service.delete_session(session_id)
+        await turn_service.delete_session(session_id)
 
     assert db.get_chat_session(session_id) is not None

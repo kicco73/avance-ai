@@ -347,12 +347,13 @@ class TurnService(object):
 	def list_test_sessions(self, project_id: str) -> list[dict]:
 		return self._list_sessions_by_type(project_id, 'test', active_type='test')
 
-	def delete_session(self, session_id: int) -> None:
+	async def delete_session(self, session_id: int) -> None:
 		self._ownership.require_own_session(session_id)
 		project_id = self._project_id_for_session(session_id)
-		self._db.delete_chat_session(session_id)
-		EphemeralEnvRegistry().discard(session_id)
-		self._db.delete_archives_with_prefix(project_id, f"{CACHE_DIR}/sessions/{session_id}/")
+		async with self._session_scope(project_id, session_id):
+			self._db.delete_chat_session(session_id)
+			EphemeralEnvRegistry().discard(session_id)
+			self._db.delete_archives_with_prefix(project_id, f"{CACHE_DIR}/sessions/{session_id}/")
 
 	def clear_session_env(self, session_id: int) -> None:
 		self._ownership.require_own_session(session_id)

@@ -32,8 +32,8 @@ class SessionController(BaseController):
         self.project_service = project_service
 
     @delete("/api/core/sessions/{session_id}")
-    def delete_session(self, session_id: int):
-        self.turn_service.delete_session(session_id)
+    async def delete_session(self, session_id: int):
+        await self.turn_service.delete_session(session_id)
         return {"success": True}
 
     @get("/api/core/sessions/{session_id}/signals", role="supervisor")

@@ -97,7 +97,7 @@ async def test_resetting_deleting_or_closing_a_test_session_discards_its_ephemer
     if discard == "reset":
         service.reset_test_sessions(PROJECT_ID)
     elif discard == "delete":
-        service.delete_session(session["id"])
+        await service.delete_session(session["id"])
     else:
         await service.close_session(session["id"])
 
