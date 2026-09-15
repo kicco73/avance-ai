@@ -21,6 +21,9 @@ pytestmark = pytest.mark.regression
 PROJECT_ID = "proj"
 
 
+ENV_TYPES = {"reset_counter": "bool", "number_of_steps": "number"}
+
+
 def _automaton(
     action_env: dict, target: str = "b", model_reads_env: bool = False, target_memory: str = "keep",
 ) -> Automaton:
@@ -47,7 +50,7 @@ def _automaton(
         signals=[],
         general_attachments={},
         autotracking_on_ai_message=False,
-        env_keys=[EnvKey(name=key) for key in (action_env or {})],
+        env_keys=[EnvKey(name=key, type=ENV_TYPES[key]) for key in (action_env or {})],
     )
 
 

@@ -11,6 +11,7 @@ from fastapi import HTTPException, Request, Response
 
 from automaton.automaton_yaml_editor import InitActionTargetError
 from automaton.build_error import AutomatonBuildError
+from automaton.env_types import ENV_TYPES, ENV_TYPE_NAMES
 from turn.turn_service import TurnService
 from avance_platform.platform_service import PlatformService
 from project.project_service import ProjectService
@@ -31,7 +32,7 @@ STATE_EDITABLE_FIELDS = {
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit", "env"}
 INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
-ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value", "ai-definition"}
+ENV_KEY_EDITABLE_FIELDS = {"name", "type", "ui-description", "value", "ai-definition"}
 SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description", "ai-definition"}
 PROJECT_EDITABLE_FIELDS = {
     "id", "ui-label", "ui-description", "signal-tracking-on-ai-message", "new-session-strategy", "general-prompt",
@@ -284,6 +285,11 @@ class EditProjectController(BaseController):
     @put("/api/skills/platform/projects/{project_id}/env-keys/{env_key_name}/{field}", role="admin")
     async def put_env_key_field(self, project_id: str, env_key_name: str, field: str, req: SetProjectFieldRequest):
         _ensure_editable_field(field, ENV_KEY_EDITABLE_FIELDS, "env key")
+        if field == "type" and req.value not in ENV_TYPES:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{req.value}' is not an env key type — expected one of {ENV_TYPE_NAMES}.",
+            )
         self.project_service.ensure_project_not_broken(project_id)
         return await self.project_service.set_env_key_field(
             project_id, env_key_name, field, req.value

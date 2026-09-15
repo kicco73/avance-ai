@@ -138,7 +138,9 @@ class TestPutActionField:
         action = client.post(f"/api/skills/platform/projects/{hello_project}/states/Hello/actions").json()
         url = f"/api/skills/platform/projects/{hello_project}/states/Hello/actions/{action['name']}/env"
 
-        assert client.put(url, json={"value": {env_key["name"]: "1"}}).status_code == 200
+        assert env_key["type"] == "string"
+        assert client.put(url, json={"value": {env_key["name"]: "1"}}).status_code == 400
+        assert client.put(url, json={"value": {env_key["name"]: "'one'"}}).status_code == 200
         assert f"{env_key['name']}:" in _index_yml(client, hello_project)
 
         assert client.put(url, json={"value": {}}).status_code == 200
@@ -209,7 +211,7 @@ class TestPutInitAction:
         env_key = client.post(f"/api/skills/platform/projects/{hello_project}/env-keys").json()
         url = f"/api/skills/platform/projects/{hello_project}/init-action/env"
 
-        assert client.put(url, json={"value": {env_key["name"]: "1"}}).status_code == 200
+        assert client.put(url, json={"value": {env_key["name"]: "'one'"}}).status_code == 200
         assert f"{env_key['name']}:" in _index_yml(client, hello_project)
 
         assert client.put(url, json={"value": {}}).status_code == 200

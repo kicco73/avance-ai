@@ -44,9 +44,9 @@ def _automaton(*, trigger: str | None = None, action_env: dict | None = None, on
         general_attachments={},
         autotracking_on_ai_message=True,
         env_keys=[
-            EnvKey(name="status", ai_definition="Where things stand."),
-            EnvKey(name="confidence", ai_definition="0-100."),
-            EnvKey(name="seen", ai_definition="Whether it has been seen."),
+            EnvKey(name="status", type="string", ai_definition="Where things stand."),
+            EnvKey(name="confidence", type="number", ai_definition="0-100."),
+            EnvKey(name="seen", type="bool", ai_definition="Whether it has been seen."),
         ],
     )
 

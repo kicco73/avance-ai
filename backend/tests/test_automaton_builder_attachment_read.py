@@ -25,6 +25,7 @@ init-action:
   target: a
 env:
   reminder_days:
+    type: number
     value: 3
 states:
   a:
@@ -79,6 +80,7 @@ init-action:
   target: a
 env:
   notes:
+    type: string
     value: ""
 states:
   a:

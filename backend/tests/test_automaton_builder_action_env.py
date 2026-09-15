@@ -40,20 +40,21 @@ def _env_write(key: str, expression: str) -> str:
     return f"        env:\n          {key}: {expression}\n"
 
 
-def _declared(key: str, value: str | None = None) -> str:
-    return f"env:\n  {key}:\n    value: {value}\n" if value is not None else f"env:\n  {key}: {{}}\n"
+def _declared(key: str, type: str, value: str | None = None) -> str:
+    value_line = f"    value: {value}\n" if value is not None else ""
+    return f"env:\n  {key}:\n    type: {type}\n{value_line}"
 
 
 def test_env_is_parsed_as_a_key_to_expression_source_mapping_or_none_when_absent_or_empty():
     two_keys = _action_env(
         "        env:\n          reset_counter: True\n          number_of_steps: env.number_of_steps + 1\n",
-        "env:\n  reset_counter: {}\n  number_of_steps: {}\n",
+        "env:\n  reset_counter:\n    type: bool\n  number_of_steps:\n    type: number\n",
     )
     assert two_keys == {"reset_counter": "True", "number_of_steps": "env.number_of_steps + 1"}
 
     normalized = _action_env(
         "        env:\n          enabled: true\n          count: 42\n          nothing: null\n",
-        "env:\n  enabled: {}\n  count: {}\n  nothing: {}\n",
+        "env:\n  enabled:\n    type: bool\n  count:\n    type: number\n  nothing:\n    type: string\n",
     )
     assert normalized == {"enabled": "True", "count": "42", "nothing": "None"}
 
@@ -61,23 +62,25 @@ def test_env_is_parsed_as_a_key_to_expression_source_mapping_or_none_when_absent
     assert _action_env("        env: {}\n") is None
 
     with_signal = _action_env(
-        _env_write("last_signal", "signal.mySignal"), _declared("last_signal"),
+        _env_write("last_signal", "signal.mySignal"), _declared("last_signal", "number"),
         top_section='signals:\n  mySignal:\n    definition: "Some domain-specific signal."\n',
     )
     assert with_signal == {"last_signal": "signal.mySignal"}
 
 
 @pytest.mark.parametrize(("action_yaml", "env_section", "match"), [
-    (_env_write("last_value", "env.never_declared_anywhere"), _declared("last_value"), r"undefined name\(s\).*env.never_declared_anywhere"),
+    (_env_write("last_value", "env.never_declared_anywhere"), _declared("last_value", "string"), r"undefined name\(s\).*env.never_declared_anywhere"),
     (_env_write("never_declared_anywhere", '"1"'), "", "env key 'never_declared_anywhere' is not declared"),
-    (_env_write("broken", '"1 +"'), _declared("broken"), "is not a valid expression"),
+    (_env_write("broken", '"1 +"'), _declared("broken", "number"), "is not a valid expression"),
     ("        env:\n          - not\n          - a\n          - mapping\n", "", "'env' must be a mapping"),
-    (_env_write("greeting", '"42"'), _declared("greeting", "\"'hello'\""), "is a number, but 'greeting' was declared as a string"),
-    (_env_write("counter", "\"'not a number'\""), _declared("counter", '"0"'), "is a string, but 'counter' was declared as a number"),
-    (_env_write("enabled", '"2"'), _declared("enabled", '"True"'), "is a number, but 'enabled' was declared as a bool"),
+    (_env_write("greeting", '"42"'), _declared("greeting", "string", "\"'hello'\""), "is a number, but 'greeting' is declared string"),
+    (_env_write("counter", "\"'not a number'\""), _declared("counter", "number", '"0"'), "is a string, but 'counter' is declared number"),
+    (_env_write("enabled", '"2"'), _declared("enabled", "bool", '"True"'), "is a number, but 'enabled' is declared bool"),
+    (_env_write("counter", "\"'not a number'\""), _declared("counter", "number"), "is a string, but 'counter' is declared number"),
+    (_env_write("slot", "\"'not a list'\""), _declared("slot", "choice"), "is a string, but 'slot' is declared choice"),
 ], ids=[
     "undeclared-read", "undeclared-write", "invalid-expression", "not-a-mapping",
-    "number-to-string", "string-to-number", "number-to-bool",
+    "number-to-string", "string-to-number", "number-to-bool", "string-to-number-without-value", "string-to-choice",
 ])
 def test_build_rejects_undeclared_reads_or_writes_invalid_expressions_non_mappings_and_type_drift(action_yaml, env_section, match):
     """The write side: an action's `env:` field cannot introduce a new key
@@ -89,11 +92,13 @@ def test_build_rejects_undeclared_reads_or_writes_invalid_expressions_non_mappin
         _build(action_yaml, env_section)
 
 
-def test_a_matching_type_an_untyped_key_and_a_statically_unknowable_expression_are_all_accepted():
-    """An empty 'value' never establishes a type to begin with, so any
-    expression is accepted; `env.other` reads another key at runtime — its
-    own kind isn't knowable ahead of a real turn, so the check is silently
-    skipped rather than guessing wrong."""
-    assert _action_env(_env_write("counter", '"5"'), _declared("counter", '"0"')) == {"counter": "5"}
-    assert _action_env(_env_write("anything", "\"'a string now'\""), _declared("anything")) == {"anything": "'a string now'"}
-    assert _action_env(_env_write("counter", "env.other"), "env:\n  counter:\n    value: \"0\"\n  other: {}\n") == {"counter": "env.other"}
+def test_a_matching_type_and_a_statically_unknowable_expression_are_both_accepted():
+    """`env.other` reads another key at runtime — its own kind isn't
+    knowable ahead of a real turn, so the check is silently skipped
+    rather than guessing wrong."""
+    assert _action_env(_env_write("counter", '"5"'), _declared("counter", "number", '"0"')) == {"counter": "5"}
+    assert _action_env(_env_write("anything", "\"'a string now'\""), _declared("anything", "string")) == {"anything": "'a string now'"}
+    assert _action_env(_env_write("slot", "['a', 'b']"), _declared("slot", "choice")) == {"slot": "['a', 'b']"}
+    assert _action_env(
+        _env_write("counter", "env.other"), "env:\n  counter:\n    type: number\n    value: \"0\"\n  other:\n    type: number\n"
+    ) == {"counter": "env.other"}

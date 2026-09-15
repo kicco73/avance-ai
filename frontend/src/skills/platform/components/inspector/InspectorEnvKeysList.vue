@@ -17,14 +17,18 @@ function handleDeleteEnvKey(name) {
   emit('delete', name)
 }
 
+const ENV_TYPES = ['number', 'string', 'bool', 'choice']
+
 const expandedName = ref(null)
 const editName = ref('')
+const editType = ref('string')
 const editUiDescription = ref('')
 const editValue = ref('')
 const editAiDefinition = ref('')
 
 function resetEditBuffers(envKey) {
   editName.value = envKey?.name ?? ''
+  editType.value = envKey?.type ?? 'string'
   editUiDescription.value = envKey?.ui_description ?? ''
   editValue.value = envKey?.value ?? ''
   editAiDefinition.value = envKey?.ai_definition ?? ''
@@ -134,21 +138,37 @@ function commitField(field, currentValue, originalValue) {
               @click.stop
               @blur="commitField('ai-definition', editAiDefinition, envKey.ai_definition ?? '')"
             ></textarea>
-            <label class="inspector-signal-form-label" title="A Python expression, evaluated server-side">
-              <span class="inspector-py-field-icon" title="Python expression">PY</span>
-              Value
-            </label>
-            <TriggerEditor
-              v-model="editValue"
-              :exclude-namespaces="['task', 'chat']"
-              @click.stop
-              @blur="commitField('value', editValue, envKey.value ?? '')"
-            />
+            <div class="inspector-env-value-row">
+              <div class="inspector-env-type">
+                <label class="inspector-signal-form-label">Type</label>
+                <select
+                  v-model="editType"
+                  class="inspector-env-type-select"
+                  @click.stop
+                  @change="commitField('type', editType, envKey.type ?? '')"
+                >
+                  <option v-for="envType in ENV_TYPES" :key="envType" :value="envType">{{ envType }}</option>
+                </select>
+              </div>
+              <div class="inspector-env-value">
+                <label class="inspector-signal-form-label" title="A Python expression, evaluated server-side">
+                  <span class="inspector-py-field-icon" title="Python expression">PY</span>
+                  Value
+                </label>
+                <TriggerEditor
+                  v-model="editValue"
+                  :exclude-namespaces="['task', 'chat']"
+                  @click.stop
+                  @blur="commitField('value', editValue, envKey.value ?? '')"
+                />
+              </div>
+            </div>
           </div>
           <div v-else key="readonly" class="inspector-signal-readonly">
             <div class="inspector-signal-header">
               <span class="inspector-detail-badge inspector-detail-badge-env">Env</span>
               <span class="inspector-signal-name">{{ envKey.name }}</span>
+              <span class="inspector-env-type-tag">{{ envKey.type }}</span>
               <CardMenu>
                 <button type="button" class="card-menu-item-danger" @click="handleDeleteEnvKey(envKey.name)">Delete</button>
               </CardMenu>
@@ -183,6 +203,11 @@ function commitField(field, currentValue, originalValue) {
 .inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-env { background: #00838f; }
+.inspector-env-type-tag { flex-shrink: 0; font-size: 0.72rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; color: #00838f; }
+.inspector-env-value-row { display: flex; gap: 0.6rem; align-items: flex-start; }
+.inspector-env-type { flex-shrink: 0; display: flex; flex-direction: column; }
+.inspector-env-value { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.inspector-env-type-select { font: inherit; font-size: 0.78rem; padding: 0.3rem 0.4rem; border-radius: 6px; border: 1px solid #ccc; background: white; }
 .inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
 .inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
 .inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }

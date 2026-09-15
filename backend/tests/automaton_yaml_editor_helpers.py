@@ -54,8 +54,10 @@ init-action:
   target: a
 env:
   visits:
+    type: number
     ui-description: Visit counter
-  score: {}
+  score:
+    type: number
 states:
   a:
     ui-label: State A

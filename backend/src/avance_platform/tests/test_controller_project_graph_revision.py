@@ -80,7 +80,7 @@ def test_a_test_session_always_tracks_the_live_draft(client):
     assert _state_keys(response) == {"a", "b", "c"}
 @pytest.mark.parametrize(("prefix", "route", "declaration", "payload_key", "name_of"), [
     ("core", "signals", 'signals:\n  mood:\n    definition: "1"\n', "signals", lambda row: row["signal"]["name"]),
-    ("skills/platform", "env-keys", "env:\n  greeting:\n    value: \"'hi'\"\n", "env_keys", lambda row: row["env_key"]["name"]),
+    ("skills/platform", "env-keys", "env:\n  greeting:\n    type: string\n    value: \"'hi'\"\n", "env_keys", lambda row: row["env_key"]["name"]),
 ])
 def test_signals_and_env_keys_pin_to_a_sessions_own_revision_the_same_way_the_graph_does(client, prefix, route, declaration, payload_key, name_of):
     session_id = _pinned_live_session(client)

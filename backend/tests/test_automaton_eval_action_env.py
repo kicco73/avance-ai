@@ -1,6 +1,7 @@
 """Automaton.eval_action_env — an action's own `env` field, evaluated like
 a trigger but returning a value of any type instead of a forced boolean
-cast. Unlike a trigger, a failing key here is logged, not swallowed.
+cast. Unlike a trigger, a failing key here is logged, not swallowed; so
+is a value that is not of the key's declared type.
 """
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import logging
 
 import pytest
 
-from automaton.automaton import Action, Automaton
+from automaton.automaton import Action, Automaton, EnvKey, State
 
 pytestmark = pytest.mark.contract
 
@@ -17,11 +18,28 @@ def _action(env=None) -> Action:
     return Action(name="advance", ui_label="Advance", ui_button="Advance", target="a", env=env)
 
 
+def _automaton(env_keys: list[EnvKey] | None = None) -> Automaton:
+    init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a")
+    return Automaton(
+        init_action=init_action,
+        states={
+            "": State(key="", ui_label="", final=False, actions=[init_action]),
+            "a": State(key="a", ui_label="A", final=True, contextual_prompt="hi"),
+        },
+        general_prompt="",
+        signals=[],
+        general_attachments=(),
+        autotracking_on_ai_message=False,
+        env_keys=env_keys,
+    )
+
+
 def test_every_key_is_evaluated_independently_against_the_current_scope_and_no_env_field_yields_nothing():
-    assert Automaton.eval_action_env(_action(), {}) == {}
-    assert Automaton.eval_action_env(_action({"reset_counter": "True"}), {}) == {"reset_counter": True}
-    assert Automaton.eval_action_env(_action({"number_of_steps": "number_of_steps + 1"}), {"number_of_steps": 3}) == {"number_of_steps": 4}
-    assert Automaton.eval_action_env(_action({"mood": "'happy'", "score": "score * 2"}), {"score": 5}) == {"mood": "happy", "score": 10}
+    automaton = _automaton()
+    assert automaton.eval_action_env(_action(), {}) == {}
+    assert automaton.eval_action_env(_action({"reset_counter": "True"}), {}) == {"reset_counter": True}
+    assert automaton.eval_action_env(_action({"number_of_steps": "number_of_steps + 1"}), {"number_of_steps": 3}) == {"number_of_steps": 4}
+    assert automaton.eval_action_env(_action({"mood": "'happy'", "score": "score * 2"}), {"score": 5}) == {"mood": "happy", "score": 10}
 
 
 @pytest.mark.parametrize(("env", "scope"), [
@@ -33,7 +51,7 @@ def test_a_key_that_cannot_be_evaluated_is_skipped_and_logged_rather_than_silent
     """A missing name (e.g. a typo) must be visible — unlike
     _eval_trigger's silent treatment of the same case."""
     with caplog.at_level(logging.WARNING):
-        result = Automaton.eval_action_env(_action(env), scope)
+        result = _automaton().eval_action_env(_action(env), scope)
 
     assert result == {}
     assert len(caplog.records) == 1
@@ -41,4 +59,44 @@ def test_a_key_that_cannot_be_evaluated_is_skipped_and_logged_rather_than_silent
 
 
 def test_one_broken_key_does_not_prevent_others_from_evaluating():
-    assert Automaton.eval_action_env(_action({"broken": "1 +", "fine": "1 + 1"}), {}) == {"fine": 2}
+    assert _automaton().eval_action_env(_action({"broken": "1 +", "fine": "1 + 1"}), {}) == {"fine": 2}
+
+
+TYPED_KEYS = [
+    EnvKey(name="count", type="number"), EnvKey(name="name", type="string"),
+    EnvKey(name="flag", type="bool"), EnvKey(name="slot", type="choice"),
+]
+
+
+@pytest.mark.parametrize(("env", "expected"), [
+    ({"count": "3", "name": "'x'", "flag": "True", "slot": "['a', 'b']"}, {"count": 3, "name": "x", "flag": True, "slot": ["a", "b"]}),
+    ({"count": "1.5"}, {"count": 1.5}),
+    ({"slot": "[]"}, {"slot": []}),
+], ids=["every-type", "float-is-a-number", "empty-choice"])
+def test_a_value_of_the_declared_type_is_written(env, expected):
+    assert _automaton(TYPED_KEYS).eval_action_env(_action(env), {}) == expected
+
+
+@pytest.mark.parametrize(("env", "expected", "logged"), [
+    ({"count": "'three'", "name": "'x'"}, {"name": "x"}, "count"),
+    ({"count": "True", "flag": "False"}, {"flag": False}, "count"),
+    ({"name": "3", "count": "3"}, {"count": 3}, "name"),
+    ({"flag": "1", "name": "'x'"}, {"name": "x"}, "flag"),
+    ({"slot": "['a', 2]", "count": "0"}, {"count": 0}, "slot"),
+    ({"slot": "'a'", "count": "0"}, {"count": 0}, "slot"),
+    ({"count": "None", "flag": "True"}, {"flag": True}, "count"),
+], ids=[
+    "string-into-number", "bool-into-number", "number-into-string", "number-into-bool",
+    "non-string-option-into-choice", "string-into-choice", "none-into-number",
+])
+def test_a_value_outside_the_declared_type_is_discarded_and_logged_while_the_other_keys_are_written(
+    caplog, env, expected, logged
+):
+    with caplog.at_level(logging.WARNING):
+        result = _automaton(TYPED_KEYS).eval_action_env(_action(env), {})
+
+    assert result == expected
+    assert len(caplog.records) == 1
+    message = caplog.records[0].message
+    assert "advance" in message and f"'{logged}'" in message
+    assert {"count": "number", "name": "string", "flag": "bool", "slot": "choice"}[logged] in message

@@ -38,8 +38,10 @@ init-action:
     contextual-prompt: there
 env:
   counter:
+    type: number
     value: 0
   flight:
+    type: string
     value: ""
 {env_yaml}
 """
@@ -97,7 +99,7 @@ def test_on_exit_accepts_chat_switch_to_human_and_switch_to_ai():
     ("task.send_mail(user.email, 'hi')", r"on-exit only supports 'env.<key> = expr' assignments"),
     ("chat.celebrate(1)", r"chat.celebrate\(\.\.\.\) takes 0 argument\(s\), got 1"),
     ("env.unknown_key = 1", r"env key 'unknown_key' is not declared"),
-    ("env.counter = user.name", r"is a string, but 'counter' was declared as a number"),
+    ("env.counter = user.name", r"is a string, but 'counter' is declared number"),
     ("|\n          env.counter = 1\n          env.unknown_key = 2", r"on-exit line 2.*env key 'unknown_key' is not declared"),
 ])
 def test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines(on_exit, match):
@@ -128,7 +130,7 @@ def test_on_exit_accepts_a_comprehension_whose_loop_variables_are_its_own():
 
 
 def test_eval_action_on_exit_keeps_a_local_for_the_script_and_drops_it_afterwards():
-    from automaton.automaton import Action, Automaton
+    from automaton.automaton import Action
     from automaton.scope import EvaluationScope
     from tracking.actuators.chat_namespace import FakeChatNamespace
 
@@ -138,7 +140,7 @@ def test_eval_action_on_exit_keeps_a_local_for_the_script_and_drops_it_afterward
     )
     scope = EvaluationScope({"env": {"counter": 5}, "chat": FakeChatNamespace(project_id="p")}, automaton=None, state_key="a")
 
-    updates, chat_snippets = Automaton.eval_action_on_exit(action, scope)
+    updates, chat_snippets = _build(_go()).eval_action_on_exit(action, scope)
 
     assert updates == {"flight": "Manuel"}
     assert chat_snippets == 'notify("Caso", "1")'
@@ -185,7 +187,7 @@ def test_eval_action_on_exit_evaluates_assignments_against_scope_and_skips_bad_o
     """Runtime robustness — a bad expression (a stale env reference no
     longer valid at the revision this scope was built from) is logged
     and skipped, same eval_action_env contract, never raised."""
-    from automaton.automaton import Action, Automaton
+    from automaton.automaton import Action
 
     action = Action(
         name="go", ui_label="go", ui_button="go", target="b",
@@ -194,16 +196,33 @@ def test_eval_action_on_exit_evaluates_assignments_against_scope_and_skips_bad_o
     from automaton.scope import EvaluationScope
 
     scope = EvaluationScope({"env": {"counter": 5}}, automaton=None, state_key="a")
-    updates, chat_snippets = Automaton.eval_action_on_exit(action, scope)
+    updates, chat_snippets = _build(_go()).eval_action_on_exit(action, scope)
     assert updates == {"counter": 6}
     assert chat_snippets is None
+
+
+def test_eval_action_on_exit_discards_an_assignment_whose_value_is_not_of_the_keys_declared_type(caplog):
+    import logging
+    from automaton.automaton import Action
+    from automaton.scope import EvaluationScope
+
+    action = Action(
+        name="go", ui_label="go", ui_button="go", target="b",
+        on_exit="env.counter = 'not a number'\nenv.flight = 'VY3003'",
+    )
+    scope = EvaluationScope({"env": {"counter": 5}}, automaton=None, state_key="a")
+    with caplog.at_level(logging.WARNING):
+        updates, _ = _build(_go()).eval_action_on_exit(action, scope)
+
+    assert updates == {"flight": "VY3003"}
+    assert [record.message for record in caplog.records if "counter" in record.message and "number" in record.message]
 
 
 def test_eval_action_on_exit_collects_chat_snippets_alongside_env_updates():
     """A mixed script's env.<key> writes and chat.* calls are both
     evaluated in one pass — the joined snippet text is what
     TrackingEngine.apply_action_env pushes over the websocket."""
-    from automaton.automaton import Action, Automaton
+    from automaton.automaton import Action
     from automaton.scope import EvaluationScope
     from tracking.actuators.chat_namespace import FakeChatNamespace
 
@@ -212,6 +231,6 @@ def test_eval_action_on_exit_collects_chat_snippets_alongside_env_updates():
         on_exit="env.counter = env.counter + 1\nchat.celebrate()\nchat.notify('Nice!', 'Done.')",
     )
     scope = EvaluationScope({"env": {"counter": 5}, "chat": FakeChatNamespace(project_id="p")}, automaton=None, state_key="a")
-    updates, chat_snippets = Automaton.eval_action_on_exit(action, scope)
+    updates, chat_snippets = _build(_go()).eval_action_on_exit(action, scope)
     assert updates == {"counter": 6}
     assert chat_snippets == 'celebrate()\nnotify("Nice!", "Done.")'

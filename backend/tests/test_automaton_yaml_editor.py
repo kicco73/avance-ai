@@ -148,7 +148,7 @@ class TestSetActionField:
         assert _action(builds(editor.serialize()), "a", "go-b").trigger is None
 
     def test_env_edit_and_clearing_removes_the_key_instead_of_storing_an_empty_mapping(self):
-        editor = make_editor(BASE_YAML + "env:\n  counter: {}\n")
+        editor = make_editor(BASE_YAML + "env:\n  counter:\n    type: number\n")
         editor.set_action_field("a", "go-b", "env", {"counter": "1"})
         assert _action(builds(editor.serialize()), "a", "go-b").env == {"counter": "1"}
 

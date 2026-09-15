@@ -36,6 +36,7 @@ init-action:
   target: a
 env:
   counter:
+    type: number
     value: 0
 states:
   a:

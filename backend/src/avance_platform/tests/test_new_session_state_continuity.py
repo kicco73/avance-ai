@@ -122,7 +122,7 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
 
 RESTART_YML = (
     "project:\n  id: proj\n  new-session-strategy: restart\n"
-    "env:\n  counter:\n    value: 0\n"
+    "env:\n  counter:\n    type: number\n    value: 0\n"
     "init-action:\n  target: a\n  task: task.send_mail(user.email, 'hi')\n"
     "states:\n"
     "  a:\n"
@@ -157,4 +157,4 @@ def test_new_live_session_under_restart_opens_at_init_with_env_and_memory_wiped(
     assert env["memory"] == {}
     assert env["action_set"]["counter"] == 0
     scripts = [t["payload"]["script"].strip() for t in app_db.list_tasks() if "script" in t["payload"]]
-    assert scripts == ["task.send_mail(user.email, 'hi')"]
+    assert scripts == ["task.send_mail(user.email, 'hi')"] * 2

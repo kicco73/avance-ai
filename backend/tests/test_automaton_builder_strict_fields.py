@@ -35,6 +35,7 @@ reactions:
 {reaction}
 env:
   counter:
+    type: number
     value: "0"
 {env}
 sources:

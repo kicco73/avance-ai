@@ -211,6 +211,7 @@ class AutomatonYamlEditor:
         ai_definition = raw_env_key.get("ai-definition")
         return {
             "name": name,
+            "type": raw_env_key.get("type") or "",
             "ui_description": ui_description.strip() if ui_description else None,
             "value": raw_env_key.get("value") or "",
             "ai_definition": ai_definition.strip() if ai_definition else None,
@@ -269,7 +270,7 @@ class AutomatonYamlEditor:
         (valid identifier chars), never _next_numbered_name's "-N" suffix."""
         env = self._env()
         name = self._unique_signal_name("new_env_key", set(env.keys()))
-        self._add_entry(env, name, CommentedMap({"value": ""}))
+        self._add_entry(env, name, CommentedMap({"type": "string", "value": ""}))
         return self._env_key_payload(name)
 
     def add_source(self, name_hint: str | None = None) -> SourcePayload:

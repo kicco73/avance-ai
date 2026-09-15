@@ -21,12 +21,26 @@ class AutomatonValidator:
     def __init__(self, cursor: BuildCursor) -> None:
         self._cursor = cursor
 
-    def validate_env_key_defaults(self, env_keys: dict[str, EnvKey], raw_env_keys) -> None:
+    def validate_env_key_defaults(
+        self, env_keys: dict[str, EnvKey], raw_env_keys, registry: dict[str, dict[str, str]],
+        sources: dict[str, Source],
+    ) -> None:
+        registry_for_values = IdentifierRegistry.for_triggers(registry)
         all_names = set(env_keys.keys())
         declared_so_far: set[str] = set()
         for name, env_key in env_keys.items():
             self._cursor.at(self._cursor.line_of(raw_env_keys, name), f"env.{name}")
+            if env_key.value and env_key.type == "choice":
+                raise ValueError(
+                    f"env key '{name}': a choice key takes no 'value' — its options are written by scripts."
+                )
             if env_key.value:
+                value_kind = TriggerExpressionAnalyzer.expression_kind(env_key.value)
+                if value_kind is not None and value_kind != env_key.type:
+                    raise ValueError(
+                        f"env key '{name}' is declared {env_key.type} but its 'value' ('{env_key.value}') "
+                        f"is a {value_kind}."
+                    )
                 try:
                     referenced = TriggerExpressionAnalyzer.namespace_refs(env_key.value).get("env", set())
                 except SyntaxError:
@@ -38,7 +52,9 @@ class AutomatonValidator:
                         f"{', '.join(f'env.{ref}' for ref in sorted(forward))} before it's declared — "
                         "an env key's own default may only reference an earlier env key, never itself or a later one."
                     )
-                self.validate_expression_types(env_key.value, f"env key '{name}': default value")
+                self.validate_namespaced_expression(
+                    env_key.value, f"env key '{name}': default value", registry_for_values, sources,
+                )
             declared_so_far.add(name)
 
     @staticmethod
@@ -358,14 +374,10 @@ class AutomatonValidator:
 
     @staticmethod
     def validate_env_key_type(declared: EnvKey, expression: str, context: str) -> None:
-        if not declared.value:
-            return
-        declared_kind = TriggerExpressionAnalyzer.expression_kind(declared.value)
         written_kind = TriggerExpressionAnalyzer.expression_kind(expression)
-        if declared_kind is None or written_kind is None or declared_kind == written_kind:
+        if written_kind is None or written_kind == declared.type:
             return
         raise ValueError(
             f"{context}: env expression for '{declared.name}' ('{expression}') is a {written_kind}, but "
-            f"'{declared.name}' was declared as a {declared_kind} (its own 'value' default) — an env "
-            "key's type can't change once declared."
+            f"'{declared.name}' is declared {declared.type} — an env key's type can't change once declared."
         )

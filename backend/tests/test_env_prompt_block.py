@@ -18,9 +18,9 @@ from tracking.turn_size_estimate import estimate_turn_request
 pytestmark = pytest.mark.contract
 
 ENV_KEYS = [
-    EnvKey(name="flight", ai_definition="The flight code."),
-    EnvKey(name="customer_email", ai_definition="The customer's email."),
-    EnvKey(name="_flight_record"),
+    EnvKey(name="flight", type="string", ai_definition="The flight code."),
+    EnvKey(name="customer_email", type="string", ai_definition="The customer's email."),
+    EnvKey(name="_flight_record", type="string"),
 ]
 
 STATE_A = State(key="a", ui_label="A", final=True, contextual_prompt="hi", input=("flight", "customer_email"))

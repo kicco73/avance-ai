@@ -41,6 +41,9 @@ class _FakeProjectService:
     def get_automaton_and_state_for_session(self, session_id: int):
         return self._automaton, self._automaton.states["a"]
 
+    def get_automaton_for_session(self, session_id: int) -> Automaton:
+        return self._automaton
+
     def get_active_project_id(self) -> str:
         return PROJECT_ID
 

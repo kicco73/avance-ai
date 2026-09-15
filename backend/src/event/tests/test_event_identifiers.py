@@ -19,6 +19,7 @@ init-action:
 
 env:
   visits:
+    type: number
     ui-description: "How many times this action has fired."
 
 states:
@@ -36,6 +37,7 @@ init-action:
 
 env:
   budget:
+    type: number
     ui-description: "Remaining shared budget."
 
 states:

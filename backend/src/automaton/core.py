@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING
 
 import simpleeval
 
+from automaton.env_types import ENV_TYPES, UNDECLARED_ENV_TYPE
+from automaton.model import env_defaults_action
 from automaton.project_services import ProjectServices
 from automaton.scope import EvaluationScope
 
@@ -119,6 +121,8 @@ class CoreAutomaton(object):
         self.signals = signals
         self.reactions = reactions or []
         self.env_keys = env_keys or []
+        self.env_defaults_action = env_defaults_action(self.env_keys)
+        self._env_types = {env_key.name: ENV_TYPES[env_key.type] for env_key in self.env_keys}
         self.sources = sources or []
         self.project_id = project_id
         self.family = project_family
@@ -191,8 +195,17 @@ class CoreAutomaton(object):
                 return action
         return None
 
-    @classmethod
-    def eval_action_env(cls, action: "Action", scope: dict[str, Any]) -> dict[str, Any]:
+    def _accepts_env_value(self, action: "Action", key: str, value: Any) -> bool:
+        env_type = self._env_types.get(key, UNDECLARED_ENV_TYPE)
+        if env_type.accepts(value):
+            return True
+        logger.warning(
+            "env value discarded for action '%s', key '%s': declared %s, got %s (%r)",
+            action.name, key, env_type.name, type(value).__name__, value,
+        )
+        return False
+
+    def eval_action_env(self, action: "Action", scope: dict[str, Any]) -> dict[str, Any]:
         """`action`'s `env` expressions evaluated against `scope`. Unlike
         _eval_trigger, a None/missing reference fails and logs rather
         than being a no-op; only successfully evaluated keys are returned."""
@@ -201,16 +214,18 @@ class CoreAutomaton(object):
         result: dict[str, Any] = {}
         for key, expression in action.env.items():
             try:
-                result[key] = cls._evaluate_expression(expression, scope)
+                value = self._evaluate_expression(expression, scope)
             except Exception as exc:
                 logger.warning(
                     "env expression evaluation failed for action '%s', key '%s' ('%s'): %s",
                     action.name, key, expression, exc,
                 )
+                continue
+            if self._accepts_env_value(action, key, value):
+                result[key] = value
         return result
 
-    @classmethod
-    def eval_action_on_exit(cls, action: "Action", scope: EvaluationScope) -> tuple[dict[str, Any], str | None]:
+    def eval_action_on_exit(self, action: "Action", scope: EvaluationScope) -> tuple[dict[str, Any], str | None]:
         """`action.on_exit`'s own mixed grammar, evaluated against
         `scope` and split into statements with task's own grammar
         (TriggerExpressionAnalyzer.task_statements) so on-exit reads
@@ -250,20 +265,20 @@ class CoreAutomaton(object):
             if assignment is not None or local is not None:
                 key, expression = assignment or local
                 try:
-                    value = cls._evaluate_expression(expression, scope)
+                    value = self._evaluate_expression(expression, scope)
                 except Exception as exc:
                     logger.warning(
                         "on-exit expression evaluation failed for action '%s', key '%s' ('%s'): %s",
                         action.name, key, expression, exc,
                     )
                     continue
-                if assignment is not None:
-                    result[key] = value
-                else:
+                if assignment is None:
                     scope[key] = value
+                elif self._accepts_env_value(action, key, value):
+                    result[key] = value
                 continue
             try:
-                value = cls._evaluate_statement(statement, scope)
+                value = self._evaluate_statement(statement, scope)
             except Exception as exc:
                 logger.warning(
                     "on-exit expression evaluation failed for action '%s' ('%s'): %s",

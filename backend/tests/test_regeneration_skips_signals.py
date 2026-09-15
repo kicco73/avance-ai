@@ -45,7 +45,7 @@ def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
         signals=[mood],
         general_attachments={},
         autotracking_on_ai_message=False,
-        env_keys=[EnvKey(name=key) for key in (action_env or {})],
+        env_keys=[EnvKey(name=key, type="number") for key in (action_env or {})],
     )
 
 

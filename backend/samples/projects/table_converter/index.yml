@@ -30,8 +30,10 @@ project:
 general-prompt: "You are a converter between formats. \ninput and output template are giiven and you must return the output to the file that the user attaches."
 env:
   input_file:
+    type: string
     value: ''
     ai-definition: the file in the original format that needs to be converted
   output_file:
+    type: string
     value: ''
     ai-definition: The user input_file converted into the required format.

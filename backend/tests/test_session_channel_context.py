@@ -107,6 +107,9 @@ class _FakeProjectService:
     def get_automaton(self, project_name, revision):
         return self._automaton
 
+    def get_automaton_for_session(self, session_id):
+        return self._automaton
+
 
 def test_creating_a_live_session_without_a_channel_fails(db):
     """A caller that never declared one (a job, or any HTTP route that is

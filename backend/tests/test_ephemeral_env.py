@@ -23,6 +23,7 @@ project:
   id: {PROJECT_ID}
 env:
   favorite_color:
+    type: string
 init-action:
   target: a
 states:
@@ -84,7 +85,7 @@ async def test_a_test_sessions_env_lives_only_in_memory_isolated_from_the_live_o
     assert service.get_env(live_session["id"])["action_set"] == {}
 
     second = await service.create_session_of(PROJECT_ID, 'test')
-    assert service.get_env(second["id"])["action_set"] == {}
+    assert service.get_env(second["id"])["action_set"] == {"favorite_color": ""}
 
 
 @pytest.mark.parametrize("discard", ["reset", "delete", "close"])

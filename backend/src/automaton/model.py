@@ -14,6 +14,9 @@ from typing import ClassVar
 
 from typing_extensions import TypedDict, Literal, Any
 
+ENV_TYPE_DEFAULTS: dict[str, Any] = {"number": 0, "string": "", "bool": False, "choice": []}
+ENV_DEFAULTS_ACTION_NAME = "env-defaults"
+
 class SourceDict(TypedDict):
     type: Literal["text", "base64"]
     media_type: str
@@ -105,9 +108,17 @@ class EnvKey:
     automaton.State) — never a property of the key itself. Scripts (an
     action's own `env:`) write any key regardless."""
     name: str
+    type: str
     value: str = ""
     ui_description: str | None = None
     ai_definition: str | None = None
+
+
+def env_defaults_action(env_keys: list[EnvKey]) -> Action:
+    env = {key.name: key.value or repr(ENV_TYPE_DEFAULTS[key.type]) for key in env_keys}
+    return Action(
+        name=ENV_DEFAULTS_ACTION_NAME, ui_label=ENV_DEFAULTS_ACTION_NAME, ui_button="", target="", env=env or None,
+    )
 
 
 @dataclass
@@ -162,6 +173,7 @@ class SignalPayload(TypedDict):
 
 class EnvKeyPayload(TypedDict):
     name: str
+    type: str
     ui_description: str | None
     value: str
     ai_definition: str | None

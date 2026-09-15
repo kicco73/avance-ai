@@ -5,7 +5,7 @@ active project's.
 Production bug: TurnService.env was one PersistedEnv keyed on
 ProjectService.get_active_project_id() + WebSession().user. Opening a
 session of any *other* project (the Sessions panel, a supervisor
-reading someone's session, WhatsApp) made _apply_declared_env_defaults
+reading someone's session, WhatsApp) made _backfill_declared_env_keys
 read the active project's env to decide which declared defaults were
 "missing", then write the other project's defaults into the active
 project's Tracking rows — and, since the read kept answering for the
@@ -40,6 +40,7 @@ project:
   id: {project_id}
 env:
   {env_key}:
+    type: string
     value: "'{default}'"
 init-action:
   target: a

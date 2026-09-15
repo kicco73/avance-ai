@@ -70,5 +70,5 @@ def test_a_trigger_referencing_anything_undeclared_or_mistyped_is_rejected_at_bu
 
 
 def test_a_trigger_may_reference_a_declared_env_key_or_a_signal_against_a_type_consistent_threshold():
-    assert _build("env.visits >= 1", "env:\n  visits: {}\n") == "env.visits >= 1"
+    assert _build("env.visits >= 1", "env:\n  visits:\n    type: number\n") == "env.visits >= 1"
     assert _build("signal.mood >= 75", MOOD_SIGNAL) == "signal.mood >= 75"

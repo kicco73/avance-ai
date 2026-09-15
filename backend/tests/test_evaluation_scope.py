@@ -157,7 +157,7 @@ def test_a_declared_source_is_readable_from_an_env_expression_end_to_end(db):
     scope = _builder(db).build(automaton, "a", {})
 
     assert scope["source"].pino.select_rows_containing("hello") == "note\nhello from the archive\n"
-    assert Automaton.eval_action_env(action, scope) == {"notes": "note\nhello from the archive\n"}
+    assert automaton.eval_action_env(action, scope) == {"notes": "note\nhello from the archive\n"}
 
 
 def test_attachment_read_resolves_a_text_archive_from_both_scope_views_and_raises_for_anything_else(db):

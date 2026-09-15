@@ -43,6 +43,7 @@ project:
   family: {FAMILY}
 env:
   visits:
+    type: number
     ui-description: Visit counter
 init-action:
   target: a

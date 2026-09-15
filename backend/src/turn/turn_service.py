@@ -310,8 +310,9 @@ class TurnService(object):
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton = self.__project_service.get_automaton_for_session(session["id"])
 		response = self._session_response(session, current=True)
-		if strategy.task_for_new_session(automaton) is not None:
-			self._schedule_task(automaton, automaton.init_action, session["id"], project_id)
+		if strategy.fires_init_action(automaton):
+			self._backfill_declared_env_keys(automaton, project_id, session["id"])
+			self._fire_init_action(automaton, session["id"], project_id)
 		return response
 
 	def reset_test_sessions(self, project_id: str) -> dict:
@@ -589,8 +590,8 @@ class TurnService(object):
 	def _project_id_for_session(self, session_id: int) -> str:
 		return self._ownership.require_session(session_id)["project_id"]
 
-	def _apply_declared_env_defaults(self, automaton: Automaton, project_id: str, session_id: int) -> None:
-		action = automaton.init_action
+	def _backfill_declared_env_keys(self, automaton: Automaton, project_id: str, session_id: int) -> None:
+		action = automaton.env_defaults_action
 		if not action.env:
 			return
 		env = self._env_for_session(session_id)
@@ -601,9 +602,16 @@ class TurnService(object):
 		tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		for key, expression in missing.items():
 			tracking_engine.apply_action_env(
-				automaton, replace(action, env={key: expression}, task=None, on_exit=None), {}, "",
+				automaton, replace(action, env={key: expression}), {}, "",
 				username=self._username, project_id=project_id, session_id=session_id,
 			)
+
+	def _fire_init_action(self, automaton: Automaton, session_id: int, project_id: str) -> None:
+		tracking_engine, _ = self._tracking_engine_for_session(session_id)
+		tracking_engine.apply_transition(
+			automaton, automaton.states[""], automaton.init_action, None, session_id,
+			origin='init-action', username=self._username, project_id=project_id,
+		)
 
 	def _cleanup_orphan_action_env_keys(
 		self, automaton: Automaton, project_id: str, session_id: int, session_type: str
@@ -632,15 +640,11 @@ class TurnService(object):
 		project_id = session["project_id"]
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 
-		self._apply_declared_env_defaults(automaton, project_id, session_id)
+		self._backfill_declared_env_keys(automaton, project_id, session_id)
 		self._cleanup_orphan_action_env_keys(automaton, project_id, session_id, session["type"])
 
 		if self._db.get_current_state(project_id) is None:
-			action = automaton.init_action
-			self._db.save_transition(
-				"", action.name, state.key, session_id, transition_log_level=state.transition_log_level,
-				origin='init-action',
-			)
+			self._fire_init_action(automaton, session_id, project_id)
 
 		return automaton, state
 

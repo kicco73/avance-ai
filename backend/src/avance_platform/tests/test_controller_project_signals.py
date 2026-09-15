@@ -103,7 +103,7 @@ def test_a_signal_referenced_only_via_env_field_is_also_relevant(client):
         'trigger: "signal.progress == 100"\n        env:\n          last_score: signal.score',
     ).replace(
         "states:",
-        "env:\n  last_score: {}\n\nstates:",
+        "env:\n  last_score:\n    type: number\n\nstates:",
     )
     project_id = _upload(client, "relevance_env_test", project)
 

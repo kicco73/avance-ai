@@ -150,6 +150,7 @@ states:
         bogus: 2
 env:
   k:
+    type: number
     value: "1"
     nonsense: 3
 """

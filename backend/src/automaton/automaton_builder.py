@@ -5,6 +5,7 @@ from automaton.builder.archive_resolver import ProjectArchives
 from automaton.builder.automaton_validator import AutomatonValidator, STATE_SOURCE_FIELDS
 from automaton.builder.build_cursor import BuildCursor
 from automaton.build_error import AutomatonBuildError
+from automaton.env_types import ENV_TYPES, ENV_TYPE_NAMES
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.builder.project_metadata import ProjectMetadata, load_yaml, peek_declared_revision, read_declared_project_id
 from automaton.trigger_namespaces import TriggerNamespaces
@@ -46,7 +47,7 @@ STATE_SUGGESTED_FIELDS = STATE_FIELDS - set(LEGACY_STATE_SOURCE_FIELDS)
 
 SIGNAL_FIELDS = {"ui-label", "ui-description", "definition", "attachments"}
 REACTION_FIELDS = {"ui-label", "ui-description", "definition"}
-ENV_KEY_FIELDS = {"ui-description", "value", "ai-definition"}
+ENV_KEY_FIELDS = {"type", "ui-description", "value", "ai-definition"}
 SOURCE_FIELDS = {"ui-label", "ui-description", "url", "ai-definition"}
 TOP_LEVEL_FIELDS = {
     "avance-version", "project", "init-action", "states", "signals", "reactions",
@@ -95,12 +96,19 @@ class AutomatonBuilder(object):
     def _build_env_key(self, name: str, raw_env_key: dict) -> EnvKey:
         raw_env_key = raw_env_key or {}
         self._check_fields(raw_env_key, ENV_KEY_FIELDS, "Env key", name)
+        env_type = raw_env_key.get("type")
+        if env_type not in ENV_TYPES:
+            raise ValueError(
+                f"Env key '{name}': 'type' is required and must be one of {ENV_TYPE_NAMES}"
+                + (f", got '{env_type}'." if env_type is not None else ".")
+            )
         raw_value = raw_env_key.get("value", "")
         value = raw_value if isinstance(raw_value, str) else str(raw_value)
         raw_description = raw_env_key.get("ui-description")
         raw_ai_definition = raw_env_key.get("ai-definition")
         return EnvKey(
             name=name,
+            type=env_type,
             value=value.strip(),
             ui_description=raw_description.strip() if raw_description else None,
             ai_definition=raw_ai_definition.strip() if isinstance(raw_ai_definition, str) and raw_ai_definition.strip() else None,
@@ -296,7 +304,7 @@ class AutomatonBuilder(object):
             line=line,
         )
 
-    def _build_init_action(self, raw: dict, env_keys: dict[str, EnvKey]) -> Action:
+    def _build_init_action(self, raw: dict) -> Action:
         line = self._line_of(raw, "init-action")
         self._at(line, "init-action")
         raw_init_action = raw.get("init-action")
@@ -306,8 +314,6 @@ class AutomatonBuilder(object):
                 "field — the project's real starting state."
             )
         self._check_fields(raw_init_action, INIT_ACTION_FIELDS, "Action", "init-action")
-        env = {name: (env_key.value or "''") for name, env_key in env_keys.items()}
-        env.update(self._build_action_env(raw_init_action.get("env"), "init-action") or {})
         return Action(
             name="init-action",
             ui_description=raw_init_action.get("ui-description"),
@@ -316,7 +322,7 @@ class AutomatonBuilder(object):
             target=raw_init_action["target"],
             task=raw_init_action.get("task"),
             on_exit=raw_init_action.get("on-exit"),
-            env=env or None,
+            env=self._build_action_env(raw_init_action.get("env"), "init-action"),
             line=line,
         )
 
@@ -413,7 +419,6 @@ class AutomatonBuilder(object):
         for name, raw_source in raw_sources.items():
             self._at(self._line_of(raw_sources, name), f"sources.{name}")
             sources[name] = self._build_source(name, raw_source, archives)
-        self._validator.validate_env_key_defaults(env_keys, raw_env_keys)
 
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):
@@ -426,7 +431,7 @@ class AutomatonBuilder(object):
                 "and cannot be declared in 'states'."
             )
 
-        init_action = self._build_init_action(raw, env_keys)
+        init_action = self._build_init_action(raw)
         states: dict[str, State] = {}
         states[""] = State(key="", ui_label="", final=False, ui_description="", actions=[init_action])
 
@@ -453,6 +458,7 @@ class AutomatonBuilder(object):
             state_keys_by_ui_label[states[key].ui_label] = key
 
         registry = IdentifierRegistry.build(list(signals.values()), list(env_keys.values()))
+        self._validator.validate_env_key_defaults(env_keys, raw_env_keys, registry, sources)
         namespaces = TriggerNamespaces.collect()
         for key, state in states.items():
             context_key = init_action.name if key == "" else key

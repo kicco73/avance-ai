@@ -1,7 +1,7 @@
 """AutomatonBuilder._build_init_action's own explicit `env:` mapping —
-merged on top of every declared env key's own default, exactly like a
-regular action's `env:` field (see test_automaton_builder_env_
-declarations.py for the declared-defaults side of this).
+the init-action's own writes, and nothing else: the declared keys' own
+defaults are a separate action, Automaton.env_defaults_action (see
+test_automaton_builder_env_declarations.py).
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ def test_init_action_can_declare_its_own_env():
     automaton = _build("""
 env:
   greeting:
+    type: string
     value: ""
 init-action:
   target: a
@@ -33,28 +34,14 @@ states:
     assert automaton.init_action.env == {"greeting": "'hi'"}
 
 
-def test_init_actions_own_env_overrides_the_declared_default_for_that_key():
-    automaton = _build("""
-env:
-  greeting:
-    value: "'default'"
-init-action:
-  target: a
-  env:
-    greeting: "'overridden'"
-states:
-  a:
-    contextual-prompt: hi
-""")
-    assert automaton.init_action.env == {"greeting": "'overridden'"}
-
-
-def test_init_actions_own_env_is_merged_with_other_declared_defaults_not_replacing_them():
+def test_init_actions_own_env_holds_only_its_own_writes_never_the_declared_defaults():
     automaton = _build("""
 env:
   a:
+    type: number
     value: "1"
   b:
+    type: number
     value: "2"
 init-action:
   target: a
@@ -64,7 +51,23 @@ states:
   a:
     contextual-prompt: hi
 """)
-    assert automaton.init_action.env == {"a": "99", "b": "2"}
+    assert automaton.init_action.env == {"a": "99"}
+    assert automaton.env_defaults_action.env == {"a": "1", "b": "2"}
+
+
+def test_an_init_action_without_env_has_none_even_when_keys_are_declared():
+    automaton = _build("""
+env:
+  a:
+    type: number
+    value: "1"
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+""")
+    assert automaton.init_action.env is None
 
 
 def test_init_actions_own_env_writing_to_an_undeclared_key_is_rejected():
@@ -74,6 +77,22 @@ init-action:
   target: a
   env:
     never_declared: "1"
+states:
+  a:
+    contextual-prompt: hi
+""")
+
+
+def test_init_actions_own_env_must_match_the_keys_declared_type():
+    with pytest.raises(ValueError, match="is a string, but 'a' is declared number"):
+        _build("""
+env:
+  a:
+    type: number
+init-action:
+  target: a
+  env:
+    a: "'one'"
 states:
   a:
     contextual-prompt: hi

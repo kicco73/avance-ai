@@ -43,6 +43,9 @@ class _FakeProjectService:
     def get_draft_revision(self, project_name):
         return 1
 
+    def get_automaton_for_session(self, session_id):
+        return _FakeAutomaton(self.state_key)
+
 
 @pytest.fixture
 def project_service() -> _FakeProjectService:

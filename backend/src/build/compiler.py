@@ -386,7 +386,7 @@ def _compiled(table, text, kind):
         diffs cleanly against the one before it."""
         expressions: dict[str, None] = {}
         statements: dict[str, None] = {}
-        actions = [self.automaton.init_action] + [
+        actions = [self.automaton.env_defaults_action, self.automaton.init_action] + [
             a for state in self.automaton.states.values() for a in state.actions
         ]
         for action in actions:

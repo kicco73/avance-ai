@@ -24,6 +24,7 @@ signals:
 
 env:
   visits:
+    type: number
     ui-description: "How many times this action has fired."
 
 states:

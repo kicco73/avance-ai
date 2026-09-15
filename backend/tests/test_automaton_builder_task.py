@@ -124,6 +124,7 @@ init-action:
   target: a
 env:
   reminder_days:
+    type: number
     value: 3
 states:
   a:

@@ -21,7 +21,7 @@ PROJECT_ID = "orphan_proj"
 
 
 def _publish(db, env_keys: list[str]) -> None:
-    env_section = "\n".join(f"  {key}:" for key in env_keys)
+    env_section = "\n".join(f"  {key}:\n    type: string" for key in env_keys)
     yml = f"""
 project:
   id: {PROJECT_ID}

@@ -127,6 +127,7 @@ states:
     contextual-prompt: there
 env:
   counter:
+    type: number
     value: "0"
     ai-access: readonly
     ui-label: Counter

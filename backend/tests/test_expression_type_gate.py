@@ -27,6 +27,7 @@ signals:
     definition: how happy the user seems
 env:
   stage:
+    type: string
     value: "'start'"
 {env_yaml}init-action:
   target: a
@@ -47,7 +48,7 @@ def _build(env_yaml: str = "", action_yaml: str = ""):
 
 @pytest.mark.parametrize("expression", [MISTYPED, OUT_OF_RANGE, ORDERED_STRING])
 @pytest.mark.parametrize(("env_yaml", "action_yaml", "context"), [
-    ("  broken:\n    value: \"{expression}\"\n", "", "env key 'broken': default value"),
+    ("  broken:\n    type: bool\n    value: \"{expression}\"\n", "", "env key 'broken': default value"),
     ("", "        trigger: \"{expression}\"\n", "trigger"),
     ("", "        env:\n          stage: \"'x' if {expression} else 'y'\"\n", "env expression for 'stage'"),
     ("", "        on-exit: |\n          env.stage = 'x' if {expression} else 'y'\n", "on-exit line 1"),
@@ -63,7 +64,7 @@ def test_the_same_mistake_is_rejected_at_build_time_wherever_the_expression_is_w
 
 
 @pytest.mark.parametrize(("env_yaml", "action_yaml"), [
-    ("  counter:\n    value: \"0\"\n", ""),
+    ("  counter:\n    type: number\n    value: \"0\"\n", ""),
     ("", "        trigger: \"signal.mood >= 75\"\n"),
     ("", "        env:\n          stage: \"'x' if signal.mood >= 75 else 'y'\"\n"),
     ("", "        on-exit: |\n          env.stage = 'x' if signal.mood >= 75 else 'y'\n"),

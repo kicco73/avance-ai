@@ -617,19 +617,26 @@ with two different owners, and the names are load-bearing:
 ```yaml
 env:
   reset_counter:
+    type: bool
     ui-description: "Whether the counter was just reset."
     value: "False"
   number_of_steps:
+    type: number
     value: "0"
   pnr:
+    type: string
     ui-description: "The booking's record locator."
     ai-definition: The 6-character record locator the customer gives you; empty until they do.
     value: ""
+  slot:
+    type: choice
+    ui-description: "The appointment slots on offer."
 ```
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `value` | no | string (expression) | `""` | The default, applied once (top-to-bottom order) the first time a session opens — a later default may reference an earlier key. |
+| `type` | **yes** | `number` \| `string` \| `bool` \| `choice` | — | What the key holds, declared once: a number (`int` or `float`, never a bool), a string, a bool, or a `choice` — a list of strings that scripts write and nothing reads yet. A key without `type`, or with any other value, fails the build naming the key and the four admitted values. |
+| `value` | no | string (expression) | the type's own default | The default, applied once (top-to-bottom order) the first time a session opens — a later default may reference an earlier key. Constrained to `type`: a `value` whose kind is statically known (`"0"`, `"'x'"`, `"True"`) and differs from `type` fails the build; a `choice` key takes no `value` at all — its options are written by scripts. Absent, the type's own default applies: `0`, `""`, `False`, `[]`. |
 | `ui-description` | no | string | `None` | Shown in the frontend — never sent to the model. |
 | `ai-definition` | conditionally | string | `None` | Written *for the model*: what this variable means. **Required** (build error) whenever some state lists this key in its own `input`/`output` (§4.3) — same requirement a source exposed to the model gets; optional otherwise. Becomes that field's own description in the prompt's env block / output schema. |
 
@@ -638,6 +645,19 @@ An action's `env:` can only update a key declared here, never invent one
 itself update it on any turn. Whether the model ever sees or sets a given
 key is decided entirely per state, by that state's own `input`/`output`
 (§4.3) — never a property of the key itself.
+
+**The type is enforced twice.** At build, every expression that writes a
+key — an action's `env:` entry, an `on-exit` assignment, the key's own
+`value` — is compared with the declared `type` whenever its kind is
+statically known (`"42"` into a `string` key fails; `env.other` is not
+knowable ahead of a turn and passes). At run time, every value an
+action's `env:` or `on-exit` produces is checked against the declared
+type before it is written: `number` takes an `int` or `float` and never
+a bool, `string` a `str`, `bool` a `bool`, `choice` a list whose
+elements are all strings. A value outside its type is treated exactly
+like a key whose expression failed to evaluate — logged with the key,
+the declared type and the type found, and discarded, while the action's
+other keys are written. Nothing is coerced.
 
 **The prompt's env block.** The model sees the automaton's env only in a
 state whose own `input` is non-empty (§4.3); there, the system prompt
@@ -950,12 +970,27 @@ init-action:
 | Field | Required | Type | Meaning |
 | --- | --- | --- | --- |
 | `target` | **yes** | string | Starting state — must be a real key under `states:`. |
-| `task` | no | string | Same mechanics as any action's (§5.4), fired (as a task, delivered over the websocket) the one time init-action fires. |
-| `on-exit` | no | string | Same mechanics as any action's (§5.3bis), applied the one time init-action fires. |
-| `env` | no | mapping key → expression | Same mechanics as any action's (§5.3), applied on top of every declared key's own default the one time init-action fires — the place to reset a key a previous case left behind. |
+| `task` | no | string | Same mechanics as any action's (§5.4), scheduled as a task (delivered over the websocket) each time init-action fires. |
+| `on-exit` | no | string | Same mechanics as any action's (§5.3bis), run each time init-action fires. |
+| `env` | no | mapping key → expression | Same mechanics as any action's (§5.3), applied each time init-action fires — the place to reset a key a previous case left behind. It writes the key whether or not it already has a value. |
 
 A mapping, not a list item — otherwise a regular action with no
 `name`/`ui-label`/`trigger` (fixed internally).
+
+**It is an action, executed as one.** The init-action goes through the
+same transition path every other action does, in the same order: its
+`env:` and `on-exit` are evaluated against one scope and written, its
+`task` is scheduled, and a transition row from the implicit initial
+state `""` to `target` is recorded with origin `init-action`. Before it
+fires, every declared key that has no value yet is backfilled with its
+own default (§5.3) — a separate, implicit action of its own, so the
+init-action's `env:` may read the defaults and override them.
+
+**When it fires.** Once for a project's first session ever, the first
+time that session opens; and once at creation for every session whose
+type restarts — a test or preview session always, a live session when
+`project.new-session-strategy` is `restart` (§1.1). A live session under
+`resume` inherits the state the previous one left and fires nothing.
 
 ## 8. Validation checklist
 
@@ -1058,6 +1093,12 @@ format has no single line for that: the whole action is left as written,
 including its field name, since renaming it alone would move a refusal
 rather than remove one. The rest of the file is still repaired, and what
 is left is refused with everything else — a person decides it.
+
+Nor does it invent. An env key's `type` (§5.3) has no former spelling to
+rewrite from, and guessing one from `value` would be a choice: a stored
+revision that declares a key without `type` is a broken project, refused
+with the key and the four admitted values named, and handled the way any
+other broken revision is — listed in the design view, fixed by a person.
 
 ## 9. Worked examples
 
