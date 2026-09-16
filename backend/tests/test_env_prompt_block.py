@@ -21,11 +21,15 @@ ENV_KEYS = [
     EnvKey(name="flight", type="string", ai_definition="The flight code."),
     EnvKey(name="customer_email", type="string", ai_definition="The customer's email."),
     EnvKey(name="_flight_record", type="string"),
+    EnvKey(name="confidence", type="string", ai_definition="The model's own confidence score."),
 ]
 
 STATE_A = State(key="a", ui_label="A", final=True, contextual_prompt="hi", input=("flight", "customer_email"))
 STATE_B = State(key="b", ui_label="B", final=True, contextual_prompt="hi", input=("flight", "customer_email"))
 STATE_C = State(key="c", ui_label="C", final=True, contextual_prompt="hi")
+STATE_D_OUTPUT_ONLY = State(
+    key="d", ui_label="D", final=True, contextual_prompt="hi", input=("flight",), output=("confidence",)
+)
 
 
 def _automaton(*states: State) -> Automaton:
@@ -51,6 +55,21 @@ def test_a_state_declaring_input_gets_a_block_carrying_only_those_keys():
     assert "secret" not in block.text() and "note" not in block.text()
 
     assert EnvPromptBlock.for_state(env, automaton, STATE_B) is not None
+
+
+def test_a_variable_declared_as_output_only_never_renders_its_value_even_once_set():
+    """`confidence` is STATE_D_OUTPUT_ONLY's own `output`, never its
+    `input` — a prior turn already wrote a value for it, but the block
+    must still carry only the declared `input` names."""
+    env = Env(action_set={"flight": "VY3003", "confidence": "0.9"})
+    automaton = _automaton(STATE_D_OUTPUT_ONLY)
+
+    block = EnvPromptBlock.for_state(env, automaton, STATE_D_OUTPUT_ONLY)
+
+    assert block is not None
+    assert "confidence" not in block.lines()
+    assert "0.9" not in block.text()
+    assert block.text() == f"{ENV_BLOCK_HEADER}\nflight: VY3003\n\tThe flight code."
 
 
 def test_a_state_with_no_input_gets_no_block_at_all():

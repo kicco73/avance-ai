@@ -5,6 +5,7 @@ import { renderMarkdown } from '../markdown.js'
 import logoUrl from '../assets/avance-logo.png'
 
 const CLOSE_ANIMATION_MS = 180
+const DOC_READING_WIDTH = 'min(68ch, 90vw)'
 
 const dialogEl = ref(null)
 const inputEl = ref(null)
@@ -22,11 +23,25 @@ const promptError = computed(() => {
 
 let pendingResult
 
+function measuredDocWidth() {
+  const card = dialogEl.value?.querySelector('.dialog-card')
+  if (!card) return null
+  const prevWidth = card.style.width
+  const prevMaxWidth = card.style.maxWidth
+  card.style.width = 'fit-content'
+  card.style.maxWidth = DOC_READING_WIDTH
+  const width = Math.ceil(card.getBoundingClientRect().width)
+  card.style.width = prevWidth
+  card.style.maxWidth = prevMaxWidth
+  return width
+}
+
 watch(activeDialog, async (dialog) => {
   if (!dialog) return
   promptValue.value = TEXT_INPUT_KINDS.includes(dialog.kind) ? (dialog.initialValue ?? '') : ''
   await nextTick()
   dialogEl.value?.showModal()
+  dialogEl.value.style.width = dialog.markdown ? `${measuredDocWidth()}px` : ''
   if (TEXT_INPUT_KINDS.includes(dialog.kind)) inputEl.value?.focus()
   requestAnimationFrame(() => { cardVisible.value = true })
 })
@@ -78,7 +93,7 @@ function chooseOption(id) {
     v-if="activeDialog"
     ref="dialogEl"
     class="app-dialog"
-    :class="{ 'app-dialog-wide': activeDialog.wide }"
+    :class="{ 'app-dialog-wide': activeDialog.wide, 'app-dialog-doc': activeDialog.markdown }"
     @cancel="onCancel"
     @close="onNativeClose"
     @click="onBackdropClick"
@@ -203,6 +218,11 @@ function chooseOption(id) {
   max-width: 640px;
 }
 
+.app-dialog-doc {
+  min-width: min(420px, 90vw);
+  max-width: 90vw;
+}
+
 .dialog-card {
   position: relative;
   background: white;
@@ -262,11 +282,121 @@ function chooseOption(id) {
 }
 
 .dialog-body-markdown :deep(p) {
-  margin: 0 0 0.6rem;
+  margin: 0 0 0.8rem;
 }
 
 .dialog-body-markdown :deep(p:last-child) {
   margin-bottom: 0;
+}
+
+.dialog-body-markdown :deep(h1),
+.dialog-body-markdown :deep(h2),
+.dialog-body-markdown :deep(h3),
+.dialog-body-markdown :deep(h4),
+.dialog-body-markdown :deep(h5),
+.dialog-body-markdown :deep(h6) {
+  margin: 0.8rem 0 0.5rem;
+  line-height: 1.3;
+}
+
+.dialog-body-markdown :deep(h1:first-child),
+.dialog-body-markdown :deep(h2:first-child),
+.dialog-body-markdown :deep(h3:first-child),
+.dialog-body-markdown :deep(h4:first-child) {
+  margin-top: 0;
+}
+
+.dialog-body-markdown :deep(ul),
+.dialog-body-markdown :deep(ol) {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.dialog-body-markdown :deep(li) {
+  margin: 0.25rem 0;
+}
+
+.dialog-body-markdown :deep(blockquote) {
+  margin: 0.75rem 0;
+  padding: 0.2rem 0 0.2rem 1rem;
+  border-left: 4px solid #bbb;
+  color: #666;
+}
+
+.dialog-body-markdown :deep(hr) {
+  border: none;
+  border-top: 1px solid #ccc;
+  margin: 1rem 0;
+}
+
+.dialog-body-markdown :deep(pre) {
+  overflow-x: auto;
+  contain: inline-size;
+  margin: 0.75rem 0;
+  padding: 0.9rem;
+  border-radius: 8px;
+  background: #1e1e1e;
+  color: #f8f8f2;
+}
+
+.dialog-body-markdown :deep(pre code) {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+}
+
+.dialog-body-markdown :deep(code) {
+  font-family: Consolas, Monaco, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.dialog-body-markdown :deep(:not(pre) > code) {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+}
+
+.dialog-body-markdown :deep(.md-table-wrap) {
+  overflow-x: auto;
+  contain: inline-size;
+  margin: 0.75rem 0;
+}
+
+.dialog-body-markdown :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.dialog-body-markdown :deep(th),
+.dialog-body-markdown :deep(td) {
+  border: 1px solid #ccc;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+}
+
+.dialog-body-markdown :deep(th) {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.dialog-body-markdown :deep(img) {
+  max-width: 100%;
+  border-radius: 6px;
+  -webkit-user-drag: none;
+}
+
+.dialog-body-markdown :deep(a) {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.dialog-body-markdown :deep(strong) {
+  font-weight: 600;
+}
+
+.dialog-body-markdown :deep(em) {
+  font-style: italic;
 }
 
 .dialog-input {

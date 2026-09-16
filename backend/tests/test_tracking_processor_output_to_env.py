@@ -105,6 +105,16 @@ async def test_a_key_not_in_the_states_own_output_is_never_copied(db):
     assert env.action_set() == {"status": "done"}
 
 
+async def test_a_literal_newline_inside_an_output_string_does_not_lose_the_turn(db):
+    automaton = _automaton()
+    output_json = '{"status": "line one\nline two", "confidence": 90}'
+    processor, _, env = _processor(db, automaton, output_json)
+
+    await processor.process("hello")
+
+    assert env.action_set() == {"status": "line one\nline two", "confidence": 90}
+
+
 async def test_a_trigger_this_same_turn_already_sees_the_fresh_output_value(db):
     automaton = _automaton(trigger="env.status == 'done'")
     processor, _, env = _processor(db, automaton, '{"status": "done", "confidence": 90}')

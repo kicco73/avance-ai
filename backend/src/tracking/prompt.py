@@ -110,7 +110,7 @@ def _decode_json_object(raw: str, raw_label: str) -> dict[str, Any]:
 	if not raw:
 		return decoded
 	try:
-		decoded = json.loads(raw) or {}
+		decoded = json.loads(raw, strict=False) or {}
 		assert isinstance(decoded, dict)
 	except Exception as exc:
 		logger.error(f"{exc} -- {raw_label}: {raw}")
@@ -592,7 +592,7 @@ class TranslatePrompt(Prompt):
 		beats a missing one."""
 		translated: dict[str, str] = {}
 		try:
-			value = json.loads(raw) if raw else {}
+			value = json.loads(raw, strict=False) if raw else {}
 			assert isinstance(value, dict)
 			translated = {k: v for k, v in value.items() if isinstance(v, str)}
 		except Exception as exc:
