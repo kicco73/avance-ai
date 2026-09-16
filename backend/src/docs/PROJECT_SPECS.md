@@ -994,6 +994,46 @@ have anything left to tunnel to the browser synchronously.)
   table the script found, and a second search replaces the first.
   Read-only, like `prompt` — it always runs, actuators on or off.
 
+**`drive.*`** is a file space of its own, one per (project, person) —
+not `task.*`, but a bare statement of the same shape (`drive.write(...)`,
+or the RHS of a `name = ...` local). Nothing about it is project
+content: it starts empty, no `sources:`/`attachments:` entry ever names
+it, it is left out of every export and every build, and it dies with
+whichever of the project or the person goes first. Available in `task`
+alone — a trigger and `on-exit` both run inside the turn, and this is
+I/O that may one day be remote.
+
+```yaml
+task: |
+  report = task.prompt('Summarize this conversation in ten lines.')
+  drive.write('reports/last.md', report)
+```
+
+- `drive.read(path)` — exactly what was last written at `path` for the
+  person now talking, text or bytes as it was written, or `""` if
+  nothing has: a drive starts empty, and reading before writing is the
+  normal case, not a failure.
+- `drive.write(path, content)` — writes `content` at `path` verbatim,
+  creating it or replacing whatever was there — `content` is text or
+  bytes, stored and later read back exactly as given, never re-encoded,
+  parsed, or reshaped into anything else. Anything other than text or
+  bytes is refused. Returns the path written. The `/` inside `path` are
+  part of the name, not folders to create; a leading `/` and repeated
+  `/` are trimmed, so `'reports/last.md'` and `'/reports/last.md'` name
+  the same file. `..` is rejected — there is nothing above the person's
+  own space to reach.
+- `drive.list(prefix)` — every path under `prefix`, in order; `""`
+  means everything this person has.
+- `drive.delete(path)` — removes one file, `True` if there was one.
+
+A write also records, silently, which session (if any) fired the task
+that produced it — `None` for a `task.defer`red call, the firing session
+otherwise. No script ever reads this back; it exists only so a file
+written from a *test* session is swept the moment that session is
+deleted or superseded, the same way `cache/sessions/<id>/` already is —
+a live session's own files are never touched by this and outlive it, by
+design.
+
 **No `task.*` call tunnels anything to the browser.** Every member
 returns `None`, a plain value for an assignment, or a bool, never a
 JsSnippet; only `on-exit`'s own `chat.*` calls tunnel JS now (§5.3bis).

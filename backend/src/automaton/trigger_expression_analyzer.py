@@ -17,7 +17,7 @@ class TriggerExpressionAnalyzer:
     analyzed for, without evaluating it: which identifiers/namespaces it
     references, and whether an ordering comparison mixes incompatible types."""
     RESERVED_NAMESPACES = (
-        "signal", "env", "session", "user", "source", "task", "chat", "attachment", "metric", "datetime",
+        "signal", "env", "session", "user", "source", "task", "chat", "attachment", "drive", "metric", "datetime",
     )
     NESTED_NAMESPACES = (("session", "metric"), ("datetime", "timezone"))
 

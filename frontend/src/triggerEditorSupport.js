@@ -5,7 +5,11 @@ const CALL_PARAMS = {
   'task.websearch': ['query'],
   'chat.notify': ['title', 'body_md'],
   'chat.show': ['body_md'],
-  'chat.switch_to_human': ['user_id']
+  'chat.switch_to_human': ['user_id'],
+  'drive.read': ['path'],
+  'drive.write': ['path', 'text'],
+  'drive.list': ['prefix'],
+  'drive.delete': ['path']
 }
 
 const EVENT_EMPTY_HINT =
@@ -20,6 +24,7 @@ export const NAMESPACE_COLORS = {
   source: '#3949ab',
   task: '#c62828',
   chat: '#f9a825',
+  drive: '#4527a0',
   metric: '#2e7d32',
   event: '#455a64',
   choice: '#5d4037',
@@ -39,7 +44,7 @@ export function isProxyNamespace(namespace) {
   return !VALUE_NAMESPACES.has(namespace) && !namespace.startsWith('event.')
 }
 
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|metric|event|choice|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
+export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|drive|metric|event|choice|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
   const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)

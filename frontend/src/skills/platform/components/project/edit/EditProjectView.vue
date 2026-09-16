@@ -8,7 +8,7 @@ import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import DesignSignalsTab from './DesignSignalsTab.vue'
-import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
+import InspectorDriveTab from '../../inspector/InspectorDriveTab.vue'
 import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
 import EditorStateTab from './EditorStateTab.vue'
@@ -190,7 +190,7 @@ const inspectorTabs = computed(() => {
       { id: 'states', label: 'Info' },
       { id: 'signals', label: 'Signals' },
       { id: 'env', label: 'I/O' },
-      { id: 'metrics', label: 'Metrics' }
+      { id: 'drive', label: 'Drive' }
     ]
   }
   if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || !isBehaviorNodeSelected.value)) {
@@ -654,8 +654,8 @@ async function handleSetSessionComment(sessionId, comment) {
                 @delete="handleDeleteSignal"
               />
             </template>
-            <template #tab-metrics="{ registerTab }">
-              <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-id="projectId" />
+            <template #tab-drive="{ registerTab }">
+              <InspectorDriveTab :ref="registerTab('drive')" :project-id="projectId" />
             </template>
             <template #tab-env="{ registerTab }">
               <InspectorEnvTab

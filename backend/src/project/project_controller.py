@@ -64,6 +64,22 @@ class ProjectController(BaseController):
             content=content, media_type=content_type, headers={"ETag": etag, "Cache-Control": "no-cache"}
         )
 
+    @get("/api/core/projects/{project_id}/drive")
+    def get_drive_files(self, project_id: str, prefix: str = ""):
+        """The caller's own drive files in `project_id` (see
+        tracking.actuators.drive_namespace) — never anyone else's, and
+        no elevated role: a drive belongs to the person, not to the
+        project's authors."""
+        return {"files": self.project_service.list_drive_files(project_id, WebSession().user, prefix)}
+
+    @get("/api/core/projects/{project_id}/drive/{path:path}")
+    def get_drive_file_content(self, project_id: str, path: str):
+        found = self.project_service.read_drive_file(project_id, WebSession().user, path)
+        if found is None:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"'{path}' not found in your drive.")
+        content, content_type = found
+        return Response(content=content, media_type=content_type)
+
     @get("/api/core/projects/{project_id}/states/{state_name}/tokens", role="supervisor")
     def get_state_input_tokens(self, project_id: str, state_name: str, session_id: int | None = None):
         """Estimated input-token cost of `state_name`'s own turn prompt,

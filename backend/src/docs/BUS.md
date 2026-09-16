@@ -88,6 +88,7 @@ annotating one. Even reading a transcript opens nothing
 | `task.ended` | `{key, result, error}` | `tracking/actuators/action_task.py`, once that script is over for good. `result` is the JS text its snippet-producing statements built (`None` if the script never ran); `error` names every statement that raised, one per line, or is `None` when none did. Same `key` and same envelope as `task.started` |
 | `ui.progress` | `dict` | `system/broadcaster.py` |
 | `tool.send_mail` | `{to, subject, body_md}` | `tracking/actuators/actuator_set.py` |
+| `output.drive` | `{path}` | `tracking/actuators/drive_namespace.py`, after every `drive.write(...)` — `output.*` for what it names, delivered like the rest of this table (an identity's registered connections, envelope `project_id`/`session_id`), never through the per-session "who is watching" path `output.text`/`state.changed` use |
 
 ## One request, one reply
 

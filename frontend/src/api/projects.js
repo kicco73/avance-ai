@@ -62,3 +62,12 @@ export function getDoc(name) {
 export function getProjectFileTypes() {
   return apiFetch(`${API_URL}/core/projects/file-types`)
 }
+
+export function getDriveFiles(projectId, prefix) {
+  const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/drive${query}`)
+}
+
+export function getDriveFileContent(projectId, path) {
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/drive/${encodeURIComponent(path)}`, undefined, { parse: 'text' })
+}

@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { deleteInstallApp, getProjectSignals, getUserLatestSignals } from '../../api.js'
+import { deleteInstallApp, getDriveFileContent, getDriveFiles, getProjectSignals, getUserLatestSignals } from '../../api.js'
 import { getAppSessionSummaries } from '../../api/appStore.js'
-import { confirmDialog } from '../../../../dialogStore.js'
+import { confirmDialog, infoDialog } from '../../../../dialogStore.js'
 import { renderMarkdown } from '../../../../markdown.js'
 import InspectorSignalList from '../inspector/InspectorSignalList.vue'
 import TimelineChart from '../settings/TimelineChart.vue'
@@ -20,8 +20,12 @@ const uninstallMenuOpen = ref(false)
 const uninstallMenuRootEl = ref(null)
 const sessionSummaries = ref([])
 
-const tabs = [{ id: 'summary', label: 'Summary' }, { id: 'signals', label: 'Signals' }]
+const tabs = [{ id: 'summary', label: 'Summary' }, { id: 'signals', label: 'Signals' }, { id: 'docs', label: 'Docs' }]
 const activeTab = ref('summary')
+
+const driveFiles = ref([])
+const driveFilesLoading = ref(false)
+let driveFilesLoaded = false
 
 const signalsUsername = computed(() => props.profile?.email ?? props.profile?.id ?? null)
 const signalColorMap = ref(null)
@@ -46,10 +50,39 @@ async function loadLatestSignals() {
   }
 }
 
+async function loadDriveFiles() {
+  driveFilesLoading.value = true
+  try {
+    driveFiles.value = (await getDriveFiles(props.app.id)).files
+  } catch {
+    driveFiles.value = []
+  } finally {
+    driveFilesLoading.value = false
+  }
+}
+
+async function openDriveFile(file) {
+  let content = ''
+  try {
+    content = await getDriveFileContent(props.app.id, file.path)
+  } catch {
+    return
+  }
+  await infoDialog({ title: file.path, body: content, markdown: true, okLabel: 'Close' })
+}
+
+function formatFileSize(bytes) {
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
+}
+
 watch(activeTab, (tab) => {
   if (tab === 'signals' && !latestSignalsLoaded) {
     latestSignalsLoaded = true
     loadLatestSignals()
+  }
+  if (tab === 'docs' && !driveFilesLoaded) {
+    driveFilesLoaded = true
+    loadDriveFiles()
   }
 })
 
@@ -151,9 +184,7 @@ async function selectUninstallFromMenu() {
   <div v-else-if="activeTab === 'signals'" class="customer-app-detail-signals-tab">
     <p v-if="!signalsUsername" class="customer-app-detail-status">Your profile has no email on file.</p>
     <template v-else>
-      <div class="customer-app-detail-trends-block">
-        <TimelineChart :project-id="app.id" :username="signalsUsername" @colors="signalColorMap = $event" />
-      </div>
+      <TimelineChart :project-id="app.id" :username="signalsUsername" @colors="signalColorMap = $event" />
       <p v-if="latestSignalsLoading" class="customer-app-detail-status">Loading…</p>
       <p v-else-if="!latestSignals.last_session" class="customer-app-detail-status">
         You have no live sessions in this app yet.
@@ -166,6 +197,19 @@ async function selectUninstallFromMenu() {
         :signal-colors="signalColorMap"
       />
     </template>
+  </div>
+
+  <div v-else-if="activeTab === 'docs'" class="customer-app-detail-docs-tab">
+    <p v-if="driveFilesLoading" class="customer-app-detail-status">Loading…</p>
+    <p v-else-if="!driveFiles.length" class="customer-app-detail-status">Nothing has been saved here yet.</p>
+    <ul v-else class="customer-app-detail-docs-list">
+      <li v-for="file in driveFiles" :key="file.path">
+        <button type="button" class="customer-app-detail-docs-item" @click="openDriveFile(file)">
+          <span class="customer-app-detail-docs-path">{{ file.path }}</span>
+          <span class="customer-app-detail-docs-meta">{{ formatFileSize(file.size) }} · {{ formatClosedAt(file.updated_at) }}</span>
+        </button>
+      </li>
+    </ul>
   </div>
 </template>
 
@@ -203,14 +247,6 @@ async function selectUninstallFromMenu() {
   min-height: 300px;
   display: flex;
   flex-direction: column;
-}
-
-.customer-app-detail-trends-block {
-  width: 100%;
-  height: 200px;
-  max-height: 200px;
-  flex-shrink: 0;
-  margin-bottom: 1rem;
 }
 
 .customer-app-detail-status {
@@ -371,5 +407,52 @@ async function selectUninstallFromMenu() {
   color: #555;
   font-size: 0.85rem;
   line-height: 1.5;
+}
+
+.customer-app-detail-docs-tab {
+  flex: 1;
+  min-height: 300px;
+  overflow-y: auto;
+}
+
+.customer-app-detail-docs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.customer-app-detail-docs-item {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  background: #fafafa;
+  cursor: pointer;
+  text-align: left;
+}
+
+.customer-app-detail-docs-item:hover {
+  background: #f0f0f0;
+}
+
+.customer-app-detail-docs-path {
+  font-size: 0.85rem;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-app-detail-docs-meta {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: #999;
 }
 </style>

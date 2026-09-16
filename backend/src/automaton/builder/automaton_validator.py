@@ -11,7 +11,7 @@ from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.trigger_namespaces import TriggerNamespaces
 from metrics.metrics_framework import metric_names
-from tracking.actuators import ChatNamespace, MAX_ATTACHMENT_READ_BYTES, TaskNamespace
+from tracking.actuators import ChatNamespace, DriveNamespace, MAX_ATTACHMENT_READ_BYTES, TaskNamespace
 from tracking.sources import READ_METHOD, WRITE_METHOD, driver_class_for
 
 STATE_SOURCE_FIELDS = (
@@ -151,12 +151,17 @@ class AutomatonValidator:
             method = getattr(methods_class, method_name, None)
             if method is None:
                 continue
-            expected = len(inspect.signature(method).parameters) - 1
-            if arg_count != expected:
-                raise ValueError(
-                    f"{context} ('{expression}'): {namespace}.{method_name}(...) takes {expected} "
-                    f"argument(s), got {arg_count}"
-                )
+            parameters = list(inspect.signature(method).parameters.values())[1:]
+            required = len([p for p in parameters if p.default is inspect.Parameter.empty])
+            if required <= arg_count <= len(parameters):
+                continue
+            expected = (
+                str(required) if required == len(parameters) else f"between {required} and {len(parameters)}"
+            )
+            raise ValueError(
+                f"{context} ('{expression}'): {namespace}.{method_name}(...) takes {expected} "
+                f"argument(s), got {arg_count}"
+            )
 
     @classmethod
     def validate_task_arity(cls, expression: str, context: str) -> None:
@@ -165,6 +170,10 @@ class AutomatonValidator:
     @classmethod
     def validate_chat_arity(cls, expression: str, context: str) -> None:
         cls._validate_namespace_call_arity(expression, context, "chat", ChatNamespace)
+
+    @classmethod
+    def validate_drive_arity(cls, expression: str, context: str) -> None:
+        cls._validate_namespace_call_arity(expression, context, "drive", DriveNamespace)
 
     @staticmethod
     def validate_attachment_read(expression: str, context: str, archives: ProjectArchives) -> None:
@@ -209,6 +218,7 @@ class AutomatonValidator:
                 )
             cls.validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
             cls.validate_task_arity(expression, line_context)
+            cls.validate_drive_arity(expression, line_context)
             cls.validate_attachment_read(expression, line_context, archives)
             violations = TriggerExpressionAnalyzer.defer_violations(expression)
             if violations:

@@ -242,13 +242,11 @@ defineExpose({ refresh: load })
           <p v-if="!statsProjectId" class="manage-users-stats-status">Select a project to see its statistics.</p>
           <p v-else-if="!selectedUser" class="manage-users-stats-status">Select a user to see their statistics.</p>
           <template v-else>
-            <div class="manage-users-trends-block">
-              <MetricsTrendsChart
-                :project-id="statsProjectId"
-                :username="selectedUser.email ?? selectedUser.id"
-                @colors="metricColorMap = $event"
-              />
-            </div>
+            <MetricsTrendsChart
+              :project-id="statsProjectId"
+              :username="selectedUser.email ?? selectedUser.id"
+              @colors="metricColorMap = $event"
+            />
             <div class="manage-users-stats-header">
               <DocInfoButton doc-name="metrics" title="Core metrics" />
             </div>
@@ -540,14 +538,6 @@ defineExpose({ refresh: load })
 .manage-users-state-card {
   margin-top: 0.75rem;
   margin-bottom: 0.75rem;
-}
-
-.manage-users-trends-block {
-  width: 100%;
-  height: 200px;
-  max-height: 200px;
-  flex-shrink: 0;
-  margin-bottom: 1rem;
 }
 
 .manage-users-stats :deep(.inspector-signals-section) {

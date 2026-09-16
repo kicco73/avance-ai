@@ -283,10 +283,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="timeline-chart">
-    <p v-if="loading" class="timeline-chart-status">Loading…</p>
-    <p v-else-if="!history.length" class="timeline-chart-status">No timeline recorded yet.</p>
-    <div v-else class="timeline-chart-canvas-wrap">
+  <div v-if="loading" class="timeline-chart">
+    <p class="timeline-chart-status">Loading…</p>
+  </div>
+  <div v-else-if="history.length" class="timeline-chart">
+    <div class="timeline-chart-canvas-wrap">
       <button v-if="isZoomed" class="trend-reset-zoom-btn" @click="resetZoom">Reset zoom</button>
       <canvas ref="canvasEl" @mousemove="onCanvasMouseMove" @mouseleave="onCanvasMouseLeave"></canvas>
     </div>
@@ -304,7 +305,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .timeline-chart {
-  height: 100%;
+  width: 100%;
+  height: 200px;
+  max-height: 200px;
+  flex-shrink: 0;
+  margin-bottom: 1rem;
   display: flex;
   flex-direction: column;
 }

@@ -17,7 +17,10 @@ from automaton.scope import EvaluationScope
 from automaton.trigger_namespaces import TriggerNamespaces
 from db import Db
 from metrics.metric_service import MetricService
-from tracking.actuators import AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, TaskNamespace
+from system.web_session import WebSession
+from tracking.actuators import (
+    AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, TaskNamespace, drive_namespace_for,
+)
 from tracking.env import Env
 from tracking.project_files import project_files_for
 from tracking.evaluator import SignalEvaluator
@@ -88,6 +91,7 @@ class EvaluationScopeBuilder(object):
             "user": self._user.as_dict(),
             "source": source_namespace,
             "attachment": AttachmentNamespace(project_files, automaton),
+            "drive": drive_namespace_for(self._db, automaton, WebSession().user, session_id),
             "metric": self._metrics.for_turn(),
             # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its
             "datetime": ModuleWrapper(datetime, allowed_attrs={"datetime", "timedelta", "timezone"}),

@@ -261,7 +261,7 @@ onMounted(() => {
           No test has been run for this state under this strategy yet.
         </p>
         <template v-else>
-          <div class="tests-panel-distribution-block">
+          <div v-if="nodeLastResult[selectedCacheKey].distribution.length" class="tests-panel-distribution-block">
             <SignalAccuracyDistributionChart :distribution="nodeLastResult[selectedCacheKey].distribution" />
           </div>
           <table class="tests-panel-metrics-table">
@@ -287,7 +287,7 @@ onMounted(() => {
           No test has been run for this signal under this strategy yet.
         </p>
         <template v-else>
-          <div class="tests-panel-distribution-block">
+          <div v-if="nodeLastResult[selectedCacheKey].distribution.length" class="tests-panel-distribution-block">
             <SignalAccuracyDistributionChart :distribution="nodeLastResult[selectedCacheKey].distribution" />
           </div>
           <table class="tests-panel-metrics-table">
@@ -318,7 +318,7 @@ onMounted(() => {
           No signal test has been run under this strategy yet.
         </p>
         <template v-else>
-          <div class="tests-panel-distribution-block">
+          <div v-if="nodeLastResult[selectedCacheKey].distribution.length" class="tests-panel-distribution-block">
             <SignalAccuracyDistributionChart :distribution="nodeLastResult[selectedCacheKey].distribution" />
           </div>
           <table class="tests-panel-metrics-table">
@@ -341,7 +341,7 @@ onMounted(() => {
           No state test has been run under this strategy yet.
         </p>
         <template v-else>
-          <div class="tests-panel-distribution-block">
+          <div v-if="nodeLastResult[selectedCacheKey].distribution.length" class="tests-panel-distribution-block">
             <SignalAccuracyDistributionChart :distribution="nodeLastResult[selectedCacheKey].distribution" />
           </div>
           <table class="tests-panel-metrics-table">

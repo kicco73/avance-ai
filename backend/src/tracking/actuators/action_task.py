@@ -326,7 +326,10 @@ class ScopeHydrator(object):
             ai_service=self._ai_service,
         )
         snapshot = payload["snapshot"]
-        scope = builder.build(automaton, payload["state_key"], snapshot.get("signal") or {}, ChoiceSelection.NONE)
+        scope = builder.build(
+            automaton, payload["state_key"], snapshot.get("signal") or {}, ChoiceSelection.NONE,
+            session_id=firing_session_id,
+        )
         for name in _FROZEN_NAMESPACES:
             scope[name] = snapshot.get(name, {})
         scope.update(snapshot.get("extra", {}))

@@ -11,6 +11,7 @@ export const SERVER_EVENTS = [
   'ui.notification',
   'session.taken_over',
   'ui.progress',
+  'output.drive',
   'human_prompt'
 ]
 

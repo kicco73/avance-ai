@@ -93,8 +93,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="signal-accuracy-distribution-chart">
-    <p v-if="!distribution.length" class="signal-accuracy-distribution-chart-status">No samples yet.</p>
-    <canvas v-else ref="canvasEl"></canvas>
+    <canvas ref="canvasEl"></canvas>
   </div>
 </template>
 
@@ -103,12 +102,5 @@ onBeforeUnmount(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.signal-accuracy-distribution-chart-status {
-  margin: 0;
-  padding: 0.75rem 0;
-  font-size: 0.9rem;
-  color: #666;
 }
 </style>

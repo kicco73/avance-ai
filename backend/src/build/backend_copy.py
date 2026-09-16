@@ -251,8 +251,10 @@ def _prune_database_to_project(db_path: Path, keep_project_id: str) -> None:
     connection = sqlite3.connect(str(db_path))
     try:
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("DELETE FROM Drive")
         other_ids = [row[0] for row in connection.execute("SELECT id FROM Project WHERE id != ?", (keep_project_id,))]
         if not other_ids:
+            connection.commit()
             return
         connection.executemany("DELETE FROM Project WHERE id = ?", [(project_id,) for project_id in other_ids])
         placeholders = ",".join("?" for _ in other_ids)

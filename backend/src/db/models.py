@@ -161,6 +161,20 @@ class Archive(BaseModel):
         table_name = 'Archive'
         indexes = ((('project', 'archive_name', 'revision'), True),)
 
+class Drive(BaseModel):
+    project = ForeignKeyField(Project, field='id', column_name='project_id', backref='drive_files', on_delete='CASCADE')
+    user = ForeignKeyField(User, field='id', column_name='user_id', backref='drive_files', on_delete='CASCADE')
+    session = ForeignKeyField(CoreSession, null=True, backref='drive_files', on_delete='SET NULL')
+    path = CharField(null=False)
+    content = BlobField(null=False)
+    content_type = CharField(null=False)
+    size = IntegerField(null=False)
+    updated_at = DateTimeField(default=datetime.utcnow)
+
+    class Meta:
+        table_name = 'Drive'
+        indexes = ((('project', 'user', 'path'), True),)
+
 class StateRemap(BaseModel):
     """An administrative fact about a published revision, not a
     conversation event (never goes in Tracking). Flattened on every

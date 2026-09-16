@@ -43,6 +43,13 @@ class IdentifierRegistry:
         "switch_to_ai": "Hands a session back to the AI after switch_to_human — e.g. chat.switch_to_ai(). Only available in an action's own on-exit script.",
     }
 
+    DRIVE: dict[str, str] = {
+        "read": "Returns exactly what this project last wrote for the person now talking, at that path, text or bytes as it was written — e.g. drive.read('reports/last.md'). \"\" when nothing has been written there: a drive starts empty, and reading before writing is normal, not a failure. Only available in a task script.",
+        "write": "Writes text or bytes, verbatim, into this project's own space for the person now talking, creating the file or replacing it — e.g. drive.write('reports/last.md', report). Nothing else is ever accepted. The '/' are part of the name, not folders to create. Returns the path written. Only available in a task script.",
+        "list": "The paths written for the person now talking that start with `prefix`, in order — e.g. drive.list('reports/'); no prefix means everything. Only available in a task script.",
+        "delete": "Removes one of this person's files — e.g. drive.delete('reports/last.md'). True if there was something to remove. Only available in a task script.",
+    }
+
     ATTACHMENT: dict[str, str] = {
         "read": "Returns one of this project's own archive files' whole text content — e.g. attachment.read('policy.txt'). Reachable from an action's on-exit and task scripts, never from a trigger. `name` must be a string literal (exact archive path, or a unique basename under behaviour/); the file must exist, be text, and be under the size limit — all checked when the project is built, not when this runs.",
     }
@@ -77,9 +84,9 @@ class IdentifierRegistry:
         }
     SESSION_METRIC: dict[str, str] = _metric_descriptions(has_scope="one_session")
     METRIC: dict[str, str] = _metric_descriptions(has_scope="all_sessions_per_user", excludes_scope="one_session")
-    TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment", "chat")
+    TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment", "chat", "drive")
     TASK_SCOPE_EXCLUDES: tuple[str, ...] = ("session", "chat")
-    ON_EXIT_SCOPE_EXCLUDES: tuple[str, ...] = ("task",)
+    ON_EXIT_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "drive")
 
     @staticmethod
     def excluding(registry: dict[str, dict[str, str]], excluded: tuple[str, ...]) -> dict[str, dict[str, str]]:
@@ -114,6 +121,7 @@ class IdentifierRegistry:
             "task": dict(cls.TASK),
             "chat": dict(cls.CHAT),
             "attachment": dict(cls.ATTACHMENT),
+            "drive": dict(cls.DRIVE),
             "metric": dict(cls.METRIC),
             "datetime": dict(cls.DATETIME),
             "datetime.timezone": dict(cls.DATETIME_TIMEZONE),

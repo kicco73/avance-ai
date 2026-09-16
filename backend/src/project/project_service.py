@@ -73,6 +73,12 @@ class ProjectService(object):
     def get_automaton(self, project_id: str, revision: int) -> Automaton:
         return self.inspector.get_automaton(project_id, revision)
 
+    def list_drive_files(self, project_id: str, user_id: str, prefix: str = "") -> list[dict]:
+        return self.db.list_drive_files(project_id, user_id, prefix)
+
+    def read_drive_file(self, project_id: str, user_id: str, path: str) -> tuple[bytes, str] | None:
+        return self.db.read_drive_file(project_id, user_id, path)
+
     def invalidate_automaton(self, project_id: str, revision: int) -> None:
         self.automaton_loader.invalidate(project_id, revision)
 

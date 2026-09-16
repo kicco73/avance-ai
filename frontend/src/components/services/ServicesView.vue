@@ -220,7 +220,7 @@ function providerStatusTitle(index) {
         </div>
 
         <div v-show="activeTab === 'ai'" class="services-panel">
-          <div v-if="liveProviders.length" class="services-ai-usage-chart">
+          <div v-if="liveProviders.length && aiUsage.history.length >= 2" class="services-ai-usage-chart">
             <AiUsageTrendsChart :history="aiUsage.history" :provider-labels="aiProviderLabels" />
           </div>
           <label class="services-checkbox-field services-checkbox-field-active">

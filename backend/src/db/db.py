@@ -17,6 +17,7 @@ from .migration import SchemaMigrator
 from .observability import ObservabilityMixin
 from .projects import ProjectMixin
 from .sessions import SessionMixin
+from .drive import DriveMixin
 from .settings import SettingsMixin
 from .users import UserMixin
 from .user_projects import UserProjectMixin
@@ -26,7 +27,7 @@ from .tasks import TaskMixin
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    AiTokenUsage, Archive, CoreSession, EditHistory, File, Invite, Message,
+    AiTokenUsage, Archive, CoreSession, Drive, EditHistory, File, Invite, Message,
     Project, Settings, User, StateRemap, SystemWarning, Task, Test,
     TestAggregateResult, TestObservation, Tracking, UserProject,
     database,
@@ -53,13 +54,14 @@ class Db(
     InviteMixin,
     ObservabilityMixin,
     AiUsageMixin,
+    DriveMixin,
     TaskMixin):
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
         Project, CoreSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SystemWarning,
-        Settings, UserProject, Invite, AiTokenUsage, Task,
+        Settings, UserProject, Invite, AiTokenUsage, Task, Drive,
     )
 
     MIGRATION_STRATEGIES = ('stop', 'upgrade', 'drop')
@@ -73,9 +75,11 @@ class Db(
         database.connect(reuse_if_open=True)
         self._repair_indexes_if_inconsistent()
         self._drop_file_gc_triggers()
+        self._drop_drive_gc_triggers()
         self._apply_migration_strategy(migration_strategy)
         database.create_tables(self._MODELS, safe=True)
         self._create_file_gc_triggers()
+        self._create_drive_gc_triggers()
         self._backfill_projects()
         self._rename_channels_to_skill_keys()
         self._repoint_foreign_keys_to_renamed_tables()
@@ -212,6 +216,22 @@ class Db(
             'CREATE TRIGGER "file_gc_on_archive_rehash" AFTER UPDATE OF "hash" ON "Archive" '
             'WHEN OLD."hash" <> NEW."hash" '
             f'BEGIN {orphan_delete} END'
+        )
+
+    _DRIVE_GC_TRIGGERS = ('drive_gc_on_test_session_delete',)
+
+    @classmethod
+    def _drop_drive_gc_triggers(cls) -> None:
+        for name in cls._DRIVE_GC_TRIGGERS:
+            database.execute_sql(f'DROP TRIGGER IF EXISTS "{name}"')
+
+    @classmethod
+    def _create_drive_gc_triggers(cls) -> None:
+        cls._drop_drive_gc_triggers()
+        database.execute_sql(
+            'CREATE TRIGGER "drive_gc_on_test_session_delete" BEFORE DELETE ON "CoreSession" '
+            'WHEN OLD."type" = \'test\' '
+            'BEGIN DELETE FROM "Drive" WHERE "session_id" = OLD."id"; END'
         )
 
     @staticmethod

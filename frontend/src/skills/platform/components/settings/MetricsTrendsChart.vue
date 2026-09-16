@@ -263,9 +263,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="metrics-trends">
-    <p v-if="loading" class="metrics-trends-status">Loading…</p>
-    <div v-else-if="history.length >= 2" class="metrics-trends-canvas-wrap">
+  <div v-if="loading" class="metrics-trends">
+    <p class="metrics-trends-status">Loading…</p>
+  </div>
+  <div v-else-if="history.length >= 2" class="metrics-trends">
+    <div class="metrics-trends-canvas-wrap">
       <button v-if="isZoomed" class="trend-reset-zoom-btn" @click="resetZoom">Reset zoom</button>
       <canvas ref="canvasEl" @mousemove="onCanvasMouseMove" @mouseleave="onCanvasMouseLeave"></canvas>
     </div>
@@ -283,7 +285,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .metrics-trends {
-  height: 100%;
+  width: 100%;
+  height: 200px;
+  max-height: 200px;
+  flex-shrink: 0;
+  margin-bottom: 1rem;
   display: flex;
   flex-direction: column;
 }

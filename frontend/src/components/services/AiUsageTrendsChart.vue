@@ -172,8 +172,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="ai-usage-trends">
-    <p v-if="history.length < 2" class="ai-usage-trends-status">Not enough usage recorded yet to plot a trend.</p>
-    <div v-else class="ai-usage-trends-canvas-wrap">
+    <div class="ai-usage-trends-canvas-wrap">
       <button v-if="isZoomed" class="trend-reset-zoom-btn" @click="resetZoom">Reset zoom</button>
       <canvas ref="canvasEl" @mousemove="onCanvasMouseMove" @mouseleave="onCanvasMouseLeave"></canvas>
     </div>
@@ -194,13 +193,6 @@ onBeforeUnmount(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.ai-usage-trends-status {
-  margin: 0;
-  padding: 0.75rem 0;
-  font-size: 0.9rem;
-  color: #666;
 }
 
 .trend-reset-zoom-btn {
