@@ -9,15 +9,3 @@ export function getTestSessions(projectId) {
 export function postResetTestSessions(projectId) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/test-sessions/reset`, { method: 'POST' })
 }
-
-export function getAutoTracking(sessionId) {
-  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/autotracking`)
-}
-
-export function putAutoTracking(sessionId, enabled) {
-  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/autotracking`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled })
-  })
-}

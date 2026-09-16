@@ -76,3 +76,31 @@ DELETE` trigger matches nothing, because the FK action already nulled
 that column before the trigger body ran. The fix is `BEFORE DELETE`,
 which runs while the row (and the FK columns still pointing at it) are
 intact.
+
+## Most Inspector tabs still resync by guessing, not by being told
+
+`Inspector.vue` exposes two sweeps: `refresh()`, called when a tab becomes
+the visible one, and `resync()`, called by `EditProjectView.vue` whenever
+something elsewhere changed (`turnCount`, `selected`, `currentSessionId`,
+`refreshAfterProjectEdit`) that *might* mean the open tab's data is stale.
+Drive dropped out of `resync()` because it has its own bus event —
+`output.drive` (`tracking/actuators/drive_namespace.py`, see `BUS.md`) —
+so it reloads exactly when a `drive.write()` actually happens, delivered
+straight to `InspectorDriveTab.vue`.
+
+`InspectorGraphTab.vue`, `InspectorSignalsTab.vue`, `InspectorEnvTab.vue`
+and `InspectorStateIOTab.vue` still expose `resync` as a bare alias of
+`refresh`: they reload on every turn/selection/session tick because
+nothing tells them when their own data changed. The state graph is the
+partial exception — `state.changed` exists — but the others have no event
+to listen for at all.
+
+The fix is the same shape as Drive's, one tab at a time: publish a
+targeted `output.*` event where the data actually changes (an
+`output.signals` from wherever the signals log is appended to, an
+`output.env` from wherever `env.changed` is already emitted — see `BUS.md`
+— an equivalent for state I/O), have the matching tab subscribe the way
+`InspectorDriveTab.vue` does, and drop its `resync` export once it no
+longer needs to be told from outside. Until each one has its event, its
+`resync` alias is the tick-driven guess this replaces Drive out of, kept
+only because there is nothing better yet.

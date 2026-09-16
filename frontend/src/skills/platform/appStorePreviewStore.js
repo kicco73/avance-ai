@@ -9,7 +9,6 @@ export const appStorePreviewStore = createChatStore({
   kind: 'preview',
   getSessionsList: () => Promise.resolve([]),
   confirmNewSession: false,
-  useAutoTracking: false,
   useActuatorsToggle: false,
 })
 

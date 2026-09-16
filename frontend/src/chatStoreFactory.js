@@ -41,8 +41,7 @@ export function setTotalTokenBudgetPerSession(value) {
 
 export function createChatStore({
   kind, channel = null, getSessionsList, resetSession = null,
-  getAutoTracking = null, putAutoTracking = null,
-  confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false,
+  confirmNewSession = true, useActuatorsToggle = false,
 }) {
   const state = ref(null)
   const currentSessionId = ref(null)
@@ -66,8 +65,6 @@ export function createChatStore({
   const chatLoading = computed(() => turnsInFlight.value > 0)
   const chatStatus = ref('')
   const actionLoading = ref(false)
-  const autoTrackingEnabled = ref(true)
-  const autoTrackingLoading = ref(false)
   const actuatorsEnabled = ref(false)
   const actuatorsLoading = ref(false)
   const draft = ref('')
@@ -120,7 +117,6 @@ export function createChatStore({
     state.value = frame.state
     audioEnabled.value = !!frame.audio
     publishServices(frame.services || {})
-    if (useAutoTracking) loadAutoTracking()
     if (useActuatorsToggle) loadActuators()
     if (sessionsPanelOpen.value) loadSessions()
   })
@@ -213,14 +209,6 @@ export function createChatStore({
       role: m.role, content: m.content, audioText: m.audio_text, reaction: m.reaction,
       timestamp: m.timestamp, failed: false, messageId: m.id,
       toolCalls: m.tool_calls ?? null
-    }
-  }
-
-  async function loadAutoTracking() {
-    try {
-      const res = await getAutoTracking(currentSessionId.value)
-      autoTrackingEnabled.value = res.enabled
-    } catch {
     }
   }
 
@@ -332,18 +320,6 @@ export function createChatStore({
       }
       await loadSessions()
     } catch {
-    }
-  }
-
-  async function toggleAutoTracking() {
-    autoTrackingLoading.value = true
-    try {
-      const res = await putAutoTracking(currentSessionId.value, !autoTrackingEnabled.value)
-      autoTrackingEnabled.value = res.enabled
-      enterSession('session.enter')
-    } catch {
-    } finally {
-      autoTrackingLoading.value = false
     }
   }
 
@@ -593,7 +569,6 @@ export function createChatStore({
     showButtons([])
     clearApiError()
     chatStatus.value = ''
-    autoTrackingEnabled.value = true
     actuatorsEnabled.value = false
     blockedReason.value = null
     blockedDetail.value = ''
@@ -653,10 +628,10 @@ export function createChatStore({
     blockedReason, blockedDetail,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,
-    autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
+    actuatorsEnabled, actuatorsLoading, draft, turnCount,
     setProject,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
-    selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
+    selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleActuators,
     toggleAudio, handleSend, beginVoiceMessage, handleResend, handleReact, handleAction,
     clearChatUi, handleReset: resetSession ? handleReset : null, handleNewSession, handleCloseSession,
   }

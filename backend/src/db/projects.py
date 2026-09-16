@@ -5,7 +5,7 @@ from typing import Any
 from peewee import Expression
 
 from .models import (
-    Archive, CoreSession, EditHistory, File, Invite, Project, StateRemap,
+    Archive, CoreSession, Drive, EditHistory, File, Invite, Project, StateRemap,
     SystemWarning, Test, TestAggregateResult, User, UserProject, database,
 )
 
@@ -30,6 +30,7 @@ class ProjectMixin:
                 Project.update(id=new_id).where(Project.id == old_id).execute()
                 CoreSession.update(project=new_id).where(CoreSession.project == old_id).execute()
                 Archive.update(project=new_id).where(Archive.project == old_id).execute()
+                Drive.update(project=new_id).where(Drive.project == old_id).execute()
                 Invite.update(project=new_id).where(Invite.project == old_id).execute()
                 UserProject.update(project=new_id).where(UserProject.project == old_id).execute()
                 User.update(active_project=new_id).where(User.active_project == old_id).execute()

@@ -11,8 +11,6 @@ vi.mock('../../../api.js', () => ({
   getHistory: vi.fn(),
   getActuators: vi.fn(),
   putActuators: vi.fn(),
-  getAutoTracking: vi.fn(),
-  putAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
   postResetTestSessions: vi.fn(),

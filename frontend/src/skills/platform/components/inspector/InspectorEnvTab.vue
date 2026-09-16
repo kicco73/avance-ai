@@ -131,7 +131,7 @@ function openValueDialog(key, value) {
   })
 }
 
-defineExpose({ loadEnv, refresh })
+defineExpose({ loadEnv, refresh, resync: refresh })
 </script>
 
 <template>

@@ -83,7 +83,7 @@ async function refresh(active) {
 }
 function stateElementFor(stateKey) { return graphRef.value?.stateElementFor(stateKey) ?? null }
 
-defineExpose({ loadGraph, resize, fit, refresh, stateElementFor })
+defineExpose({ loadGraph, resize, fit, refresh, resync: refresh, stateElementFor })
 </script>
 
 <template>

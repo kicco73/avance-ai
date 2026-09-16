@@ -9,8 +9,6 @@ vi.mock('../src/api.js', () => ({
   getHistory: vi.fn(),
   getActuators: vi.fn(),
   putActuators: vi.fn(),
-  getAutoTracking: vi.fn(),
-  putAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
   postResetTestSessions: vi.fn(),
@@ -43,7 +41,6 @@ describe('a pushed task script runs once, in the chat whose conversation it is a
     api.getSessions.mockResolvedValue([])
     api.getTestSessions.mockResolvedValue([])
     api.getActuators.mockResolvedValue({ enabled: true })
-    api.getAutoTracking.mockResolvedValue({ enabled: true })
     await chatStore.loadMessages('proj')
     bus.deliverEntered({ sessionId: 7, projectId: 'proj', state: STATE })
     await testChatStore.loadMessages()

@@ -253,7 +253,7 @@ async function refreshAfterProjectEdit() {
   await indexYmlEditorRef.value?.refresh(false)
   await indexYmlEditorRef.value?.reloadCode()
   if (runOpen.value && !chatLoading.value) await ensureDraftChatSession()
-  if (inspecting.value) await inspectorRef.value?.refresh()
+  if (inspecting.value) await inspectorRef.value?.resync()
   resyncSelectedGraphElement()
 }
 
@@ -365,7 +365,7 @@ watch(turnCount, () => {
   refreshSignalsLog()
   if (!inspecting.value) return
   nextTick(() => {
-    inspectorRef.value?.refresh()
+    inspectorRef.value?.resync()
     if (editorOpen.value) indexYmlEditorRef.value?.refresh(false)
   })
 })
@@ -373,7 +373,7 @@ watch(turnCount, () => {
 watch(selected, () => {
   if (!inspecting.value) return
   nextTick(() => {
-    inspectorRef.value?.refresh()
+    inspectorRef.value?.resync()
   })
 })
 
@@ -381,7 +381,7 @@ watch(currentSessionId, () => {
   selected.value = null
   refreshSessionStartState()
   refreshSignalsLog()
-  if (inspecting.value) nextTick(() => inspectorRef.value?.refresh())
+  if (inspecting.value) nextTick(() => inspectorRef.value?.resync())
 })
 
 function reportPause() {

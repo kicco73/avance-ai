@@ -30,7 +30,7 @@ async function refresh() {
   await loadEnvKeys()
 }
 
-defineExpose({ loadEnvKeys, refresh })
+defineExpose({ loadEnvKeys, refresh, resync: refresh })
 
 onMounted(refresh)
 

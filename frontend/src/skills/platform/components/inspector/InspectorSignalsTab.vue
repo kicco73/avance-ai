@@ -20,7 +20,7 @@ const displayedSignals = computed(() => {
   return signals.value.filter((s) => s.relevant)
 })
 
-defineExpose({ loadSignals, refresh })
+defineExpose({ loadSignals, refresh, resync: refresh })
 </script>
 
 <template>

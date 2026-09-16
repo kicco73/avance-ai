@@ -55,11 +55,17 @@ async function refresh() {
   )
 }
 
+async function resync() {
+  await Promise.all(
+    Object.entries(registry).map(([id, instance]) => instance.resync?.(id === internalActive.value))
+  )
+}
+
 function resize() {
   Object.values(registry).forEach((instance) => instance.resize?.())
 }
 
-defineExpose({ refresh, resize })
+defineExpose({ refresh, resync, resize })
 </script>
 
 <template>

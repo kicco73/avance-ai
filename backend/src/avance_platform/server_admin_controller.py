@@ -61,7 +61,6 @@ class ServerAdminController(BaseController):
         content = await request.body()
         async with self.turn_service.global_exclusive_access():
             self.db.restore_backup(content)
-            self.turn_service.clear_auto_tracking_overrides()
         return {"success": True}
 
     @post("/api/skills/platform/settings/database/wipe-live-sessions", role="admin")

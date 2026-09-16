@@ -51,7 +51,6 @@ class TrackingService(object):
 		self._total_token_budget_per_session = total_token_budget_per_session
 		self._session_import_manager = SessionImportManager(db)
 		self._session_export_manager = SessionExportManager(db)
-		self._disabled_test_sessions: set[int] = set()
 		self._audio_sessions: set[int] = set()
 		self._human_talker_factory: HumanTalkerFactory | None = None
 
@@ -75,15 +74,6 @@ class TrackingService(object):
 	def get_total_token_budget_per_session(self) -> int | None:
 		return self._total_token_budget_per_session
 
-	def is_auto_tracking_enabled(self, session_id: int) -> bool:
-		return session_id not in self._disabled_test_sessions
-
-	def set_auto_tracking_enabled(self, session_id: int, enabled: bool) -> None:
-		if enabled:
-			self._disabled_test_sessions.discard(session_id)
-		else:
-			self._disabled_test_sessions.add(session_id)
-
 	def is_audio_enabled(self, session_id: int) -> bool:
 		return session_id in self._audio_sessions
 
@@ -92,12 +82,6 @@ class TrackingService(object):
 			self._audio_sessions.add(session_id)
 		else:
 			self._audio_sessions.discard(session_id)
-
-	def clear_auto_tracking_overrides(self) -> None:
-		"""A full DB restore can reuse session ids the in-memory freeze
-		set still refers to — clears it outright rather than risk a stale
-		entry silently freezing an unrelated, newly-restored session."""
-		self._disabled_test_sessions.clear()
 
 	def build_import_sessions_job(self, project_id: str, uploads: list[tuple[str, bytes]]) -> SessionImportJob:
 		return SessionImportJob(self._session_import_manager, self._db, project_id, uploads)
@@ -283,7 +267,6 @@ class TrackingService(object):
 
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		session = self._db.get_chat_session(session_id)
-		is_test_session = session is not None and session["type"] == "test"
 		project_id = session["project_id"]
 
 		user_vars = UserVariables(
@@ -314,7 +297,6 @@ class TrackingService(object):
 		tracking_processor = TrackingProcessor(
 			ai_service, scope_builder,
 			env, self._db, user_vars,
-			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 

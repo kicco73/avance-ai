@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from .models import Drive, database
+from .models import CoreSession, Drive, database
 from .utils import _utc_iso
 
 
@@ -58,6 +58,14 @@ class DriveMixin:
         if prefix:
             query = query.where(Drive.path.startswith(prefix))
         return query.execute()
+
+    def delete_drive_files_for_sessions_of_type(self, project_id: str, user_id: str, type: str) -> int:
+        session_ids = CoreSession.select(CoreSession.id).where(
+            (CoreSession.project == project_id) & (CoreSession.username == user_id) & (CoreSession.type == type)
+        )
+        return Drive.delete().where(
+            (Drive.project == project_id) & (Drive.user == user_id) & (Drive.session.in_(session_ids))
+        ).execute()
 
     @staticmethod
     def _renamed_for_merge(path: str, taken: set[str]) -> str:

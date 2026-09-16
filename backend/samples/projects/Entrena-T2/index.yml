@@ -46,43 +46,33 @@ states:
       - name: elegir_caso_1
         ui-label: "Manuel (Tabaco)"
         target: state-1
-        trigger: "signal.caso_manuel == 100"
       - name: elegir_caso_2
         ui-label: "Laura (Alcohol)"
         target: state-2
-        trigger: "signal.caso_laura == 100"
       - name: elegir_caso_3
         ui-label: "Antonio (Diabetes)"
         target: state-3
-        trigger: "signal.caso_antonio == 100"
       - name: elegir_caso_4
         ui-label: "Cristina (Obesidad)"
         target: state-4
-        trigger: "signal.caso_cristina == 100"
       - name: elegir_caso_5
         ui-label: "Carmen (Polimedicación)"
         target: state-5
-        trigger: "signal.caso_carmen == 100"
       - name: elegir_caso_6
         ui-label: "Javier (Dolor crónico)"
         target: state-6
-        trigger: "signal.caso_javier == 100"
       - name: elegir_caso_7
         ui-label: "Marc (Cannabis)"
         target: state-7
-        trigger: "signal.caso_marc == 100"
       - name: elegir_caso_8
         ui-label: "Nuria (Depresión)"
         target: state-8
-        trigger: "signal.caso_nuria == 100"
       - name: elegir_caso_9
         ui-label: "Sergio (Juego online)"
         target: state-9
-        trigger: "signal.caso_sergio == 100"
       - name: elegir_caso_10
         ui-label: "Ricardo (Post-infarto)"
         target: state-10
-        trigger: "signal.caso_ricardo == 100"
   state-1:
     ui-label: Caso 1
     attachments:

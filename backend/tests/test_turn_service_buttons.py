@@ -1,8 +1,7 @@
 """What a session offers the person to press (TurnService.buttons_for,
-see automaton.pressable_actions) — a live session always excludes
-triggered actions, a test session only while its own auto-tracking
-toggle is on. Never part of the state payload: the choices are their own
-message (`state.buttons`, see docs/BUS.md).
+see automaton.pressable_actions) — always excludes triggered actions.
+Never part of the state payload: the choices are their own message
+(`state.buttons`, see docs/BUS.md).
 """
 from __future__ import annotations
 
@@ -91,26 +90,13 @@ async def test_live_session_always_excludes_triggered_actions(db):
     assert names == {"manual"}
 
 
-async def test_test_session_excludes_triggered_actions_while_auto_tracking_is_on(db):
+async def test_test_session_also_excludes_triggered_actions(db):
     turn_service = _turn_service(db)
 
     session = await turn_service.enter_session(PROJECT_ID, 'test')
 
-    assert turn_service.is_auto_tracking_enabled(session["id"]) is True
     names = {a["name"] for a in turn_service.buttons_for(session["id"], session["state"])}
     assert names == {"manual"}
-
-
-async def test_test_session_includes_triggered_actions_once_auto_tracking_is_off(db):
-    turn_service = _turn_service(db)
-    session = await turn_service.enter_session(PROJECT_ID, 'test')
-    session_id = session["id"]
-
-    turn_service.set_auto_tracking_enabled(session_id, False)
-    state = turn_service.get_state_for_session(session_id)
-
-    names = {a["name"] for a in turn_service.buttons_for(session_id, state)}
-    assert names == {"manual", "auto"}
 
 
 async def test_actions_field_itself_is_never_filtered(db):

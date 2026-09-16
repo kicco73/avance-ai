@@ -188,15 +188,3 @@ async def test_a_key_the_state_does_not_read_is_refused_even_when_env_holds_opti
 
     with pytest.raises(ValueError, match="not a choice offered in state 'a'"):
         await turn_service.apply_choice(ChoiceSelection(key="unread", option="x"), session_id)
-
-
-async def test_a_press_fires_even_with_auto_tracking_off(turn_service_for):
-    db = turn_service_for.db
-    turn_service = turn_service_for(_automaton(), _FakeProvider())
-    session_id = await _session_with_options(turn_service, db, ["morning"], session_type="test")
-    turn_service.set_auto_tracking_enabled(session_id, False)
-
-    result = await turn_service.apply_choice(ChoiceSelection(key="slot", option="morning"), session_id)
-
-    assert result is not None and result["triggered_action"] == "book"
-    assert result["env_changed"] == {"booked_slot": "morning", "note": "picked morning"}

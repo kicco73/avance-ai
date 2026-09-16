@@ -59,7 +59,7 @@ class SessionTypeStrategy(ABC):
     def fires_init_action(self, automaton: "Automaton") -> bool: ...
     def reset_env_for_new_session(self, automaton: "Automaton", env: "Env") -> None:
         return None
-    def discard_superseded(self, session_manager: "SessionManager", username: str) -> None:
+    def discard_superseded(self, session_manager: "SessionManager", username: str, project_id: str) -> None:
         return None
 
 
@@ -129,6 +129,9 @@ class TestSessionStrategy(SessionTypeStrategy):
     def fires_init_action(self, automaton: "Automaton") -> bool:
         return True
 
+    def discard_superseded(self, session_manager: "SessionManager", username: str, project_id: str) -> None:
+        session_manager.clear_drive_of_type(username, project_id, self.type_name)
+
 
 class PreviewSessionStrategy(SessionTypeStrategy):
     type_name = 'preview'
@@ -141,7 +144,7 @@ class PreviewSessionStrategy(SessionTypeStrategy):
 
     def is_current(self, session: dict, active_session: dict | None) -> bool:
         return True
-    def discard_superseded(self, session_manager: "SessionManager", username: str) -> None:
+    def discard_superseded(self, session_manager: "SessionManager", username: str, project_id: str) -> None:
         session_manager.discard_sessions_of_type(username, self.type_name)
 
     def caller_channel(self) -> str | None:

@@ -527,14 +527,6 @@ class TurnService(object):
 	def get_total_token_budget_per_session(self) -> int | None:
 		return self._tracking_service.get_total_token_budget_per_session()
 
-	def is_auto_tracking_enabled(self, session_id: int) -> bool:
-		self._ownership.require_own_session(session_id)
-		return self._tracking_service.is_auto_tracking_enabled(session_id)
-
-	def set_auto_tracking_enabled(self, session_id: int, enabled: bool) -> None:
-		self._ownership.require_own_session(session_id)
-		self._tracking_service.set_auto_tracking_enabled(session_id, enabled)
-
 	def is_audio_enabled(self, session_id: int) -> bool:
 		self._ownership.require_own_session(session_id)
 		return self._tracking_service.is_audio_enabled(session_id)
@@ -556,7 +548,7 @@ class TurnService(object):
 		see docs/BUS.md), and a state that carried them too meant two
 		roads to the same buttons and a first paint that disagreed with
 		what was published."""
-		pressable = pressable_actions(state_payload["actions"], self.is_auto_tracking_enabled(session_id))
+		pressable = pressable_actions(state_payload["actions"])
 		return pressable + self._choice_buttons_for(session_id, state_payload["key"])
 
 	def _choice_buttons_for(self, session_id: int, state_key: str) -> list[dict]:
@@ -593,9 +585,6 @@ class TurnService(object):
 	def set_actuators_enabled(self, session_id: int, enabled: bool) -> None:
 		self._ownership.require_own_session(session_id)
 		self._namespace_factory.set_enabled_for_test_session(session_id, enabled)
-
-	def clear_auto_tracking_overrides(self) -> None:
-		self._tracking_service.clear_auto_tracking_overrides()
 
 	def global_exclusive_access(self):
 		return self._global_lock

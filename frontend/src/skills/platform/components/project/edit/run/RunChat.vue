@@ -12,7 +12,6 @@ import { useTokensBar } from '../../../../../../composables/useTokensBar.js'
 import { useFloatingTooltip } from '../../../../../../useFloatingTooltip.js'
 
 const {
-  autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking,
   actuatorsEnabled, actuatorsLoading, toggleActuators,
   sessions, sessionsLoading, currentSessionId, loadSessions, selectSession, handleNewSession, handleDeleteSession,
   state, handleReact, turnCount
@@ -158,18 +157,6 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="edit-project-chat-toolbar-toggles">
-          <label
-            class="dev-mode-toggle"
-            :class="{ 'dev-mode-toggle-active': !autoTrackingEnabled, 'dev-mode-toggle-disabled': autoTrackingLoading }"
-          >
-            <input
-              type="checkbox"
-              :checked="!autoTrackingEnabled"
-              :disabled="autoTrackingLoading"
-              @change="toggleAutoTracking"
-            />
-            Freeze transitions
-          </label>
           <label
             class="dev-mode-toggle"
             :class="{ 'dev-mode-toggle-active': actuatorsEnabled, 'dev-mode-toggle-disabled': actuatorsLoading }"

@@ -1,8 +1,8 @@
 """What the Inspector reads and writes about a live session.
 
 The design view's own surface: the env a session has accumulated, the
-structured `output` of its last turns, the signals last computed for it,
-and the dev-mode switch that freezes automatic state transitions.
+structured `output` of its last turns, and the signals last computed
+for it.
 
 It sat in webchat until now, and only because the split that created
 that package went by URL prefix: everything under /api/skills/webchat/ was taken
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 
 from controllers.base_controller import BaseController, delete, get, put
-from schemas import AutoTrackingRequest, SetEnvValueRequest
+from schemas import SetEnvValueRequest
 from turn.turn_service import TurnService
 
 
@@ -71,15 +71,3 @@ class InspectorController(BaseController):
         """Removes one stored env key outright (see TurnService.
         delete_env_key) — the Inspector Env tab's own delete button."""
         return self.turn_service.delete_env_key(session_id, key)
-
-    @get("/api/skills/platform/sessions/{session_id}/autotracking")
-    def get_autotracking(self, session_id: int):
-        """"Dev mode: freeze automatic state transitions" — EditProjectView.
-        vue's own embedded "Test" chat only; a native/imported session is
-        always auto-tracked (see TrackingService.process)."""
-        return {"enabled": self.turn_service.is_auto_tracking_enabled(session_id)}
-
-    @put("/api/skills/platform/sessions/{session_id}/autotracking")
-    def put_autotracking(self, session_id: int, req: AutoTrackingRequest):
-        self.turn_service.set_auto_tracking_enabled(session_id, req.enabled)
-        return {"enabled": self.turn_service.is_auto_tracking_enabled(session_id)}

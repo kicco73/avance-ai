@@ -24,7 +24,6 @@ from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
-from tracking.tracking_service import TrackingService
 from tracking.user_facts import UserFacts
 
 from event.event_namespace import watched_from, NAME
@@ -58,14 +57,12 @@ class WakeupJob(CancelableJob):
 class EventService:
     def __init__(
         self, db: Db, project_service: ProjectService, scheduler_service: SchedulerService, namespace_factory: TaskNamespaceFactory,
-        tracking_service: TrackingService | None = None,
         ai_service: AiService | None = None,
     ) -> None:
         self._db = db
         self._project_service = project_service
         self._scheduler_service = scheduler_service
         self._namespace_factory = namespace_factory
-        self._tracking_service = tracking_service
         self._ai_service = ai_service
 
     def register(self) -> None:
@@ -132,14 +129,10 @@ class EventService:
                     origin='system', username=username, project_id=observer_project_id,
                 )
                 state_payload = automaton.get_state_payload(state)
-                auto_tracking_enabled = (
-                    self._tracking_service.is_auto_tracking_enabled(session["id"])
-                    if self._tracking_service is not None else True
-                )
                 await bus.publish(Message(type=UI_NOTIFICATION, username=username, body={
                     "project_name": observer_project_id,
                     "state": state_payload,
-                    "buttons": pressable_actions(state_payload["actions"], auto_tracking_enabled),
+                    "buttons": pressable_actions(state_payload["actions"]),
                 }))
 
     def _wake(self, username: str, observer_project_id: str) -> None:

@@ -88,7 +88,7 @@ annotating one. Even reading a transcript opens nothing
 | `task.ended` | `{key, result, error}` | `tracking/actuators/action_task.py`, once that script is over for good. `result` is the JS text its snippet-producing statements built (`None` if the script never ran); `error` names every statement that raised, one per line, or is `None` when none did. Same `key` and same envelope as `task.started` |
 | `ui.progress` | `dict` | `system/broadcaster.py` |
 | `tool.send_mail` | `{to, subject, body_md}` | `tracking/actuators/actuator_set.py` |
-| `output.drive` | `{path}` | `tracking/actuators/drive_namespace.py`, after every `drive.write(...)` — `output.*` for what it names, delivered like the rest of this table (an identity's registered connections, envelope `project_id`/`session_id`), never through the per-session "who is watching" path `output.text`/`state.changed` use |
+| `output.drive` | `{path}` — `None` for a bulk clear | `tracking/actuators/drive_namespace.py`, after every `drive.write(...)` (`path` set to the written path), and `turn/sessions/session_manager.py`'s `clear_drive_of_type`, when a new test session clears a previous test session's drive (`path: None` — the receiving end already treats any `output.drive` as "refetch the listing", so no per-path detail is needed here) — `output.*` for what it names, delivered like the rest of this table (an identity's registered connections, envelope `project_id`/`session_id`), never through the per-session "who is watching" path `output.text`/`state.changed` use |
 
 ## One request, one reply
 
@@ -208,11 +208,20 @@ username and the type, with no project in it. Both halves go — the rows
 (the session, its messages, its tracking) and the ephemeral env the
 session was carrying (`EphemeralEnvRegistry`).
 
-`live` and `test` inherit the base `discard_superseded`, which supersedes
-nothing: a live conversation is what a sessions panel lists and what a
-benchmark reads, and a test one is what an editor's own sessions panel
-lists. `backend/tests/test_preview_sessions_supersede.py` holds all three
-cases.
+`live` inherits the base `discard_superseded`, which supersedes nothing: a
+live conversation is what a sessions panel lists and what a benchmark
+reads. `backend/tests/test_preview_sessions_supersede.py` holds both that
+and the preview case.
+
+`test` overrides `discard_superseded` too, but not to delete a row: a test
+session is still what an editor's own sessions panel lists, so the row
+stays. What it clears is the *drive* a previous test session of that same
+project — the person's own, other test sessions and other projects
+untouched — wrote through `Drive.session_id`
+(`SessionManager.clear_drive_of_type`, `db/drive.py`'s
+`delete_drive_files_for_sessions_of_type`), publishing `output.drive` once
+if anything was actually cleared. A fresh test run always starts against
+an empty drive, without losing the transcript of the run that used it.
 
 ## Who is told what
 

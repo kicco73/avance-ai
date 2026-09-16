@@ -62,3 +62,37 @@ def test_a_file_written_with_no_firing_session_is_unaffected_by_any_session_dele
     db.delete_chat_session(session_id)
 
     assert db.read_drive_file(PROJECT, "user", "reports/last.md")[0] == b"ciao"
+
+
+def test_delete_drive_files_for_sessions_of_type_clears_the_drive_but_keeps_the_session_row(db: Db):
+    session_id = _seed(db)
+    db.write_drive_file(PROJECT, "user", "reports/last.md", b"ciao", "text/markdown", session_id)
+
+    cleared = db.delete_drive_files_for_sessions_of_type(PROJECT, "user", "test")
+
+    assert cleared == 1
+    assert db.read_drive_file(PROJECT, "user", "reports/last.md") is None
+    assert db.get_chat_session(session_id) is not None
+
+
+def test_delete_drive_files_for_sessions_of_type_leaves_other_users_projects_and_types_alone(db: Db):
+    session_id = _seed(db)
+    db.write_drive_file(PROJECT, "user", "reports/mine.md", b"mio", "text/markdown", session_id)
+
+    other_project = "other"
+    db.ensure_project(other_project)
+    other_project_session = db.create_chat_session("user", other_project, revision=0, type="test")
+    db.write_drive_file(other_project, "user", "reports/mine.md", b"altro-progetto", "text/markdown", other_project_session)
+
+    db.get_or_create_user("test", "sub-other", "other-user", "Other", None)
+    other_user_session = db.create_chat_session("other-user", PROJECT, revision=0, type="test")
+    db.write_drive_file(PROJECT, "other-user", "reports/mine.md", b"altro-utente", "text/markdown", other_user_session)
+
+    live_session = db.create_chat_session("user", PROJECT, revision=0, type="live")
+    db.write_drive_file(PROJECT, "user", "reports/live.md", b"live", "text/markdown", live_session)
+
+    db.delete_drive_files_for_sessions_of_type(PROJECT, "user", "test")
+
+    assert db.read_drive_file(other_project, "user", "reports/mine.md")[0] == b"altro-progetto"
+    assert db.read_drive_file(PROJECT, "other-user", "reports/mine.md")[0] == b"altro-utente"
+    assert db.read_drive_file(PROJECT, "user", "reports/live.md")[0] == b"live"

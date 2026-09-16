@@ -15,10 +15,6 @@ class AcceptTermsRequest(BaseModel):
     invite_code: str | None = None
 
 
-class AutoTrackingRequest(BaseModel):
-    enabled: bool
-
-
 class ActuatorsRequest(BaseModel):
     enabled: bool
 

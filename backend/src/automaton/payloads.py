@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     )
 
 
-def pressable_actions(actions: list[ActionPayload], auto_tracking_enabled: bool) -> list[ActionPayload]:
-    return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
+def pressable_actions(actions: list[ActionPayload]) -> list[ActionPayload]:
+    return [a for a in actions if not a["has_trigger"]]
 
 
 class PayloadsMixin(object):

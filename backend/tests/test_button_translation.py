@@ -35,30 +35,24 @@ def _automaton_showing(action: Action) -> Automaton:
 	)
 
 
-@pytest.mark.parametrize(("action", "auto_tracking_enabled"), [
-	(Action(name="skip", ui_label="Skip", ui_button="", target="a"), True),
-	(Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50"), True),
-	(Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50"), False),
-	(Action(name="advance", ui_label="Advance", ui_button="Advance", target="b"), True),
-], ids=["no-ui-button", "triggerable-auto-on", "triggerable-auto-off", "untriggered"])
-def test_the_buttons_queued_for_translation_are_exactly_the_ones_the_state_shows(action, auto_tracking_enabled):
+@pytest.mark.parametrize("action", [
+	Action(name="skip", ui_label="Skip", ui_button="", target="a"),
+	Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50"),
+	Action(name="advance", ui_label="Advance", ui_button="Advance", target="b"),
+], ids=["no-ui-button", "triggerable", "untriggered"])
+def test_the_buttons_queued_for_translation_are_exactly_the_ones_the_state_shows(action):
 	"""Two pieces of production code decide the same thing and must never
 	disagree: `pressable_actions` is what the caller is offered, and
 	`_button_labels_to_translate` is what gets translated — the second is
-	the first, minus whatever has nothing to translate. A second call site
-	already passes a hardcoded auto_tracking_enabled=False (see
-	tracking_processor.py's own prompt-size estimate), so the two can drift
-	apart without either failing on its own."""
+	the first, minus whatever has nothing to translate."""
 	automaton = _automaton_showing(action)
 	payload = automaton.get_state_payload(automaton.states["a"])
 
-	queued = TrackingProcessor._button_labels_to_translate(
-		automaton.states["a"], auto_tracking_enabled=auto_tracking_enabled,
-	)
+	queued = TrackingProcessor._button_labels_to_translate(automaton.states["a"])
 
 	assert queued == {
 		a["name"]: a["ui_button"]
-		for a in pressable_actions(payload["actions"], auto_tracking_enabled) if a["ui_button"]
+		for a in pressable_actions(payload["actions"]) if a["ui_button"]
 	}
 
 

@@ -13,7 +13,6 @@ export const liveStore = createChatStore({
   channel: liveChatChannel,
   getSessionsList: (includeImported, projectId) => getSessions(projectId, includeImported),
   confirmNewSession: true,
-  useAutoTracking: false,
 })
 
 export function observeLiveChat(observers) {
@@ -30,10 +29,10 @@ export const {
   state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
   sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading,
-  autoTrackingEnabled, autoTrackingLoading, draft, turnCount,
+  draft, turnCount,
   setProject,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
-  selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking,
+  selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession,
   toggleAudio, handleSend, beginVoiceMessage, handleResend, handleReact, handleAction,
   clearChatUi, handleNewSession, handleCloseSession,
 } = liveStore

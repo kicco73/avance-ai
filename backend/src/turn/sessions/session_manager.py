@@ -9,7 +9,7 @@ from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.sessions.env_for_session import env_for_session
 from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from system import bus
-from system.bus import SESSION_ENDED, Message
+from system.bus import OUTPUT_DRIVE, SESSION_ENDED, Message
 from db import Db
 from system.logging_factory import LoggerFactory
 from project.archive.layout import CACHE_DIR
@@ -85,7 +85,7 @@ class SessionManager(object):
     def create_session(
         self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_id: str,
     ) -> dict:
-        strategy.discard_superseded(self, username)
+        strategy.discard_superseded(self, username, project_id)
         state_key = strategy.starting_state(project_service, project_id, username)
         now = datetime.utcnow()
         revision = strategy.revision_for(project_service, project_id)
@@ -105,6 +105,12 @@ class SessionManager(object):
     def discard_sessions_of_type(self, username: str, type: str) -> None:
         for discarded_id in self._db.delete_sessions_by_username_and_type(username, type):
             EphemeralEnvRegistry().discard(discarded_id)
+
+    def clear_drive_of_type(self, username: str, project_id: str, type: str) -> int:
+        cleared = self._db.delete_drive_files_for_sessions_of_type(project_id, username, type)
+        if cleared:
+            _publish(Message(type=OUTPUT_DRIVE, username=username, project_id=project_id, body={"path": None}))
+        return cleared
 
     def get_current_session_if_any_or_create_new(
         self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_id: str,

@@ -10,7 +10,7 @@ import ProjectsMenu from '../ProjectsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
 import SplashScreen from '../SplashScreen.vue'
-import { setApiError } from '../../errorStore.js'
+import ErrorBanner from '../ErrorBanner.vue'
 import { unlockAudioPlayback } from '../../audio.js'
 import { liveStore } from '../../chatStore.js'
 import {
@@ -205,6 +205,7 @@ watch(
       embedded
     />
     <template v-else>
+    <ErrorBanner />
     <div class="chat-header">
       <div class="chat-header-icon"></div>
     </div>

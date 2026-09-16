@@ -127,23 +127,22 @@ class TrackingEngine:
     `env`/`scope_builder` already behaves correctly for its own context."""
 
     def __init__(
-        self, sink: TrackingSink, env: Env, scope_builder: EvaluationScopeBuilder, auto_tracking_enabled: bool = True,
+        self, sink: TrackingSink, env: Env, scope_builder: EvaluationScopeBuilder,
     ) -> None:
         self._sink = sink
         self._env = env
         self._scope_builder = scope_builder
-        self._auto_tracking_enabled = auto_tracking_enabled
 
     def evaluate_triggered_action(
         self, automaton: Automaton, state: State, signal_values: dict, selection: ChoiceSelection,
         session_id: int | None = None, output_values: dict | None = None,
     ) -> Action | None:
-        """None whenever auto-tracking is frozen or `state` has nothing
-        triggerable. Only decides which action fires from already-computed
-        signals — never whether they get computed at all. `session_id`:
-        see EvaluationScopeBuilder.build. `output_values`: structured output
+        """None whenever `state` has nothing triggerable. Only decides
+        which action fires from already-computed signals — never whether
+        they get computed at all. `session_id`: see
+        EvaluationScopeBuilder.build. `output_values`: structured output
         dict from this turn's AI generation, available in trigger expressions."""
-        if not self._auto_tracking_enabled or not state.has_triggerable_actions:
+        if not state.has_triggerable_actions:
             return None
 
         scope = self._scope_builder.build(

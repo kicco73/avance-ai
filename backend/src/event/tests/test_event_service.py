@@ -78,16 +78,6 @@ def project_service(db) -> ProjectService:
 _namespace_factory = make_test_namespace_factory
 
 
-class _FakeTrackingService:
-    def __init__(self, disabled_session_ids):
-        self._disabled = disabled_session_ids
-
-    def is_auto_tracking_enabled(self, session_id):
-        return session_id not in self._disabled
-
-
-
-
 def _offer_core(db, project_service) -> None:
     bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({"db": db, "project_service": project_service}))
 
@@ -151,15 +141,6 @@ class TestWakeupNotification:
         assert message.body["state"]["key"] == "x"
         assert "task" not in message.body
         assert message.body["buttons"] == []
-
-    def test_the_choices_include_the_triggered_action_when_auto_tracking_is_disabled(self, db, project_service):
-        watcher_session = _both_projects(db, project_service)
-        notified = RecordedMessages(UI_NOTIFICATION)
-
-        _wake(db, project_service, tracking_service=_FakeTrackingService({watcher_session["id"]}))
-
-        (message,) = notified.for_user(USERNAME)
-        assert [a["name"] for a in message.body["buttons"]] == ["notice"]
 
     def test_nothing_is_announced_when_the_self_loop_does_not_fire(self, db, project_service):
         _both_projects(db, project_service, observed_moved=False)

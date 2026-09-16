@@ -115,7 +115,6 @@ class TrackingProcessor(object):
 			  env: Env,
 			  db: Db,
 			  user_variables: UserVariables,
-			  auto_tracking_enabled: bool = True,
 			  input_token_budget_per_turn: int | None = 16000,
 			  assistant_talker: "BaseTalker | None" = None,
 		):
@@ -125,10 +124,9 @@ class TrackingProcessor(object):
 		self.env = env
 		self.db = db
 		self.user = user_variables
-		self.auto_tracking_enabled = auto_tracking_enabled
 		self.moved_before_reply = False
 		self.input_token_budget_per_turn = input_token_budget_per_turn
-		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
+		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder)
 
 	async def _get_ai_reply(self) -> OutVariables:
 		raise NotImplementedError
@@ -488,13 +486,13 @@ class TrackingProcessor(object):
 		return self._append_translate_prompt(prompt, state)
 
 	def _append_translate_prompt(self, prompt: Prompt, state: State) -> Prompt:
-		originals = self._button_labels_to_translate(state, self.auto_tracking_enabled)
+		originals = self._button_labels_to_translate(state)
 		if originals:
 			return prompt.compose(TranslatePrompt(originals))
 		return prompt
 
 	@staticmethod
-	def _button_labels_to_translate(state: State, auto_tracking_enabled: bool) -> dict[str, str]:
+	def _button_labels_to_translate(state: State) -> dict[str, str]:
 		"""{action name: original ui_button text} for every action `state`
 		would show as a manual button — same filter as
 		automaton.pressable_actions, over live Action objects instead of
@@ -502,7 +500,7 @@ class TrackingProcessor(object):
 		ui_button (nothing to translate otherwise)."""
 		return {
 			a.name: a.ui_button for a in state.actions
-			if (a.trigger is None or not auto_tracking_enabled) and a.ui_button
+			if a.trigger is None and a.ui_button
 		}
 
 	def __build_turn_prompt_parts(
@@ -635,7 +633,7 @@ def estimate_state_prompt(
 		prompt = Prompt.chain(output_prompt, signals_prompt, reaction_prompt, audio_prompt, text_prompt, memory_prompt)
 	else:
 		prompt = Prompt.chain(audio_prompt, text_prompt, output_prompt, signals_prompt, reaction_prompt, memory_prompt)
-	originals = TrackingProcessor._button_labels_to_translate(state, auto_tracking_enabled=False)
+	originals = TrackingProcessor._button_labels_to_translate(state)
 	if originals:
 		prompt = prompt.compose(TranslatePrompt(originals))
 

@@ -40,7 +40,6 @@ class EventSkill(Skill):
         self._service = EventService(
             core["db"], core["project_service"], core["scheduler_service"],
             core["namespace_factory"],
-            tracking_service=core["tracking_service"],
             ai_service=core["ai_live_service"],
         )
         self._service.register()

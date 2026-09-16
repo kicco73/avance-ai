@@ -19,7 +19,6 @@ export const testStore = createChatStore({
   getSessionsList: () => getTestSessions(testStore.currentProjectId.value),
   resetSession: () => postResetTestSessions(testStore.currentProjectId.value),
   confirmNewSession: false,
-  useAutoTracking: true,
   useActuatorsToggle: true,
 })
 
@@ -27,10 +26,10 @@ export const {
   state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
   sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading,
-  autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
+  actuatorsEnabled, actuatorsLoading, draft, turnCount,
   setProject,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
-  selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
+  selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleActuators,
   toggleAudio, handleSend, beginVoiceMessage, handleResend, handleReact, handleAction,
   clearChatUi, handleReset, handleNewSession,
 } = testStore
