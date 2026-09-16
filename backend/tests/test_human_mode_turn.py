@@ -121,7 +121,7 @@ async def test_a_human_operators_reply_arrives_as_the_turns_own_done_frame(turn_
 
     events = await _run_turn(turn_service, turn_service_for.db, session["id"], "turn-1", "hello, is anyone there?")
     assert [event for event, _ in events] == [
-        "output.text_stream", "output.text_stream", "state.buttons", "output.text",
+        "output.text_stream", "output.text_stream", "output.text", "state.buttons",
     ]
     assert [body.get("text") for event, body in events[:2]] == ["", "sure, let me check"]
     assert [data["text"] for event, data in events if event == "output.text"] == ["sure, let me check"]

@@ -69,7 +69,7 @@ annotating one. Even reading a transcript opens nothing
 | Type | Body |
 | --- | --- |
 | `output.text_stream` | `{text}` — a piece of a message as it is written. **Empty** means the writing has started and nothing is readable yet |
-| `output.text` | `{text, assistant_message_id, timestamp}` — a whole message. The **last** one is the reply, and it is what says the exchange is over. The text to be spoken is its own message (`output.speech`), never a field of this. One with **no `session_id`** belongs to no conversation and is addressed to a recipient instead: whichever channel can carry it does, and nobody carrying it is the honest answer that it was not sent |
+| `output.text` | `{text, assistant_message_id, timestamp}` — a whole message. The **last** one is the reply. The text to be spoken is its own message (`output.speech`), never a field of this. One with **no `session_id`** belongs to no conversation and is addressed to a recipient instead: whichever channel can carry it does, and nobody carrying it is the honest answer that it was not sent |
 | `output.speech` | `{text}` — the spoken version of the reply, written by the model alongside it. It arrives while the reply is still being written, and a later one replaces the earlier |
 | `output.audio_stream` | `{stream}` — the synthesized audio, for one exchange |
 | `output.tool` | `dict` — one tool call; `phase` tells its two halves apart |
@@ -106,12 +106,14 @@ output.text_stream {text: "…"}  the pieces, as they come
 output.text                     a message the state owed before it could answer
 output.reaction                 it reacted to what the person said
 state.changed                   only if the conversation moved
-state.buttons                   what can be done now
-output.text                     the reply — and the exchange ends here
+output.text                     the reply
+state.buttons                   what can be done now — and the exchange ends here
 ```
 
-There is no separate terminal message: **the reply is the end**. When
-something goes wrong, `output.error` arrives in its place.
+The reply is not the last frame: `state.buttons` is, always published right
+after it, so a reader has both the answer and what it may do next before it
+treats the exchange as over. When something goes wrong, `output.error`
+arrives in place of the reply, with no `state.buttons` after it.
 
 A reader does not wait for a final payload; it assembles what was
 published. `conftest.chat_turn` does the same, so a test reads what a

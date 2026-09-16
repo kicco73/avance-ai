@@ -6,6 +6,7 @@ from automaton.builder.archive_resolver import ProjectArchives
 from automaton.automaton import EnvKey, Source, State
 from automaton.builder.build_cursor import BuildCursor
 from automaton.choice_namespace import choice_key_names
+from automaton.core import TASK_FUNCTION_NAMES
 from automaton.env_types import STORED_ENV_TYPES
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
@@ -70,6 +71,7 @@ class AutomatonValidator:
     def validate_namespaced_expression(
         cls, expression: str, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
         known_locals: frozenset[str] = frozenset(), namespaces: frozenset[str] = frozenset(),
+        known_builtins: frozenset[str] = frozenset(),
     ) -> None:
         try:
             namespace_refs = TriggerExpressionAnalyzer.namespace_refs(expression)
@@ -82,7 +84,7 @@ class AutomatonValidator:
         for namespace, refs in namespace_refs.items():
             valid = registry.get(namespace, {}).keys()
             unknown |= {f"{namespace}.{n}" for n in refs - valid}
-        unknown |= bare_names - metric_names() - known_locals
+        unknown |= bare_names - metric_names() - known_locals - known_builtins
         read_on_a_source = False
         for source_name, methods in source_refs.items():
             source = sources.get(source_name)
@@ -216,7 +218,9 @@ class AutomatonValidator:
                     f"{line_context} ('{statement}'): '{target}' is a reserved name "
                     "(a namespace or core metric) and can't be used as a task local variable."
                 )
-            cls.validate_namespaced_expression(expression, line_context, registry, sources, frozenset(known_locals))
+            cls.validate_namespaced_expression(
+                expression, line_context, registry, sources, frozenset(known_locals), known_builtins=TASK_FUNCTION_NAMES,
+            )
             cls.validate_task_arity(expression, line_context)
             cls.validate_drive_arity(expression, line_context)
             cls.validate_attachment_read(expression, line_context, archives)
@@ -266,7 +270,7 @@ class AutomatonValidator:
                         "'env' section — declare it there first."
                     )
                 cls.validate_namespaced_expression(
-                    expression, line_context, registry, sources, frozenset(known_locals), namespaces,
+                    expression, line_context, registry, sources, frozenset(known_locals), namespaces, TASK_FUNCTION_NAMES,
                 )
                 cls.validate_attachment_read(expression, line_context, archives)
                 cls.validate_env_key_type(env_keys[env_key], expression, line_context)
@@ -280,7 +284,7 @@ class AutomatonValidator:
                         "(a namespace or core metric) and can't be used as an on-exit local variable."
                     )
                 cls.validate_namespaced_expression(
-                    expression, line_context, registry, sources, frozenset(known_locals), namespaces,
+                    expression, line_context, registry, sources, frozenset(known_locals), namespaces, TASK_FUNCTION_NAMES,
                 )
                 cls.validate_attachment_read(expression, line_context, archives)
                 known_locals.add(target)
@@ -291,7 +295,7 @@ class AutomatonValidator:
                     "'name = expr' locals, or a bare 'chat.<method>(...)' call."
                 )
             cls.validate_namespaced_expression(
-                statement, line_context, registry, sources, frozenset(known_locals), namespaces,
+                statement, line_context, registry, sources, frozenset(known_locals), namespaces, TASK_FUNCTION_NAMES,
             )
             cls.validate_attachment_read(statement, line_context, archives)
             cls.validate_chat_arity(statement, line_context)

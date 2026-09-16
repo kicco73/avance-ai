@@ -1,9 +1,9 @@
 """End to end, through the real listener (turn/input_listener.py) and a
 real AiService driven by a fake provider: every frame a turn raises
 reaches the Bus in the order it was raised, each with the turn's own
-the session it belongs to, and the answer always comes last — after every chunk,
-whether the turn made tool calls (a collected round replayed without ever
-yielding the loop) or not.
+the session it belongs to, and the answer always comes last — after every
+chunk and before its own `state.buttons` — whether the turn made tool
+calls (a collected round replayed without ever yielding the loop) or not.
 
 What guarantees the order is no longer that nothing is scheduled. It used
 to be: on_metadata is synchronous end to end (see tracking/
@@ -63,10 +63,11 @@ class _FakeProvider:
 
 
 def _is_terminal(kinds: list[str]) -> bool:
-    """The answer is the `output.text` published after `state.buttons` — an
-    earlier one is a message the state owed before it could answer. An
-    `output.error` replaces the answer and ends the exchange too."""
-    return kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "state.buttons" in kinds)
+    """The exchange is over once `state.buttons` follows the `output.text`
+    it belongs to — an earlier `state.buttons` is a message the state owed
+    before it could answer. An `output.error` replaces the answer and ends
+    the exchange too."""
+    return kinds[-1] == "output.error" or (kinds[-1] == "state.buttons" and "output.text" in kinds)
 
 
 class _Recorder:
@@ -135,7 +136,7 @@ async def test_with_declared_sources_every_chunk_of_the_replayed_final_round_pre
     assert kinds[1:3] == ["tool(start)", "tool(result)"]
     chunk_kinds = kinds[3:-2]
     assert chunk_kinds and set(chunk_kinds) == {"output.text_stream"}
-    assert kinds[-2:] == ["state.buttons", "output.text"]
+    assert kinds[-2:] == ["output.text", "state.buttons"]
     assert _streamed_text(events) == "Your flight is on time."
     assert [data["text"] for event, data in events if event == "output.text"] == ["Your flight is on time."]
 
@@ -149,7 +150,7 @@ async def test_without_sources_and_tracking_after_the_user_message_every_chunk_p
 
     kinds = _kinds(events)
     assert kinds[0] == "writing"
-    assert kinds[-2:] == ["state.buttons", "output.text"]
+    assert kinds[-2:] == ["output.text", "state.buttons"]
     assert set(kinds[1:-2]) == {"output.text_stream"}
     assert _streamed_text(events) == "Your flight is on time."
 
@@ -163,6 +164,6 @@ async def test_with_declared_sources_but_no_tool_call_the_answer_streams_then_do
 
     kinds = _kinds(events)
     assert kinds[0] == "writing"
-    assert kinds[-2:] == ["state.buttons", "output.text"]
+    assert kinds[-2:] == ["output.text", "state.buttons"]
     assert set(kinds[1:-2]) == {"output.text_stream"}
     assert _streamed_text(events) == "Your flight is on time."

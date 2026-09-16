@@ -75,6 +75,12 @@ class DeferredExpression(object):
         return f"DeferredExpression({self.source!r})"
 
 
+_TASK_EXTRA_FUNCTIONS: dict[str, Any] = {"zip": zip}
+
+BASE_FUNCTION_NAMES = frozenset(simpleeval.EvalWithCompoundTypes().functions)
+TASK_FUNCTION_NAMES = BASE_FUNCTION_NAMES | frozenset(_TASK_EXTRA_FUNCTIONS)
+
+
 class _TaskEval(simpleeval.EvalWithCompoundTypes):
     """Evaluates one task line. Only ever against an EvaluationScope
     — a plain dict has no automaton/state to hibernate a deferred call
@@ -86,6 +92,7 @@ class _TaskEval(simpleeval.EvalWithCompoundTypes):
         if not isinstance(names, EvaluationScope):
             raise TypeError(f"_TaskEval needs an EvaluationScope, got {type(names).__name__}.")
         super().__init__(names=names)
+        self.functions.update(_TASK_EXTRA_FUNCTIONS)
         self.nodes[ast.Lambda] = self._eval_lambda
 
     def _eval_lambda(self, node: ast.Lambda):
@@ -265,7 +272,7 @@ class CoreAutomaton(object):
             if assignment is not None or local is not None:
                 key, expression = assignment or local
                 try:
-                    value = self._evaluate_expression(expression, scope)
+                    value = self._evaluate_statement(expression, scope)
                 except Exception as exc:
                     logger.warning(
                         "on-exit expression evaluation failed for action '%s', key '%s' ('%s'): %s",

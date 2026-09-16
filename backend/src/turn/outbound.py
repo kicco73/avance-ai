@@ -145,8 +145,8 @@ class Outbound(object):
             self.reacted(turn)
             self.moved(turn)
             self.wrote(turn)
-            self.offered(turn.get("buttons"))
             self.said(turn["reply"])
+            self.offered(turn.get("buttons"))
             self.exhausted(turn)
 
     def failed(self, exc: ServiceError, prepared: list[dict]) -> None:

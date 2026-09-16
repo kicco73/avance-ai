@@ -88,7 +88,7 @@ def test_a_typed_message_runs_a_turn_and_its_reply_speaks_on_the_audio_route(web
 
     assert [frame["type"] for frame in frames] == [
         "output.text_stream", "output.speech", "output.text_stream",
-        "state.buttons", "output.text",
+        "output.text", "state.buttons",
     ]
     assert [frame["text"] for frame in frames if frame["type"] == "output.speech"] == [SPOKEN_REPLY]
     assert [frame["text"] for frame in frames if frame["type"] == "output.text_stream" and frame["text"]] == [REPLY_TEXT]
@@ -123,7 +123,9 @@ def test_a_voice_note_on_an_open_connection_runs_the_very_same_turn(webchat):
             while True:
                 frame = ws.receive_json()
                 frames.append(frame)
-                if frame["type"] in ("output.text", "output.error") and "state.buttons" in [f["type"] for f in frames]:
+                if frame["type"] == "output.error" or (
+                    frame["type"] == "state.buttons" and "output.text" in [f["type"] for f in frames]
+                ):
                     break
 
     assert decoder.heard == [VOICE_NOTE]

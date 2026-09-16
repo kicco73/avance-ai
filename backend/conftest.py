@@ -278,7 +278,7 @@ def chat_turn_frames(client: TestClient, session_id: int, text: str, turn_id: st
                 frame = ws.receive_json()
                 frames.append(frame)
                 kinds = [f["type"] for f in frames]
-                if kinds[-1] == "output.error" or (kinds[-1] == "output.text" and "state.buttons" in kinds):
+                if kinds[-1] == "output.error" or (kinds[-1] == "state.buttons" and "output.text" in kinds):
                     return frames
 
 
