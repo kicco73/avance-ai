@@ -34,9 +34,10 @@ defineExpose({ loadEnvKeys, refresh, resync: refresh })
 
 onMounted(refresh)
 
-const AI_MEMORY_STRATEGIES = [
-  { id: 'keep', label: 'Keep', title: 'The notes the model has collected so far stay when a transition lands here' },
-  { id: 'clear', label: 'Clear', title: 'The model\'s memory is wiped when a transition lands here; it collects afresh until it leaves' }
+const AI_MEMORY_SCOPES = [
+  { id: 'none', label: 'None', title: 'No memory channel at all in this state — nothing is shown to the model, and nothing it reports is kept' },
+  { id: 'local', label: 'Local', title: 'A fresh, empty memory starts when a transition lands here and is discarded the moment the session leaves this state' },
+  { id: 'global', label: 'Global', title: 'The shared, persistent memory used everywhere else — the notes collected so far stay' }
 ]
 
 const IO_FIELDS = [
@@ -71,11 +72,11 @@ function jumpToEnvKey(name) {
   <div class="inspector-signals-section">
     <template v-if="stateKey != null">
       <div class="inspector-io-strategy">
-        <span class="inspector-io-strategy-label">AI memory</span>
+        <span class="inspector-io-strategy-label">AI memory scope</span>
         <SegmentedControl
-          :model-value="stateData?.aiMemoryStrategy ?? 'keep'"
-          :options="AI_MEMORY_STRATEGIES"
-          @update:model-value="(strategy) => saveField('ai-memory-strategy', strategy)"
+          :model-value="stateData?.aiMemoryScope ?? 'none'"
+          :options="AI_MEMORY_SCOPES"
+          @update:model-value="(scope) => saveField('ai-memory-scope', scope)"
         />
       </div>
       <p v-if="envKeysLoading" class="signals-status">Loading…</p>

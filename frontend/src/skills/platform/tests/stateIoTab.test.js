@@ -59,17 +59,19 @@ describe('the state I/O tab', () => {
 
   it('shows the AI memory control before the I/O, on the selected state, and writes the state field', async () => {
     const saveField = vi.fn()
-    const { host, selection } = await mount('s1', { input: [], output: [], aiMemoryStrategy: 'keep' }, saveField)
+    const { host, selection } = await mount('s1', { input: [], output: [], aiMemoryScope: 'none' }, saveField)
 
     expect(host.firstElementChild.firstElementChild.className).toBe('inspector-io-strategy')
-    expect(segments(host)).toEqual([{ label: 'Keep', active: true }, { label: 'Clear', active: false }])
+    expect(segments(host)).toEqual([
+      { label: 'None', active: true }, { label: 'Local', active: false }, { label: 'Global', active: false },
+    ])
 
     host.querySelectorAll('.segmented-control-option')[1].click()
-    expect(saveField).toHaveBeenCalledWith('ai-memory-strategy', 'clear')
+    expect(saveField).toHaveBeenCalledWith('ai-memory-scope', 'local')
 
-    selection.value = { stateKey: 's1', stateData: { input: [], output: [], aiMemoryStrategy: 'clear' } }
+    selection.value = { stateKey: 's1', stateData: { input: [], output: [], aiMemoryScope: 'local' } }
     await nextTick()
-    expect(segments(host).map((s) => s.active)).toEqual([false, true])
+    expect(segments(host).map((s) => s.active)).toEqual([false, true, false])
   })
 
   it('follows the selection: a new state key and data re-tick every box', async () => {

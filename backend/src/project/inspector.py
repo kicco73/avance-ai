@@ -273,7 +273,7 @@ class ProjectInspector:
                 "reactions_enabled": state.reactions_enabled,
                 "transition_log_level": state.transition_log_level,
                 "signal_tracking_strategy": state.signal_tracking_strategy,
-                "ai_memory_strategy": state.ai_memory_strategy,
+                "ai_memory_scope": state.ai_memory_scope,
                 "attachments": list(state.attachments),
                 "contextual_prompt": state.contextual_prompt,
             }

@@ -8,14 +8,16 @@ It is a subclass rather than a parallel implementation because a
 compiled automaton is already a drop-in — attribute for attribute, method
 for method, the same object an AutomatonBuilder produces, except that it
 reads its files from its own data/ directory instead of a database. So
-there is exactly one thing to override, `load_at_revision`, and
-everything else — the caches, set_cached/invalidate, the cross-project
+there are only two things to override — `load_at_revision` and `load` —
+and everything else — the caches, set_cached/invalidate, the cross-project
 family scan, the broken-revision handling — is inherited and unchanged.
 
 Only a project's *published* revision is ever served compiled. A draft
 changes under the editor's hands and has no build; an older revision some
 session is still pinned to had one at most in the past. Both go straight
-to the ordinary loader.
+to the ordinary loader — `load`'s own override forces this even when the
+draft's revision number happens to equal the published one, since
+`load_at_revision` alone can't tell those two callers apart.
 
 Nothing here is fatal. A package that is missing, unimportable, or built
 from a different revision degrades to the interpreted automaton with a
@@ -50,6 +52,10 @@ class CompiledAutomatonLoader(AutomatonLoader):
         super().__init__(db, session_manager=session_manager)
         self._apps_dir = apps_dir
         self._compiled_lock = threading.Lock()
+
+    def load(self, project_id: str) -> Automaton:
+        revision = self._db.get_project_revision(project_id)
+        return AutomatonLoader.load_at_revision(self, project_id, revision)
 
     def load_at_revision(self, project_id: str, revision: int) -> Automaton:
         with self._compiled_lock:

@@ -2,7 +2,7 @@
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol
 
 from turn.errors import TurnServiceError
 from db.db import Db
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 	from talker import BaseTalker
 	from .project_files import ProjectFiles
 
-from .env import Env
+from .env import Env, LocalMemoryEnv
 from .env_prompt_block import EnvPromptBlock
 from .evaluation_scope import EvaluationScopeBuilder
 from .prompt import (
@@ -105,6 +105,54 @@ class OutVariables:
 	signals_resolved: bool = False
 	env_changed: dict = field(default_factory=dict)
 
+class MemoryScope(Protocol):
+	def store(self, processor: "TrackingProcessor") -> Env | None: ...
+	def merge(
+		self, processor: "TrackingProcessor", values: dict, *, message_id: int | None, declared_keys: set[str],
+	) -> None: ...
+	def has_channel(self) -> bool: ...
+
+
+class NoneMemoryScope:
+	def store(self, processor: "TrackingProcessor") -> Env | None:
+		return None
+
+	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: int | None, declared_keys: set[str]) -> None:
+		return None
+
+	def has_channel(self) -> bool:
+		return False
+
+
+class GlobalMemoryScope:
+	def store(self, processor: "TrackingProcessor") -> Env | None:
+		return processor.env
+
+	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: int | None, declared_keys: set[str]) -> None:
+		self.store(processor).update(values, message_id=message_id, declared_keys=declared_keys)
+
+	def has_channel(self) -> bool:
+		return True
+
+
+class LocalMemoryScope:
+	def store(self, processor: "TrackingProcessor") -> Env | None:
+		return LocalMemoryEnv(processor.db, processor.user.session_id)
+
+	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: int | None, declared_keys: set[str]) -> None:
+		if processor.out.action is not None and not processor.moved_before_reply:
+			return
+		self.store(processor).update(values, message_id=message_id, declared_keys=declared_keys)
+
+	def has_channel(self) -> bool:
+		return True
+
+
+MEMORY_SCOPES: dict[str, MemoryScope] = {
+	"none": NoneMemoryScope(), "global": GlobalMemoryScope(), "local": LocalMemoryScope(),
+}
+
+
 class TrackingProcessor(object):
 	user: UserVariables
 	out: OutVariables
@@ -117,6 +165,7 @@ class TrackingProcessor(object):
 			  user_variables: UserVariables,
 			  input_token_budget_per_turn: int | None = 16000,
 			  assistant_talker: "BaseTalker | None" = None,
+			  memory_scopes: dict[str, MemoryScope] = MEMORY_SCOPES,
 		):
 		self.ai_service = ai_service
 		self.assistant_talker = assistant_talker if assistant_talker is not None else AiTalker(ai_service=ai_service)
@@ -126,7 +175,11 @@ class TrackingProcessor(object):
 		self.user = user_variables
 		self.moved_before_reply = False
 		self.input_token_budget_per_turn = input_token_budget_per_turn
+		self._memory_scopes = memory_scopes
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder)
+
+	def _memory_store_for(self, state: State) -> Env | None:
+		return self._memory_scopes[state.ai_memory_scope].store(self)
 
 	async def _get_ai_reply(self) -> OutVariables:
 		raise NotImplementedError
@@ -187,11 +240,10 @@ class TrackingProcessor(object):
 			"assistant", self.out.reply, self.user.session_id,
 			audio_text=self.metadata.audio, tokens=self.metadata.output_tokens,
 		)
-		landed_on_a_cleared_state_with_no_reply_after_the_clear = (
-			self.out.action is not None and self.out.state.ai_memory_strategy == "clear" and not self.moved_before_reply
+		self._memory_scopes[self.out.state.ai_memory_scope].merge(
+			self, self.metadata.memory, message_id=assistant_id,
+			declared_keys=self.user.automaton.declared_env_key_names(),
 		)
-		if not landed_on_a_cleared_state_with_no_reply_after_the_clear:
-			self.env.update(self.metadata.memory, message_id=assistant_id, declared_keys=self.user.automaton.declared_env_key_names())
 		self.db.mark_messages_answered(self._fragment_ids, assistant_id)
 
 		if self.metadata.tool_calls:
@@ -302,6 +354,7 @@ class TrackingProcessor(object):
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(
 			base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
+			memory_env=self._memory_store_for(state),
 		)
 		chat_history = self._build_chat_history(state, turn_attachments, remaining_history_budget)
 
@@ -315,13 +368,14 @@ class TrackingProcessor(object):
 		self, base_prompt: str, output_definition: str | None, signal_definition: str | None, reaction_definition: str | None,
 		turn_attachments: list, prompt: Prompt | None = None,
 		env_block: "EnvPromptBlock | None" = None,
+		memory_env: "Env | None" = None,
 	) -> int | None:
 		budget = self.input_token_budget_per_turn
 		if budget is None:
 			return None
 		schema_overhead = prompt.schema_overhead_text() if prompt is not None else ""
 		estimate = estimate_turn_request(
-			base_prompt, signal_definition, reaction_definition, self.env, turn_attachments,
+			base_prompt, signal_definition, reaction_definition, memory_env, turn_attachments,
 			schema_overhead=schema_overhead, env_block=env_block,
 		)
 		if estimate.total_tokens > budget:
@@ -396,6 +450,7 @@ class TrackingProcessor(object):
 		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
 		remaining_history_budget = self._enforce_input_budget(
 			base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
+			memory_env=self._memory_store_for(state),
 		)
 		return prompt, self._build_chat_history(state, turn_attachments, remaining_history_budget), env_block
 
@@ -440,7 +495,8 @@ class TrackingProcessor(object):
 		reaction = ReactionPrompt(reaction_definition) if reactions_enabled else None
 		audio = AudioPrompt() if talk_enabled else None
 		text = TextPrompt(base_prompt)
-		memory = MemoryPrompt(self.env)
+		memory_store = self._memory_store_for(state)
+		memory = MemoryPrompt(memory_store) if memory_store is not None else None
 		if has_to_evaluate_signals_before_ai_reply and state.has_triggerable_actions:
 			prompt = Prompt.chain(output, signals, reaction, audio, text, memory)
 		else:
@@ -482,7 +538,9 @@ class TrackingProcessor(object):
 		post-transition state at prompt-build time — so this is where
 		button translation is genuinely correct after a transition."""
 		output = OutputPrompt(output_definition) if state.output else None
-		prompt = Prompt.chain(AudioPrompt(), TextPrompt(base_prompt), output, MemoryPrompt(self.env))
+		memory_store = self._memory_store_for(state)
+		memory = MemoryPrompt(memory_store) if memory_store is not None else None
+		prompt = Prompt.chain(AudioPrompt(), TextPrompt(base_prompt), output, memory)
 		return self._append_translate_prompt(prompt, state)
 
 	def _append_translate_prompt(self, prompt: Prompt, state: State) -> Prompt:
@@ -628,7 +686,7 @@ def estimate_state_prompt(
 	reaction_prompt = ReactionPrompt(reaction_definition) if automaton.reactions_enabled_for(state) else None
 	audio_prompt = AudioPrompt() if _spoken_reply_possible(automaton.services) else None
 	text_prompt = TextPrompt(base_prompt)
-	memory_prompt = MemoryPrompt(env)
+	memory_prompt = MemoryPrompt(env) if MEMORY_SCOPES[state.ai_memory_scope].has_channel() else None
 	if has_to_evaluate_signals_before_ai_reply and state.has_triggerable_actions:
 		prompt = Prompt.chain(output_prompt, signals_prompt, reaction_prompt, audio_prompt, text_prompt, memory_prompt)
 	else:

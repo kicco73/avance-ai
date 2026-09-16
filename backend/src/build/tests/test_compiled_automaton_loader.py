@@ -74,6 +74,14 @@ def test_without_a_package_the_ordinary_loader_answers(db, tmp_path):
     assert automaton.revision == revision
 
 
+def test_load_never_serves_compiled_even_when_the_draft_matches_the_published_revision(db, tmp_path):
+    revision = _publish(db)
+    _compile_into(tmp_path, revision)
+
+    assert type(_loader(db, tmp_path).load(PROJECT_ID)).__name__ == "Automaton"
+    assert isinstance(_loader(db, tmp_path).load_at_revision(PROJECT_ID, revision), CompiledAutomaton)
+
+
 def test_a_revision_that_is_not_the_published_one_is_never_served_compiled(db, tmp_path):
     """A draft changes under the editor's hands; an older revision a
     session is pinned to had a build at most in the past."""
@@ -136,13 +144,13 @@ def test_two_revisions_of_one_project_can_be_imported_at_once_without_serving_ea
     assert newer.general_prompt == "goodbye"
 
 
-def test_everything_other_than_load_at_revision_is_the_ordinary_loader(db, tmp_path):
+def test_everything_other_than_load_and_load_at_revision_is_the_ordinary_loader(db, tmp_path):
     loader = _loader(db, tmp_path)
     assert isinstance(loader, AutomatonLoader)
     overridden = {
         name for name in vars(CompiledAutomatonLoader) if not name.startswith("_") and callable(getattr(loader, name))
     }
-    assert overridden == {"load_at_revision"}
+    assert overridden == {"load", "load_at_revision"}
 
 
 ALL_SIGNALS_INDEX = """
@@ -170,8 +178,8 @@ states:
 """
 
 
-def test_a_compiled_state_keeps_its_ai_memory_strategy(db, tmp_path):
-    index = ALL_SIGNALS_INDEX.replace("    signal-tracking-strategy: all\n", "    ai-memory-strategy: clear\n")
+def test_a_compiled_state_keeps_its_ai_memory_scope(db, tmp_path):
+    index = ALL_SIGNALS_INDEX.replace("    signal-tracking-strategy: all\n", "    ai-memory-scope: local\n")
     revision = _publish(db, index)
     _compile_into(tmp_path, revision, index=index)
 
@@ -179,8 +187,8 @@ def test_a_compiled_state_keeps_its_ai_memory_strategy(db, tmp_path):
     interpreted = AutomatonLoader(db).load_at_revision(PROJECT_ID, revision)
 
     assert compiled.states["start"] == interpreted.states["start"]
-    assert compiled.states["start"].ai_memory_strategy == "clear"
-    assert compiled.states["end"].ai_memory_strategy == "keep"
+    assert compiled.states["start"].ai_memory_scope == "local"
+    assert compiled.states["end"].ai_memory_scope == "none"
 
 
 def test_a_compiled_state_keeps_its_signal_tracking_strategy_and_tracks_the_same_signals(db, tmp_path):

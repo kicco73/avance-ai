@@ -1,9 +1,9 @@
-"""`ai-memory-strategy: clear` wipes the model's memory *as the transition
-lands* — before the reply the new state generates is prompted, whichever
-flow fired it. With signal tracking on the user message, the turn
-regenerates its reply in the new state: that regeneration must be
-prompted with the memory already cleared, or the model reads the old
-notes, repeats them in its own delta, and the wipe never shows.
+"""`ai-memory-scope: local` starts a state with a fresh, empty memory,
+isolated from the project+user's own `global` store — never merged into
+it, never seeded from it. With signal tracking on the user message, the
+turn regenerates its reply in the new state: that regeneration must be
+prompted with the fresh local memory, not the old state's global one, and
+the model's own reported delta lands in the local cell, never in global.
 """
 from __future__ import annotations
 
@@ -32,8 +32,8 @@ PROJECT_ID = "proj"
 def _automaton() -> Automaton:
     mood = Signal(name="mood", ui_label="Mood", definition="mood")
     advance = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50")
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[advance])
-    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="there", ai_memory_strategy="clear")
+    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[advance], ai_memory_scope="global")
+    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="there", ai_memory_scope="local")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
@@ -65,8 +65,8 @@ class RecordingAiService:
 def _automaton_tracking_on_ai_message() -> Automaton:
     mood = Signal(name="mood", ui_label="Mood", definition="mood")
     advance = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50")
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[advance])
-    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="there", ai_memory_strategy="clear")
+    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[advance], ai_memory_scope="global")
+    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="there", ai_memory_scope="local")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
@@ -92,7 +92,7 @@ def _memory_block(prompt: str) -> str:
     return prompt[prompt.index(EMBED_MEMORY_TAG_HEADER):] if EMBED_MEMORY_TAG_HEADER in prompt else ""
 
 
-async def test_the_regenerated_reply_is_prompted_with_the_memory_already_cleared(db):
+async def test_the_regenerated_reply_is_prompted_with_a_fresh_local_memory(db):
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     session_id = db.create_chat_session(
@@ -115,10 +115,11 @@ async def test_the_regenerated_reply_is_prompted_with_the_memory_already_cleared
     assert len(ai_service.prompts) == 2
     assert "old note" in _memory_block(ai_service.prompts[0])
     assert "old note" not in _memory_block(ai_service.prompts[1])
-    assert env.memory() == {"fresh": "note"}
+    assert env.memory() == {"stale": "old note"}
+    assert db.get_local_memory(session_id) == {"fresh": "note"}
 
 
-async def test_a_transition_decided_after_the_only_reply_still_clears_the_memory_it_reported(db):
+async def test_a_transition_decided_after_the_only_reply_discards_the_memory_it_reported(db):
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     session_id = db.create_chat_session(
@@ -138,4 +139,5 @@ async def test_a_transition_decided_after_the_only_reply_still_clears_the_memory
 
     await processor.process("hello")
 
-    assert env.memory() == {}
+    assert env.memory() == {"stale": "old note"}
+    assert db.get_local_memory(session_id) == {}

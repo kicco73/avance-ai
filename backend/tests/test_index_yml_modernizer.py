@@ -203,3 +203,41 @@ def test_an_action_nothing_can_settle_keeps_its_own_spelling():
     assert "on-enter: actuator.notify('Help', actuator.prompt('hint'))" in modernized.text
     assert not any(fix.startswith("old:") for fix in modernized.fixes)
     assert "task.prompt('Give a hint.')" in modernized.text
+
+
+LEGACY_AI_MEMORY_YML = """\
+project:
+  id: legacy_memory
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    ai-memory-strategy: keep
+  b:
+    contextual-prompt: bye
+    ai-memory-strategy: clear
+"""
+
+
+@pytest.mark.parametrize("old,new", [("keep", "global"), ("clear", "local")])
+def test_ai_memory_strategy_is_rewritten_as_the_scope_it_means(old, new):
+    modernized = IndexYmlModernizer().modernize(
+        LEGACY_AI_MEMORY_YML.replace("ai-memory-strategy: keep\n", f"ai-memory-strategy: {old}\n")
+    )
+
+    assert "ai-memory-strategy" not in modernized.text
+    assert f"ai-memory-scope: {new}" in modernized.text
+    automaton = AutomatonBuilder().build({"index.yml": modernized.text})
+    assert automaton.states["a"].ai_memory_scope == new
+
+
+def test_a_stored_revision_with_the_old_memory_field_is_repaired_where_it_is(db):
+    revision = _store(db, LEGACY_AI_MEMORY_YML)
+
+    automaton = AutomatonLoader(db).load_at_revision(PROJECT_ID, revision)
+
+    assert automaton.states["a"].ai_memory_scope == "global"
+    assert automaton.states["b"].ai_memory_scope == "local"
+    stored = db.get_archive(PROJECT_ID, "index.yml", revision=revision).decode("utf-8")
+    assert "ai-memory-strategy" not in stored and "ai-memory-scope: global" in stored

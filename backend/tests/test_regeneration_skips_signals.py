@@ -25,7 +25,7 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
+def _automaton(action_env: dict[str, str] | None = None, memory_scope: str = "none") -> Automaton:
     """With `action_env`, `mood_score` is state "a"'s own `input` — the one
     configuration under which an action-set env key ever reaches the
     model's prompt at all (see tracking.env_prompt_block)."""
@@ -35,8 +35,14 @@ def _automaton(action_env: dict[str, str] | None = None) -> Automaton:
         env=action_env,
     )
     input_names = tuple(action_env or {})
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action], input=input_names)
-    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="You are in B.", input=input_names)
+    state_a = State(
+        key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action],
+        input=input_names, ai_memory_scope=memory_scope,
+    )
+    state_b = State(
+        key="b", ui_label="B", final=True, contextual_prompt="You are in B.",
+        input=input_names, ai_memory_scope=memory_scope,
+    )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
@@ -143,7 +149,7 @@ async def test_regeneration_prompt_includes_existing_memory_and_the_firing_actio
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
         start_state="a", end_state="a",
     )
-    automaton = _automaton(action_env={"mood_score": "signal.mood"})
+    automaton = _automaton(action_env={"mood_score": "signal.mood"}, memory_scope="global")
     ai_service = RecordingSchemaAiService()
     project_service = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_service)

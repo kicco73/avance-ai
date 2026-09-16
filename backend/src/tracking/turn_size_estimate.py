@@ -29,7 +29,7 @@ class TurnSizeEstimate:
 
 def estimate_turn_request(
     base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
-    env: Env, attachments: list[MemoryArchive], schema_overhead: str = "",
+    memory_env: Env | None, attachments: list[MemoryArchive], schema_overhead: str = "",
     env_block: EnvPromptBlock | None = None,
 ) -> TurnSizeEstimate:
     """`schema_overhead`: Prompt.schema_overhead_text() — the fixed
@@ -41,8 +41,9 @@ def estimate_turn_request(
     this state gets no env block at all, so nothing is counted for it."""
     prompt_text = base_prompt + (signal_definition or "") + (reaction_definition or "") + schema_overhead
     entries = [SizeEntry("prompt", "prompt", estimate_tokens(prompt_text))]
-    for key, value in env.memory().items():
-        entries.append(SizeEntry("memory", key, estimate_tokens(f"{key}: {value}")))
+    if memory_env is not None:
+        for key, value in memory_env.memory().items():
+            entries.append(SizeEntry("memory", key, estimate_tokens(f"{key}: {value}")))
     if env_block is not None:
         for key, text in env_block.lines().items():
             entries.append(SizeEntry("env", key, estimate_tokens(text)))

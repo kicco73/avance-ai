@@ -26,7 +26,7 @@ const STATE_FIELDS = [
   { name: 'history-cutoff' },
   { name: 'transition-log-level' },
   { name: 'signal-tracking-strategy' },
-  { name: 'ai-memory-strategy' },
+  { name: 'ai-memory-scope' },
   { name: 'attachments', nested: true },
   { name: 'ai-may-read-sources', nested: true },
   { name: 'ai-must-read-sources', nested: true },

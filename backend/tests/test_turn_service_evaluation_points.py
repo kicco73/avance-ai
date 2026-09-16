@@ -21,8 +21,8 @@ PROJECT_ID = "proj"
 
 def _automaton(*, autotracking_on_ai_message=False, trigger="signal.foo >= 0") -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger)
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
-    state_b = State(key="b", ui_label="B", final=True, actions=[])
+    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action], ai_memory_scope="global")
+    state_b = State(key="b", ui_label="B", final=True, actions=[], ai_memory_scope="global")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {
         "": State(key="", ui_label="", final=False, actions=[init_action]),

@@ -25,7 +25,7 @@ ENV_TYPES = {"reset_counter": "bool", "number_of_steps": "number"}
 
 
 def _automaton(
-    action_env: dict, target: str = "b", model_reads_env: bool = False, target_memory: str = "keep",
+    action_env: dict, target: str = "b", model_reads_env: bool = False, target_memory: str = "global",
 ) -> Automaton:
     """`model_reads_env`: declares every written key as the destination
     state's own `input` — the one configuration under which an env value
@@ -40,7 +40,7 @@ def _automaton(
     state_b = State(
         key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[],
         input=input_names if target == "b" else (),
-        ai_memory_strategy=target_memory,
+        ai_memory_scope=target_memory,
     )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
@@ -94,14 +94,15 @@ async def test_a_manually_fired_actions_env_is_persisted(db):
 
 
 async def test_a_manually_fired_action_lands_through_the_same_transition_as_a_triggered_one(db):
-    turn_service, _ = _turn_service(db, _automaton({"reset_counter": "True"}, target_memory="clear"))
+    turn_service, _ = _turn_service(db, _automaton({"reset_counter": "True"}, target_memory="local"))
     session = await turn_service.enter_session(PROJECT_ID, 'live')
     env = _env_for(db, session["id"])
     env.update({"note": "remembered"})
 
     await turn_service.apply_manual_action("advance", session["id"])
 
-    assert env.memory() == {}
+    assert env.memory() == {"note": "remembered"}
+    assert db.get_local_memory(session["id"]) == {}
     assert env.action_set() == {"reset_counter": True}
     landed = [row for row in db.get_signals(session["id"]) if row["new_state"] == "b"]
     assert [(row["old_state"], row["action"], row["origin"]) for row in landed] == [("a", "advance", "manual")]

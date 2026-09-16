@@ -32,7 +32,10 @@ class TrackingMixin:
         return json.loads(row.values)
 
     def _evaluation_point_rows(self) -> Expression:
-        return Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
+        return (
+            Tracking.env.is_null(True) & Tracking.action_env.is_null(True) & Tracking.tool_calls.is_null(True)
+            & Tracking.local_memory.is_null(True)
+        )
 
     @staticmethod
     def _evaluation_point_payload(row) -> dict:
@@ -284,6 +287,23 @@ class TrackingMixin:
             raise ValueError(f"Unknown origin '{origin}' — expected one of {TRACKING_ORIGINS}.")
         row = Tracking.create(session=session_id, action_env=json.dumps(action_env), origin=origin)
         return row.id
+
+    def get_local_memory(self, session_id: int, until: datetime | None = None) -> dict:
+        query = Tracking.select(Tracking.local_memory).where(
+            (Tracking.session == session_id) & Tracking.local_memory.is_null(False)
+        )
+        if until is not None:
+            query = query.where(Tracking.timestamp <= until)
+        row = query.order_by(Tracking.timestamp.desc()).first()
+        return json.loads(row.local_memory) if row is not None else {}
+
+    def set_local_memory(self, session_id: int, values: dict) -> None:
+        Tracking.create(session=session_id, local_memory=json.dumps(values))
+
+    def clear_local_memory(self, session_id: int) -> None:
+        if not self.get_local_memory(session_id):
+            return
+        Tracking.create(session=session_id, local_memory=json.dumps({}))
 
     def link_tool_env_writes_to_message(self, session_id: int, message_id: int, since: datetime | None = None) -> None:
         """Binds every action_env row the model wrote this turn (origin

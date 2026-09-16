@@ -1,7 +1,8 @@
-"""A state's `ai-memory-strategy` — what landing on it does to the model's
-own memory: `keep` (default) leaves it, `clear` wipes it as the transition
-lands, whichever flow fired the transition. The automaton's env keys are
-never touched by it.
+"""A state's `ai-memory-scope` — `none` (default), `local`, `global`. What
+TrackingEngine itself does on every landed transition, regardless of scope
+or origin: clear the session's own local_memory cell. Which store a turn
+actually renders/merges is TrackingProcessor's call, not tested here. The
+automaton's env keys are never touched by any of this.
 """
 from __future__ import annotations
 
@@ -29,19 +30,20 @@ states:
 {state_yaml}"""})
 
 
-def test_the_strategy_defaults_to_keep_and_is_read_from_the_state():
-    assert _build("").states["a"].ai_memory_strategy == "keep"
-    assert _build("    ai-memory-strategy: clear\n").states["a"].ai_memory_strategy == "clear"
+def test_the_scope_defaults_to_none_and_is_read_from_the_state():
+    assert _build("").states["a"].ai_memory_scope == "none"
+    assert _build("    ai-memory-scope: local\n").states["a"].ai_memory_scope == "local"
 
 
-def test_a_strategy_that_is_neither_keep_nor_clear_is_a_build_error():
-    with pytest.raises(ValueError, match="ai-memory-strategy 'wipe' must be one of \\['clear', 'keep'\\]"):
-        _build("    ai-memory-strategy: wipe\n")
+def test_a_scope_that_is_none_of_the_three_is_a_build_error():
+    with pytest.raises(ValueError, match="ai-memory-scope 'wipe' must be one of \\['global', 'local', 'none'\\]"):
+        _build("    ai-memory-scope: wipe\n")
 
 
 class FakeSink:
     def __init__(self):
         self.transitions = []
+        self.local_memory_clears = []
 
     def save_signal_snapshot(self, values, session_id, message_id=None, output_values=None):
         return 0
@@ -50,19 +52,22 @@ class FakeSink:
         self.transitions.append((old_state, action, new_state))
         return len(self.transitions)
 
+    def clear_local_memory(self, session_id):
+        self.local_memory_clears.append(session_id)
+
 
 class FakeScopeBuilder:
     def build(self, automaton, state_key, signal_values, selection, session_id=None, output_values=None):
         return {}
 
 
-def _automaton(target: str, target_strategy: str) -> tuple[Automaton, State, Action]:
+def _automaton(target: str, target_scope: str) -> tuple[Automaton, State, Action]:
     action = Action(name="go", ui_label="Go", ui_button="Go", target=target)
     state_a = State(
         key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
-        ai_memory_strategy=target_strategy if target == "a" else "keep",
+        ai_memory_scope=target_scope if target == "a" else "none",
     )
-    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="bye", ai_memory_strategy=target_strategy)
+    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="bye", ai_memory_scope=target_scope)
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     automaton = Automaton(
         init_action=init_action,
@@ -79,39 +84,34 @@ def _engine() -> tuple[TrackingEngine, Env, FakeSink]:
 
 
 @pytest.mark.parametrize("origin", ["trigger", "manual"])
-def test_landing_on_a_clear_state_wipes_the_memory_and_leaves_the_env_keys(origin):
-    automaton, state, action = _automaton("b", "clear")
+@pytest.mark.parametrize("scope", ["none", "local", "global"])
+def test_landing_on_any_state_clears_the_sessions_local_memory_cell_and_leaves_env(origin, scope):
+    automaton, state, action = _automaton("b", scope)
     engine, env, sink = _engine()
 
     engine.apply_transition(automaton, state, action, None, ChoiceSelection.NONE, session_id=1, origin=origin)
 
     assert sink.transitions == [("a", "go", "b")]
-    assert env.memory() == {}
+    assert sink.local_memory_clears == [1]
+    assert env.memory() == {"note": "remembered"}
     assert env.action_set() == {"counter": 3}
 
 
-def test_landing_on_a_keep_state_leaves_the_memory():
-    automaton, state, action = _automaton("b", "keep")
-    engine, env, _sink = _engine()
+def test_a_self_loop_clears_the_sessions_local_memory_cell_too():
+    automaton, state, action = _automaton("a", "local")
+    engine, env, sink = _engine()
 
     engine.apply_transition(automaton, state, action, None, ChoiceSelection.NONE, session_id=1, origin="trigger")
 
+    assert sink.local_memory_clears == [1]
     assert env.memory() == {"note": "remembered"}
 
 
-def test_a_self_loop_lands_on_the_state_again_and_clears_too():
-    automaton, state, action = _automaton("a", "clear")
-    engine, env, _sink = _engine()
-
-    engine.apply_transition(automaton, state, action, None, ChoiceSelection.NONE, session_id=1, origin="trigger")
-
-    assert env.memory() == {}
-
-
 def test_a_turn_that_stays_where_it_is_touches_nothing():
-    automaton, state, _action = _automaton("b", "clear")
-    engine, env, _sink = _engine()
+    automaton, state, _action = _automaton("b", "local")
+    engine, env, sink = _engine()
 
     engine.apply_transition(automaton, state, None, {}, ChoiceSelection.NONE, session_id=1, origin="trigger")
 
+    assert sink.local_memory_clears == []
     assert env.memory() == {"note": "remembered"}

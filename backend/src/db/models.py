@@ -102,6 +102,7 @@ class Tracking(BaseModel):
     values = TextField(null=True)
     env = TextField(null=True)
     action_env = TextField(null=True)
+    local_memory = TextField(null=True)
     output = TextField(null=True)
     tool_calls = TextField(null=True)
     expected_state = CharField(null=True)

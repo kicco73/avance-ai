@@ -38,6 +38,9 @@ class TrackingSink(Protocol):
     ) -> int:
         ...
 
+    def clear_local_memory(self, session_id: int) -> None:
+        ...
+
 
 class DbTrackingSink:
     """TrackingSink backed by the real Db — production's own sink."""
@@ -70,6 +73,9 @@ class DbTrackingSink:
             origin=origin,
             output_values=output_values,
         )
+
+    def clear_local_memory(self, session_id: int) -> None:
+        self._db.clear_local_memory(session_id)
 
 
 class TestObservationSink:
@@ -107,18 +113,8 @@ class TestObservationSink:
         )
         return row.id
 
-
-class KeepAiMemory:
-    def on_entry(self, env: Env) -> None:
+    def clear_local_memory(self, session_id: int) -> None:
         return None
-
-
-class ClearAiMemory:
-    def on_entry(self, env: Env) -> None:
-        env.clear_memory()
-
-
-AI_MEMORY_STRATEGIES = {"keep": KeepAiMemory(), "clear": ClearAiMemory()}
 
 
 class TrackingEngine:
@@ -255,7 +251,8 @@ class TrackingEngine:
         ActionTask itself and for the chat namespace's own push.
         `output_values`: structured output dict from this turn's AI
         generation, available in env expressions and task/on-exit scripts."""
-        AI_MEMORY_STRATEGIES[automaton.get_state(action.target).ai_memory_strategy].on_entry(self._env)
+        if session_id is not None:
+            self._sink.clear_local_memory(session_id)
         if not action.env and not action.task and not action.on_exit:
             return {}
         scope = self._scope_builder.build(

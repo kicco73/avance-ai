@@ -32,6 +32,9 @@ class FakeSink:
         self.transitions.append((old_state, action, new_state))
         return len(self.transitions)
 
+    def clear_local_memory(self, session_id):
+        return None
+
 
 class FakeEnv:
     def __init__(self):

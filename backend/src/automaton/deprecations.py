@@ -424,6 +424,24 @@ class LegacyStateChat(StateDeprecation, RenamedKey):
     )
 
 
+class LegacyAiMemoryStrategy(StateDeprecation, RenamedKey):
+
+    KEY = "ai-memory-strategy"
+    NEW = "ai-memory-scope"
+    VALUES = {"keep": "global", "clear": "local"}
+    MESSAGE = (
+        "State '{name}': 'ai-memory-strategy' is deprecated — the field is called "
+        "'ai-memory-scope' now, with 'keep'/'clear' renamed to 'global'/'local', and "
+        "what it says is ignored until it is renamed."
+    )
+
+    def rewrite(self, editor) -> None:
+        for entry in self.mine(editor):
+            value = own_field(entry, self.KEY)
+            editor.rename_key_preserving_comments(entry, self.KEY, self.NEW)
+            entry[self.NEW] = self.VALUES.get(value, value)
+
+
 class RemovedEnvAiAccess(EnvKeyDeprecation, RemovedKey):
 
     KEY = "ai-access"
@@ -445,7 +463,7 @@ class RemovedEnvUiLabel(EnvKeyDeprecation, RemovedKey):
 PROJECT_KINDS = (LegacyTalkEnabled,)
 FIELD_KINDS = (
     LegacyOnEnter, LegacyActuatorField, LegacyActionPrompt, LegacyStateScript,
-    LegacyStateChat, RemovedEnvAiAccess, RemovedEnvUiLabel,
+    LegacyStateChat, LegacyAiMemoryStrategy, RemovedEnvAiAccess, RemovedEnvUiLabel,
 )
 KINDS = PROJECT_KINDS + FIELD_KINDS + (LegacyActuatorCall,)
 

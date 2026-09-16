@@ -50,7 +50,7 @@ class State:
     fixed_message: str | None = None
     transition_log_level: str = "WARNING"
     signal_tracking_strategy: str = "relevant"
-    ai_memory_strategy: str = "keep"
+    ai_memory_scope: str = "none"
     attachments: tuple[str, ...] = ()
     history_cutoff: bool = False
     chat_enabled: bool = True

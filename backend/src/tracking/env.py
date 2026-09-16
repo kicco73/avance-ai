@@ -171,3 +171,16 @@ class PersistedEnv(Env):
 
     def _write_action_set(self, values: dict[str, Any], origin: str | None = None) -> int | None:
         return self._db.set_action_env(self._session_id, values, origin=origin)
+
+
+class LocalMemoryEnv(Env):
+    def __init__(self, db: Db, session_id: int) -> None:
+        super().__init__()
+        self._db = db
+        self._session_id = session_id
+
+    def memory(self, until: datetime | None = None) -> dict[str, Any]:
+        return self._db.get_local_memory(self._session_id, until=until)
+
+    def _write_memory(self, values: dict[str, Any], message_id: int | None = None) -> None:
+        self._db.set_local_memory(self._session_id, values)

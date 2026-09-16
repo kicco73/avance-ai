@@ -127,7 +127,7 @@ project:
 | `ui-label` | no | string | — | The only "name" ever shown to a user; `id` is never displayed. |
 | `ui-description` | no | string | — | Shown in the frontend. |
 | `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §3.2). |
-| `new-session-strategy` | no | `resume` \| `restart` | `resume` | What a **new live session** of a returning user inherits. `resume`: it opens in the state the previous session left, every env key and the model's own memory intact, and nothing fires. `restart`: it opens in `init-action.target` with the env keys and the model's memory wiped — the declared defaults and `init-action`'s own `env:` apply afresh, and its `task` fires again (§7). Test and preview sessions always start from `init-action`, whatever this says. |
+| `new-session-strategy` | no | `resume` \| `restart` | `resume` | What a **new live session** of a returning user inherits. `resume`: it opens in the state the previous session left, every env key and the model's own `global` memory (§5.3) intact, and nothing fires. `restart`: it opens in `init-action.target` with the env keys and the `global` memory wiped — the declared defaults and `init-action`'s own `env:` apply afresh, and its `task` fires again (§7). Either way, a `local`-scope memory never carries over to a new session regardless: it's per-session by definition (§4). Test and preview sessions always start from `init-action`, whatever this says. |
 | `services` | no | mapping (service name → level) | `{}` | What this project asks of each platform service it can reach. §1.2. |
 
 ### 1.2 `project.services:`
@@ -235,7 +235,7 @@ states:
     history-cutoff: false
     transition-log-level: WARNING
     signal-tracking-strategy: relevant
-    ai-memory-strategy: keep
+    ai-memory-scope: global
     attachments: []
     actions: [ ... ]   # see §5
 ```
@@ -251,7 +251,7 @@ states:
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
 | `signal-tracking-strategy` | no | `relevant` \| `all` | `relevant` | Which signals a turn in this state computes (§3.1). `relevant`: only the ones this state's own actions read — in a `trigger`, an `env:` expression or an `on-exit` assignment. `all`: every declared signal, whether or not anything here reads it — for a state whose signals feed a later state, a metric, or a report rather than its own triggers. |
-| `ai-memory-strategy` | no | `keep` \| `clear` | `keep` | What happens to the model's own memory (§5.3) when a transition lands on this state. `keep`: nothing — the notes collected so far stay. `clear`: the memory is wiped as the transition lands (a self-loop counts as landing again, as for `history-cutoff`), and the model starts collecting afresh from its first reply here; the automaton's `env:` keys are untouched. Whatever the transition's own turn reports in its `memory` field is merged after the wipe, so it is the first thing this state collects. |
+| `ai-memory-scope` | no | `none` \| `local` \| `global` | `none` | Which memory a turn in this state reads and writes (§5.3) — a property of *this* state, not of the transition landing on it. `none`: the memory channel isn't even offered to the model — nothing shown, nothing parsed back, nothing kept. `global`: the shared, project+user-persistent store every session of that pair sees, unaffected by which states came before it. `local`: a fresh, empty memory that starts the moment a transition lands here (a self-loop counts as landing again, as for `history-cutoff`) and is destroyed the moment the session leaves this state — isolated from `global`, which a `local` visit never reads from or writes into. The automaton's `env:` keys are untouched by any of the three. |
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
 | `ai-must-read-sources` | no | list of source names | `[]` | Same, but the read is forced once per entry into this state — §4.2. A source name can appear in at most one of the two read fields. |
@@ -630,7 +630,14 @@ with two different owners, and the names are load-bearing:
   strings), written only by the model through the `memory` field of its
   structured reply (a delta: only new/changed notes) and read only by the
   model, in the prompt's own "Current memory" block. No script or trigger
-  ever sees it; the Inspector's Memory section shows and edits it.
+  ever sees it; the Inspector's Memory section shows and edits the
+  `global` one. Which store a turn's memory field actually reads/writes —
+  none at all, the project+user `global` one below, or a fresh per-session
+  `local` one — is decided by the current state's own `ai-memory-scope`
+  (§4), never a project-wide constant: `global` is what "memory" means
+  everywhere below in this section; a `local`-scope state instead reads
+  and writes a store that starts empty on entry and is gone on exit,
+  never touching `global`.
 - **env** — the automaton's declared variables: the project's top-level
   `env:` keys, deterministic, written by an action's own `env:` field
   (below) — or, for a key some state lists in its own `output` (§4.3), by
@@ -762,11 +769,13 @@ user's message, not on its own discarded wording.
 
 **Persistence and reset.** Every env key persists per (project, user) —
 across sessions, together with the state a live session was left in and
-the model's own memory. `project.new-session-strategy: restart` (§1.1)
-wipes all three when a new live session opens. Under `resume`, a case is
-started afresh by resetting its keys on the action that opens it. The
-model's memory alone is also wiped by landing on a state whose
-`ai-memory-strategy` is `clear` (§4) — env keys stay.
+the model's own `global` memory. `project.new-session-strategy: restart`
+(§1.1) wipes all three when a new live session opens. Under `resume`, a
+case is started afresh by resetting its keys on the action that opens it.
+A `local`-scope memory is never part of this: it lives per-session, not
+per (project, user), so it never survives past the session that collected
+it regardless of `new-session-strategy` — every transition empties it
+outright, landing on the same `local` state again included (§4).
 
 **Action `env`.**
 
@@ -1109,7 +1118,7 @@ of how you're likely to hit them:
 - Every state has **exactly one** of `contextual-prompt` / `fixed-message`.
 - Every state's `transition-log-level`, if given, is a valid level.
 - Every state's `signal-tracking-strategy`, if given, is `relevant` or `all`.
-- Every state's `ai-memory-strategy`, if given, is `keep` or `clear`.
+- Every state's `ai-memory-scope`, if given, is `none`, `local`, or `global`.
 - Every action's `target` (incl. `init-action`'s) names a real state (or is a self-loop).
 - Every action's `trigger`, if given: syntactically valid and every
   reference resolves (§5.2's rules per namespace).
@@ -1174,8 +1183,9 @@ exact meaning today — `project.talk-enabled` is `services: {talk: …}`,
 an action's `actuator`/`on-enter` is its `task`, its `action-prompt` is a
 `task.prompt(...)` call in that `task`, a state's `chat` is
 `chat-enabled`, its `on-enter` is the `task` of every action that reaches
-it, an env key's `ai-access`/`ui-label` are gone with nothing in their
-place — and the modernizer rewrites them, in place, wherever an
+it, its `ai-memory-strategy` is `ai-memory-scope` (`keep`/`clear` renamed
+to `global`/`local`, §4), an env key's `ai-access`/`ui-label` are gone
+with nothing in their place — and the modernizer rewrites them, in place, wherever an
 `index.yml` enters or is opened: on import, when the design view is
 opened (which says what it changed), and when a stored revision fails to
 build, so that what a product serves recovers without anyone visiting.
