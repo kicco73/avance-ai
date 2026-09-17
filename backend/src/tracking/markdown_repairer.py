@@ -2,47 +2,110 @@ from __future__ import annotations
 
 import re
 
+from system.logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 class MarkdownRepairer:
-    """Best-effort sanitizer for LLM-generated Markdown."""
+    """
+    Conservative repairer for LLM-generated Markdown.
 
-    _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
-    _LIST_RE = re.compile(r"^(\s*)([-+*]|\d+[.)])\s+(.*)$")
-    _TABLE_SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
+    Input/output are Markdown strings only.
+    No HTML parsing or HTML transformation is performed.
+    """
+
+    _DASH_TRANSLATION = str.maketrans({
+        "—": "-",
+        "–": "-",
+        "−": "-",
+    })
+
+    _FENCE_RE = re.compile(
+        r"^(?P<indent> {0,3})(?P<char>`|~)(?P<marks>(?P=char){2,})(?P<info>.*)$"
+    )
+
+    _TABLE_SEPARATOR_RE = re.compile(
+        r"^:?-{3,}:?$"
+    )
 
     def repair(self, markdown: str) -> str:
         if not markdown:
             return markdown
 
-        markdown = markdown.replace("\r\n", "\n").replace("\r", "\n")
+        lines = markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
-        lines = markdown.split("\n")
+        result: list[str] = []
+        normal_lines: list[str] = []
 
-        lines = self._repair_attached_tables(lines)
+        in_fence = False
+        fence_char = ""
+        fence_length = 0
 
-        lines = self._repair_fences(lines)
+        def flush_normal() -> None:
+            if not normal_lines:
+                return
+
+            result.extend(self._repair_normal_lines(normal_lines))
+            normal_lines.clear()
+
+        for line in lines:
+            fence = self._parse_fence(line)
+
+            if not in_fence:
+                if fence is not None:
+                    flush_normal()
+
+                    result.append(line)
+                    in_fence = True
+                    fence_char, fence_length = fence
+                else:
+                    normal_lines.append(line)
+
+                continue
+
+            result.append(line)
+
+            if self._is_closing_fence(
+                line,
+                fence_char,
+                fence_length,
+            ):
+                in_fence = False
+                fence_char = ""
+                fence_length = 0
+
+        flush_normal()
+
+        if in_fence:
+            result.append(fence_char * fence_length)
+
+        return self._cleanup(result)
+
+
+    def _repair_normal_lines(self, lines: list[str]) -> list[str]:
+        lines = self._detach_attached_table_headers(lines)
         lines = self._repair_tables(lines)
         lines = self._repair_lists(lines)
         lines = self._repair_emphasis(lines)
+        return lines
 
-        return "\n".join(lines).strip()
 
-
-    def _repair_attached_tables(self, lines: list[str]) -> list[str]:
+    def _detach_attached_table_headers(
+        self,
+        lines: list[str],
+    ) -> list[str]:
         """
         Turns:
 
-            Some text: | A | B |
-            | — | — |
-            | x | y |
+            prose...|Título | Tema
+            — | —
 
         into:
 
-            Some text:
+            prose...
 
-            | A | B |
-            | --- | --- |
-            | x | y |
+            Título | Tema
+            — | —
         """
 
         result: list[str] = []
@@ -51,359 +114,547 @@ class MarkdownRepairer:
         while i < len(lines):
             line = lines[i]
 
-            if "|" not in line or i + 1 >= len(lines):
-                result.append(line)
-                i += 1
-                continue
+            if i + 1 < len(lines):
+                separator = lines[i + 1]
 
-            found = False
+                split = self._find_attached_table_header(
+                    line,
+                    separator,
+                )
 
-            for match in re.finditer(r"\|", line):
-                position = match.start()
+                if split is not None:
+                    prose, header = split
 
-                prose = line[:position].rstrip()
-                table_header = line[position:].strip()
+                    if prose.strip():
+                        result.append(prose.rstrip())
+                        result.append("")
 
-                if not prose:
+                    result.append(header)
+
+                    i += 1
                     continue
-
-                if not self._is_table_row(table_header):
-                    continue
-
-                if not self._is_table_separator(lines[i + 1]):
-                    continue
-
-                result.append(prose)
-                result.append("")
-                result.append(table_header)
-
-                i += 1
-                found = True
-                break
-
-            if not found:
-                result.append(line)
-                i += 1
-
-        return result
-
-
-    def _repair_fences(self, lines: list[str]) -> list[str]:
-        result: list[str] = []
-
-        fence_char: str | None = None
-        fence_length = 0
-
-        for line in lines:
-            match = self._FENCE_RE.match(line)
-
-            if match:
-                marker = match.group(1)
-                char = marker[0]
-                length = len(marker)
-
-                if fence_char is None:
-                    fence_char = char
-                    fence_length = length
-                elif char == fence_char and length >= fence_length:
-                    fence_char = None
-                    fence_length = 0
-
-                result.append(line)
-                continue
 
             result.append(line)
-
-        if fence_char is not None:
-            result.append(fence_char * fence_length)
+            i += 1
 
         return result
 
+    def _find_attached_table_header(
+        self,
+        line: str,
+        separator: str,
+    ) -> tuple[str, str] | None:
+        separator_cells = self._split_table_row(separator)
+
+        if separator_cells is None:
+            return None
+
+        if not self._is_separator_row(separator_cells):
+            return None
+
+        if len(separator_cells) < 2:
+            return None
+
+        positions = self._pipe_positions(line)
+
+        for position in positions:
+            prose = line[:position].rstrip()
+            header = line[position:].strip()
+
+            if not prose or not header:
+                continue
+
+            header_cells = self._split_table_row(header)
+
+            if header_cells is None:
+                continue
+
+            if len(header_cells) != len(separator_cells):
+                continue
+
+            if len(header_cells) < 2:
+                continue
+
+            return prose, self._format_header_row(header_cells)
+
+        return None
 
     def _repair_tables(self, lines: list[str]) -> list[str]:
         result: list[str] = []
         i = 0
 
         while i < len(lines):
-            if i + 1 >= len(lines):
+            header = self._split_table_row(lines[i])
+
+            if header is None or len(header) < 2:
                 result.append(lines[i])
-                break
-
-            header = lines[i]
-            separator = lines[i + 1]
-
-            if (
-                self._is_table_row(header)
-                and self._is_table_separator(separator)
-            ):
-                columns = len(self._split_row(header))
-
-                result.append(
-                    self._normalize_row(header, columns)
-                )
-                result.append(
-                    self._normalize_separator(separator, columns)
-                )
-
-                i += 2
-
-                while i < len(lines):
-                    row = lines[i]
-
-                    if not self._is_table_row(row):
-                        break
-
-                    cells = self._split_row(row)
-
-                    if len(cells) < 2:
-                        break
-
-                    result.append(
-                        self._normalize_row(row, columns)
-                    )
-                    i += 1
-
+                i += 1
                 continue
 
-            if (
-                self._is_table_row(header)
-                and self._is_table_row(separator)
-            ):
-                header_cells = self._split_row(header)
-                second_cells = self._split_row(separator)
+
+            if i + 1 < len(lines):
+                separator = self._split_table_row(lines[i + 1])
 
                 if (
-                    len(header_cells) >= 2
-                    and len(header_cells) == len(second_cells)
+                    separator is not None
+                    and len(separator) == len(header)
+                    and self._is_separator_row(separator)
                 ):
-                    columns = len(header_cells)
-
-                    result.append(
-                        self._normalize_row(header, columns)
-                    )
-                    result.append(
-                        self._make_separator(columns)
-                    )
-                    result.append(
-                        self._normalize_row(separator, columns)
+                    table, next_index = self._consume_table(
+                        lines,
+                        i,
+                        header,
+                        separator,
                     )
 
-                    i += 2
-
-                    while i < len(lines):
-                        row = lines[i]
-
-                        if not self._is_table_row(row):
-                            break
-
-                        cells = self._split_row(row)
-
-                        if len(cells) != columns:
-                            break
-
-                        result.append(
-                            self._normalize_row(row, columns)
-                        )
-                        i += 1
-
+                    result.extend(table)
+                    i = next_index
                     continue
+
+
+            if self._looks_like_table_without_separator(
+                lines,
+                i,
+                header,
+            ):
+                separator = ["---"] * len(header)
+
+                table, next_index = self._consume_table_without_separator(
+                    lines,
+                    i,
+                    header,
+                    separator,
+                )
+
+                result.extend(table)
+                i = next_index
+                continue
 
             result.append(lines[i])
             i += 1
 
         return result
 
-    def _is_table_row(self, line: str) -> bool:
-        if self._FENCE_RE.match(line):
+    def _consume_table(
+        self,
+        lines: list[str],
+        start: int,
+        header: list[str],
+        separator: list[str],
+    ) -> tuple[list[str], int]:
+        header = self._normalize_bold_header(header)
+
+        result = [
+            self._format_header_row(header),
+            self._format_separator_row(separator),
+        ]
+
+        i = start + 2
+
+        while i < len(lines):
+            if not lines[i].strip():
+                break
+
+            cells = self._split_table_row(lines[i])
+
+            if cells is None or len(cells) != len(header):
+                break
+
+            result.append(self._format_table_row(cells))
+            i += 1
+
+        return result, i
+
+    def _consume_table_without_separator(
+        self,
+        lines: list[str],
+        start: int,
+        header: list[str],
+        separator: list[str],
+    ) -> tuple[list[str], int]:
+        header = self._normalize_bold_header(header)
+
+        result = [
+            self._format_header_row(header),
+            self._format_separator_row(separator),
+        ]
+
+        i = start + 1
+
+        while i < len(lines):
+            if not lines[i].strip():
+                break
+
+            cells = self._split_table_row(lines[i])
+
+            if cells is None or len(cells) != len(header):
+                break
+
+            result.append(self._format_table_row(cells))
+            i += 1
+
+        return result, i
+
+    def _looks_like_table_without_separator(
+        self,
+        lines: list[str],
+        index: int,
+        header: list[str],
+    ) -> bool:
+        if index + 1 >= len(lines):
             return False
+
+        if len(header) < 2:
+            return False
+
+        next_cells = self._split_table_row(lines[index + 1])
+
+        if next_cells is None:
+            return False
+
+        if len(next_cells) != len(header):
+            return False
+
+        current = lines[index].strip()
+
+        if current.startswith("|") or current.endswith("|"):
+            return True
+
+        if index + 2 >= len(lines):
+            return False
+
+        third_cells = self._split_table_row(lines[index + 2])
+
+        return (
+            third_cells is not None
+            and len(third_cells) == len(header)
+        )
+
+    def _split_table_row(self, line: str) -> list[str] | None:
+        """
+        Split a pipe-separated Markdown row.
+
+        Supports:
+            A | B
+            | A | B |
+            **A | B**
+            `a|b` | C
+            A \\| B | C
+
+        Pipes inside inline code and escaped pipes are not separators.
+        """
 
         stripped = line.strip()
 
-        if not stripped or "|" not in stripped:
-            return False
+        if not stripped:
+            return None
 
-        return len(self._split_row(stripped)) >= 2
+        if not self._has_unescaped_pipe(stripped):
+            return None
 
-    def _is_table_separator(self, line: str) -> bool:
-        cells = self._split_row(line)
+        cells: list[str] = []
+        current: list[str] = []
+
+        escaped = False
+        in_code = False
+
+        i = 0
+
+        while i < len(stripped):
+            char = stripped[i]
+
+            if escaped:
+                current.append(char)
+                escaped = False
+                i += 1
+                continue
+
+            if char == "\\":
+                current.append(char)
+                escaped = True
+                i += 1
+                continue
+
+            if char == "`":
+                in_code = not in_code
+                current.append(char)
+                i += 1
+                continue
+
+            if char == "|" and not in_code:
+                cells.append("".join(current).strip())
+                current = []
+                i += 1
+                continue
+
+            current.append(char)
+            i += 1
+
+        cells.append("".join(current).strip())
+
+        if stripped.startswith("|") and cells and cells[0] == "":
+            cells.pop(0)
+
+        if stripped.endswith("|") and cells and cells[-1] == "":
+            cells.pop()
 
         if len(cells) < 2:
-            return False
+            return None
 
-        for cell in cells:
-            cell = (
-                cell.strip()
-                .replace("—", "-")
-                .replace("–", "-")
-                .replace("−", "-")
+        if any(cell == "" for cell in cells):
+            return None
+
+        return cells
+
+    def _normalize_bold_header(
+        self,
+        cells: list[str],
+    ) -> list[str]:
+        """
+        Converts:
+
+            **Título | Tema**
+
+        from:
+
+            ["**Título", "Tema**"]
+
+        into:
+
+            ["**Título**", "**Tema**"]
+        """
+
+        if len(cells) < 2:
+            return cells
+
+        first = cells[0].strip()
+        last = cells[-1].strip()
+
+        if not (
+            first.startswith("**")
+            and last.endswith("**")
+        ):
+            return cells
+
+        normalized = list(cells)
+
+        normalized[0] = first[2:].strip()
+        normalized[-1] = last[:-2].strip()
+
+        return [
+            cell if (
+                cell.startswith("**")
+                and cell.endswith("**")
             )
+            else f"**{cell}**"
+            for cell in normalized
+        ]
 
-            if not self._TABLE_SEPARATOR_CELL_RE.fullmatch(cell):
+    def _is_separator_row(self, cells: list[str]) -> bool:
+        for cell in cells:
+            normalized = cell.translate(self._DASH_TRANSLATION).strip()
+
+            if not self._TABLE_SEPARATOR_RE.fullmatch(normalized):
                 return False
 
         return True
 
-    @staticmethod
-    def _split_row(line: str) -> list[str]:
-        line = line.strip()
+    def _format_header_row(self, cells: list[str]) -> str:
+        return self._format_table_row(cells)
 
-        if line.startswith("|"):
-            line = line[1:]
+    def _format_table_row(self, cells: list[str]) -> str:
+        return "| " + " | ".join(
+            cell.strip()
+            for cell in cells
+        ) + " |"
 
-        if line.endswith("|") and not line.endswith(r"\|"):
-            line = line[:-1]
-
-        return [cell.strip() for cell in line.split("|")]
-
-    def _normalize_row(self, line: str, columns: int) -> str:
-        cells = self._split_row(line)
-
-        if len(cells) < columns:
-            cells.extend([""] * (columns - len(cells)))
-
-        elif len(cells) > columns:
-            cells = cells[:columns - 1] + [
-                " | ".join(cells[columns - 1:])
-            ]
-
-        return "| " + " | ".join(cells) + " |"
-
-    def _normalize_separator(self, line: str, columns: int) -> str:
-        cells = self._split_row(line)
+    def _format_separator_row(self, cells: list[str]) -> str:
         normalized: list[str] = []
 
-        for cell in cells[:columns]:
-            cell = (
-                cell.strip()
-                .replace("—", "-")
-                .replace("–", "-")
-                .replace("−", "-")
-            )
+        for cell in cells:
+            cell = cell.translate(self._DASH_TRANSLATION).strip()
 
             left = cell.startswith(":")
             right = cell.endswith(":")
 
-            if left and right:
-                normalized.append(":---:")
-            elif left:
-                normalized.append(":---")
-            elif right:
-                normalized.append("---:")
-            else:
-                normalized.append("---")
+            core = cell.strip(":")
 
-        normalized.extend(["---"] * (columns - len(normalized)))
+            core = "-" * max(3, len(core))
 
-        return "| " + " | ".join(normalized) + " |"
+            if left:
+                core = ":" + core
 
-    @staticmethod
-    def _make_separator(columns: int) -> str:
-        return "| " + " | ".join(["---"] * columns) + " |"
+            if right:
+                core += ":"
+
+            normalized.append(core)
+
+        return self._format_table_row(normalized)
+
+    def _pipe_positions(self, line: str) -> list[int]:
+        positions: list[int] = []
+
+        escaped = False
+        in_code = False
+
+        for i, char in enumerate(line):
+            if escaped:
+                escaped = False
+                continue
+
+            if char == "\\":
+                escaped = True
+                continue
+
+            if char == "`":
+                in_code = not in_code
+                continue
+
+            if char == "|" and not in_code:
+                positions.append(i)
+
+        return positions
+
+    def _has_unescaped_pipe(self, line: str) -> bool:
+        return bool(self._pipe_positions(line))
+
+
+    def _parse_fence(self, line: str) -> tuple[str, int] | None:
+        match = self._FENCE_RE.match(line)
+
+        if match is None:
+            return None
+
+        char = match.group("char")
+        marks = match.group("marks")
+
+        return char, len(marks)
+
+    def _is_closing_fence(
+        self,
+        line: str,
+        fence_char: str,
+        fence_length: int,
+    ) -> bool:
+        pattern = (
+            rf"^ {{0,3}}"
+            rf"{re.escape(fence_char)}"
+            rf"{{{fence_length},}}"
+            rf"\s*$"
+        )
+
+        return re.match(pattern, line) is not None
 
 
     def _repair_lists(self, lines: list[str]) -> list[str]:
         result: list[str] = []
 
-        in_fence = False
-        fence_char: str | None = None
-        previous_list_indent: int | None = None
-
         for line in lines:
-            fence = self._FENCE_RE.match(line)
-
-            if fence:
-                marker = fence.group(1)
-
-                if fence_char is None:
-                    fence_char = marker[0]
-                    in_fence = True
-                elif marker[0] == fence_char:
-                    fence_char = None
-                    in_fence = False
-
-                result.append(line)
-                continue
-
-            if in_fence:
-                result.append(line)
-                continue
-
-            match = self._LIST_RE.match(line)
-
-            if not match:
-                result.append(line)
-                previous_list_indent = None
-                continue
-
-            indent, marker, content = match.groups()
-            indent_length = len(indent.expandtabs(2))
-
-            indent_length = (indent_length // 2) * 2
-
-            if previous_list_indent is None:
-                indent_length = 0
-            elif indent_length > previous_list_indent + 2:
-                indent_length = previous_list_indent + 2
-
-            result.append(
-                f"{' ' * indent_length}{marker} {content}"
+            line = re.sub(
+                r"^\t+",
+                lambda match: "  " * len(match.group()),
+                line,
             )
 
-            previous_list_indent = indent_length
+            match = re.match(
+                r"^( {5,})([-+*])(\s+)(.*)$",
+                line,
+            )
 
-        return result
+            if match:
+                indentation = match.group(1)
+                marker = match.group(2)
+                spacing = match.group(3)
+                content = match.group(4)
 
+                level = min(len(indentation) // 2, 8)
 
-    def _repair_emphasis(self, lines: list[str]) -> list[str]:
-        result: list[str] = []
-
-        in_fence = False
-        fence_char: str | None = None
-
-        for line in lines:
-            fence = self._FENCE_RE.match(line)
-
-            if fence:
-                marker = fence.group(1)
-
-                if fence_char is None:
-                    fence_char = marker[0]
-                    in_fence = True
-                elif marker[0] == fence_char:
-                    fence_char = None
-                    in_fence = False
-
-                result.append(line)
-                continue
-
-            if in_fence:
-                result.append(line)
-                continue
-
-            line = self._balance_marker(line, "**")
-            line = self._balance_marker(line, "__")
-
-            if line.count("*") == 1:
-                line += "*"
-
-            if line.count("_") == 1:
-                position = line.find("_")
-
-                if not (
-                    position > 0
-                    and position + 1 < len(line)
-                    and line[position - 1].isalnum()
-                    and line[position + 1].isalnum()
-                ):
-                    line += "_"
+                line = (
+                    ("  " * level)
+                    + marker
+                    + spacing
+                    + content
+                )
 
             result.append(line)
 
         return result
 
-    @staticmethod
-    def _balance_marker(line: str, marker: str) -> str:
-        if line.count(marker) % 2:
-            return line + marker
 
-        return line
+    def _repair_emphasis(self, lines: list[str]) -> list[str]:
+        return [
+            self._repair_emphasis_line(line)
+            for line in lines
+        ]
+
+    def _repair_emphasis_line(self, line: str) -> str:
+        if not line.strip():
+            return line
+
+        if re.match(r"^\s*[-+*]\s+", line):
+            return line
+
+        if "://" in line:
+            return line
+
+        protected: list[str] = []
+
+        def protect(match: re.Match[str]) -> str:
+            protected.append(match.group(0))
+            return f"\x00{len(protected) - 1}\x00"
+
+        masked = re.sub(
+            r"`[^`]*`",
+            protect,
+            line,
+        )
+
+        for marker in ("**", "__"):
+            if masked.count(marker) % 2 == 1:
+                masked += marker
+
+        if (
+            masked.count("*") == 1
+            and not masked.lstrip().startswith("*")
+            and not masked.rstrip().endswith("*")
+        ):
+            masked += "*"
+
+        if (
+            masked.count("_") == 1
+            and not re.search(r"\w_\w", masked)
+            and not masked.rstrip().endswith("_")
+        ):
+            masked += "_"
+
+        def restore(match: re.Match[str]) -> str:
+            return protected[int(match.group(1))]
+
+        return re.sub(
+            r"\x00(\d+)\x00",
+            restore,
+            masked,
+        )
+
+
+    def _cleanup(self, lines: list[str]) -> str:
+        lines = [
+            line.rstrip()
+            for line in lines
+        ]
+
+        result: list[str] = []
+        previous_blank = False
+
+        for line in lines:
+            if not line.strip():
+                if not previous_blank:
+                    result.append("")
+
+                previous_blank = True
+                continue
+
+            result.append(line)
+            previous_blank = False
+
+        return "\n".join(result).strip()
