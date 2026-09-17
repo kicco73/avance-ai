@@ -1,0 +1,59 @@
+.chat-body {
+  background-image: url(aspect/background.jpeg);
+  background-position: top center;
+  background-repeat: repeat;  
+  background-size: 512px;
+}
+
+.chat-header {
+  height: 65px;
+  align-items: center;
+  background-position: left center, left top;
+  background-repeat: repeat;
+  background-size: 65px;
+  background-color: #005087;
+  background-repeat: no-repeat;
+}
+
+
+.chat-header .chat-header-icon {
+  position: absolute;
+  z-index: 1;
+  width: 75px;
+  height: 75px;
+  background-repeat: no-repeat;
+  background-size: 75px 75px;
+  background-color: #EC4;
+  border-radius: 48px;
+  border-width: 3px;
+  border-color: #FA0;
+  border-style: solid;
+  top: 10px;
+  left:20px;
+  animation-duration: 0.15s;
+  animation-timing-function: ease-out;
+    background-image: url(aspect/icon.jpeg);
+
+}
+
+.state-nivel-1 .chat-header-icon {
+  background-image: url(aspect/manuel.jpeg);
+}
+
+.state-nivel-2 .chat-header-icon {
+  background-image: url(aspect/nuria.jpeg);
+}
+
+.state-nivel-3 .chat-header-icon {
+  background-image: url(aspect/manuel.jpeg);
+}
+
+.input-row {
+  background-color: #005087;
+}
+
+.action-btn {
+  background: rgb(0,80,135);
+  color: white;
+  font-weight: bold;
+}

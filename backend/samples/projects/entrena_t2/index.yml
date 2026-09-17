@@ -1,0 +1,310 @@
+avance-version: "1.7.0"
+
+init-action:
+  target: Hello
+
+  on-exit: ""
+states:
+  Hello:
+    contextual-prompt: |-
+      Empieza presentándote como simulador de pacientes con inteligencia artificial. Hazlo de una manera amable y divertida. Explica el 100% de las veces que el objetivo es aprender a realizar entrevista motivacional. Pregunta "¿Te gustaría elegir un caso?"
+    ui-label: Presentacion
+    ui-description: Simulador de pacientes para entrenar a profesionales sanitarios en entrevista motivacional.
+    actions:
+      - name: action-1
+        ui-label: Empieza
+        target: state-0
+        on-exit: "casos = source.casos.column('nombre')\nperfiles = source.casos.column('perfil')\ntitulos = source.casos.column('titulo')\n\ntabla = ['\"**%s:** %s\",\"%s\"' % (caso, titulo, perfil) \n  for caso, perfil, titulo in zip(casos, perfiles, titulos)\n]\n\nenv.casos = casos\nenv.casos_con_descripcion = '\\n'.join(tabla)"
+      - name: action-2
+        ui-label: Error de source
+        target: state-1
+        trigger: not env.casos
+    input: []
+    chat-enabled: false
+    output: []
+    ai-memory-scope: global
+    reactions-enabled: true
+  state-0:
+    ui-label: Eleccion
+    contextual-prompt: |-
+      Dile de una manera divertida al usuario que eliga el caso con el que te gustaría conversar.
+
+      Muestra siempre todos los casos en tabla markdown, con columnas Caso|Perfil.
+
+      Rellena cada linea de la tabla con el contenido de la variable casos para el titulo, y de casos_con_description para el tema.
+
+    ui-description: El usuario elige un paciente.
+    actions:
+
+      - name: action-0
+        ui-label: Caso seleccionado
+        target: nivel-32
+        trigger: choice.casos
+        on-exit: "perfil = source.casos.row_where('nombre', '=', choice.casos)\nlista = ['%s = %s' % (key, value) for key, value in perfil.items()] \nenv.caso = '\\n'.join(lista)"
+    chat-enabled: false
+    ai-memory-scope: none
+    signal-tracking-strategy: relevant
+    output: []
+    input:
+      - casos_con_descripcion
+  nivel-3:
+    ui-label: Conversacion Nivel 3
+    attachments:
+      - behaviour/niveles_usuario_EM.md
+    contextual-prompt: |-
+      Ahora interpretas el rol del paciente.
+    actions:
+      - name: action-0
+        ui-label: Fin del ejercicio
+        target: evaluacion
+        on-exit: "# We already know it's finished resetting flag for next use\n\nenv.conversacion_terminada = False"
+      - name: action-1
+        ui-label: Cambiar de caso
+        target: state-0
+        on-exit: env.conversacion_terminada = False
+      - name: action-2
+        ui-label: Conversación terminada
+        target: evaluacion
+        trigger: env.conversacion_terminada
+        on-exit: "# We already know it's finished resetting flag for next use\nenv.conversacion_terminada = False \n\nchat.notify(\"Fin de la conversación\", \"El/la paciente se ha despedido.\")"
+    output:
+      - conversacion_terminada
+    input:
+      - caso
+    signal-tracking-strategy: all
+    ai-memory-scope: local
+    reactions-enabled: true
+  evaluacion:
+    ui-label: Evaluación
+    attachments:
+      - behaviour/instrucciones_reporte_final_EM.md
+    contextual-prompt: "Tu rol es de nuevo el asistente. La conversación anterior correspondía al momento en que impersonabas al paciente.\n\nRedacta el informe final de evaluación para el profesional sanitario basándote en su desempeño.\n\nUtiliza tablas para estructurar toda la información cuantitativa y cualitativa posible.\n\nEl texto generado será el contenido completo del informe en la variable de output \"informe\"."
+    chat-enabled: false
+    actions:
+      - name: action-0
+        ui-label: Enviar Email
+        ui-description: Se envía un email al usuario con el resultado de su ejercicio
+        task: "drive.write('Sesión %s' % datetime.datetime.now(), env.informe)\ntask.send_mail(user.email, env.informe)"
+        on-exit: chat.notify("Envío informe", "Se ha enviado el informe a la dirección de correo elettronico %s" % user.email)
+        target: nivel-33
+      - name: action-2
+        ui-label: Muestra informe
+        on-exit: "chat.show(env.informe)"
+        target: nivel-33
+        task: drive.write('Sesión %s' % datetime.datetime.now(), env.informe)
+    output:
+      - informe
+  nivel-32:
+    ui-label: Nivel
+    contextual-prompt: 'pregúntale al usuario que nivel quiere practicar. Pon una explicación breve.
+
+      1. guiado
+
+      2. con ayuda
+
+      3. sin ayuda, el más dificil'
+    actions:
+      - name: action-0
+        ui-label: Nivel 1
+        target: nivel-1
+        on-exit: ''
+        ui-description: Guiado, con explicación
+      - name: action-1
+        ui-label: Nivel 2
+        target: nivel-2
+        on-exit: ''
+        ui-description: Guiado, sin explicación
+      - name: action-2
+        ui-label: Nivel 3
+        target: nivel-3
+        on-exit: ''
+        ui-description: Conversación libre, sin ayuda
+    chat-enabled: false
+    ai-memory-scope: none
+  nivel-33:
+    ui-label: Fin
+    contextual-prompt: 'Dale las gracias al usuario por haberse entrenado contigo, y dile que se ha guardado una copia del informe en su drive de "Entrena-T", siempre disponible en el panel "Drive" de la app .
+
+      Invitalo a entrenarse más con una nueva sesión.'
+    actions:
+      - name: action-0
+        ui-label: Nuevo caso
+        on-exit: env.informe = ''
+        target: state-0
+    chat-enabled: false
+  nivel-1:
+    ui-label: Conversacion Nivel 1
+    contextual-prompt: "Ahora interpretas el rol del paciente. \n\nEn cola al mensaje, comportate como el asistente, y añade siempre\nel titulo **Sugerencias del asistente:**. \n\nSiempre  añade 3 bullet points, cada uno con una respuesta potencial que el usuario puede dar al paciente, un con explicación breve del porqué dar al paciente esta respuesta."
+    actions:
+      - name: action-0
+        ui-label: Fin del ejercicio
+        target: evaluacion
+      - name: action-1
+        ui-label: Cambiar de caso
+        target: state-0
+
+      - name: action-2
+        ui-label: Conversacion terminada
+        target: evaluacion
+        on-exit: "# We already know it's finished resetting flag for next use\nenv.conversacion_terminada = False \n\nchat.notify(\"Fin de la conversación\", \"El/la paciente se ha despedido.\")"
+        trigger: env.conversacion_terminada
+    attachments:
+      - behaviour/niveles_usuario_EM.md
+
+    input:
+      - caso
+    ai-memory-scope: local
+    output:
+      - conversacion_terminada
+    reactions-enabled: true
+  nivel-2:
+    ui-label: Conversacion Nivel 2
+    contextual-prompt: "Ahora interpretas el rol del paciente. \n\nEn cola al mensaje, comportate como el asistente, y añade siempre\nel titulo **Sugerencias del asistente:**. \n\nsiempre  añade 3 bullet points, cada uno con una respuesta potencial que el usuario puede dar al paciente (tú)."
+    actions:
+      - name: action-0
+        ui-label: Fin del ejercicio
+        target: evaluacion
+      - name: action-1
+        ui-label: Cambiar de caso
+        target: state-0
+      - name: action-2
+        ui-label: Conversacion terminada
+        target: evaluacion
+        on-exit: "# We already know it's finished resetting flag for next use\nenv.conversacion_terminada = False \n\nchat.notify(\"Fin de la conversación\", \"El/la paciente se ha despedido.\")"
+        trigger: env.conversacion_terminada
+    ai-memory-scope: local
+
+    attachments:
+      - behaviour/niveles_usuario_EM.md
+
+    input:
+      - caso
+    output:
+      - conversacion_terminada
+    reactions-enabled: true
+  state-1:
+    ui-label: No disponible
+    contextual-prompt: 'Di al usuario que de momento no hay casos disponibles, pide disculpas e invita a volver pronto.'
+    chat-enabled: false
+project:
+  ui-label: Entrena-T más
+  id: entrena_t2
+  family: lluna
+  revision: 29
+  ui-description: Simulador de pacientes para entrenar conversacionalmente a los profesionales sanitarios
+  services:
+    listen: disabled
+    mail: required
+    talk: disabled
+    whatsapp: disabled
+  signal-tracking-on-ai-message: false
+  new-session-strategy: restart
+signals:
+  afirmacion:
+    ui-label: "Afirmación"
+    ui-description: Mide si el usuario ha realizado una afirmación.
+    definition: |
+      Evalúa si el usuario ha realizado una afirmación en sus mensajes recientes. Responde con 100 si hay afirmación y 0 si no la hay. Responde únicamente con un número entero (0 o 100).
+  companerismo:
+    ui-label: "Compañerismo"
+    ui-description: mide reparto del poder. El paciente es experto en sí mismo; el profesional pide permiso, pide opinión real, ofrece opciones, acepta el desacuerdo, usa la experiencia del paciente como recurso.
+    definition: |
+      Read attachment Companerismo.md
+  cultivar_el_discurso_de_cambio:
+    ui-label: "Cultivar el discurso de cambio"
+    ui-description: mide la capacidad del profesional para evocar y reforzar las razones del paciente para el cambio.
+    definition: |
+      Read attachment Cultivar el discurso de cambio.md
+  empatia:
+    ui-label: "Empatía"
+    ui-description: mide la comprensión empática del profesional hacia el paciente.
+    definition: |
+      Read attachment Empatia.md
+  enfoque:
+    ui-label: "Enfoque"
+    ui-description: mide la capacidad del profesional para establecer una dirección clara en la conversación.
+    definition: |
+      Read attachment Enfoque.md
+  manejar_la_discordancia:
+    ui-label: "Manejar la discordancia"
+    ui-description: mide cómo el profesional gestiona la discordancia o resistencia del paciente.
+    definition: |
+      Read attachment Manejar la discordancia.md
+  planificacion:
+    ui-label: "Planificación"
+    ui-description: mide cómo el profesional facilita la creación de un plan de cambio.
+    definition: |
+      Read attachment Planificacion.md
+  suavizar_el_discurso_de_mantenimiento:
+    ui-label: "Suavizar el discurso de mantenimiento"
+    ui-description: mide cómo el profesional evita reforzar o avivar el discurso de mantenimiento del cambio.
+    definition: |
+      Read attachment Suavizar el discurso de mantenimiento.md
+
+general-prompt: Eres un simulador de pacientes para entrenar a profesionales sanitarios en entrevista motivacional. Siempre eres un paciente y siempre tienes que mantener el rol asignado. Conversas con profesionales sanitario. No nombrar profesiones sanitarias.
+env:
+  caso:
+    type: string
+    ai-definition: Perfil completo del paciente que tienes que interpretar, en formato csv, donde la primera linea indica la header, y la segunda los valores correspondientes.
+  conversacion_terminada:
+    type: bool
+    ai-definition: Un booleano que indica si la conversación ha terminado.
+  informe:
+    type: string
+    ai-definition: Haz un reporte al usuario. pon quanto más pueda bajo forma de tabla markdown. asegúrate que sea MD bien formado, sin errores.
+  casos:
+    type: choice
+    ui-description: perfiles de pacientes
+  casos_con_descripcion:
+    type: string
+    value: ''
+    ai-definition: lista de casos de pacientes disponibles, uno por linea.
+sources:
+  casos:
+    ui-label: casos
+    url: avance:sources/casos.csv
+    ai-definition: Los perfiles de los pacientes que puedes simular.
+reactions:
+
+  supportive:
+    ui-label: "🙏"
+    ui-description: "Shows empathy, appreciation, or emotional support."
+    definition: |
+      Use when the speaker wants to convey empathy, appreciation, or
+      emotional support, especially in response to something vulnerable.
+
+  encouraging:
+    ui-label: "💪"
+    ui-description: "Shows encouragement and determination."
+    definition: |
+      Use when the speaker expresses determination, effort, or encouragement
+      around making progress or facing a difficult situation.
+
+  relieved:
+    ui-label: "😮‍💨"
+    ui-description: "Shows relief after worry or tension."
+    definition: |
+      Use when the speaker expresses clear relief because a concern,
+      uncertainty, or feared outcome has been resolved or reduced.
+
+  concerned:
+    ui-label: "😟"
+    ui-description: "Shows worry or concern."
+    definition: |
+      Use when the speaker expresses worry, fear, or concern about a
+      health issue, situation, or possible outcome.
+
+  frustrated:
+    ui-label: "😤"
+    ui-description: "Shows frustration or feeling stuck."
+    definition: |
+      Use when the speaker expresses frustration, irritation, or difficulty
+      making progress, particularly when feeling stuck or unable to change.
+
+  celebrating:
+    ui-label: "🎉"
+    ui-description: "Marks a meaningful positive moment."
+    definition: |
+      Use for a genuine positive milestone, achievement, breakthrough,
+      or meaningful progress that deserves explicit recognition.
+

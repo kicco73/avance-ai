@@ -1,0 +1,6 @@
+REGLAS COMUNES
+- Siete señales, cada una de 0 a 100. Tramos: 0-20 Reflejo de corrección · 21-40 Inicial · 41-60 Básico · 61-80 Competente · 81-100 Experto.
+- Se evalúa al profesional, no al paciente. Un paciente difícil no baja la señal; lo que cuenta es la respuesta del profesional a lo que el paciente ofrece.
+- Evaluación continua: tras cada turno del profesional, cada señal recibe una puntuación de turno (por el anclaje) y la señal acumulada se actualiza: nueva = 0,7 × anterior + 0,3 × turno. Valor inicial: 50. Si el turno no aporta evidencia para una señal, esa señal no se actualiza. La señal de sesión es el valor acumulado al final.
+- Un turno puede puntuar en varias señales. Cada conducta se atribuye a una sola señal.
+- Ante la duda entre dos tramos, el inferior.

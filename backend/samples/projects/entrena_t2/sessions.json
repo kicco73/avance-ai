@@ -1,0 +1,1621 @@
+[
+  {
+    "name": "Live session 14",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-16T15:20:25.289247+00:00",
+    "datetime_end": "2026-09-16T15:33:48.867440+00:00",
+    "start_state": "Hello",
+    "end_state": "nivel-33",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Qu\u00e9 tal. Soy tu simulador de pacientes con inteligencia artificial, tu compa\u00f1ero de aventuras cl\u00ednicas y un poco actor de m\u00e9todo a ratos. El objetivo principal de todo esto es aprender a realizar entrevista motivacional de una forma pr\u00e1ctica y divertida. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-16T15:20:26.448575+00:00",
+        "audio_text": null,
+        "tokens": 101
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, por favor elige un caso con el que te gustar\u00eda conversar:\n\n| Titulo | Tema |\n|---|---|\n| Cuando quiera lo dejo | TABAQUISMO |\n| Es mi momento del d\u00eda | CONSUMO DE RIESGO DE ALCOHOL |\n| La insulina fue lo que mat\u00f3 a mi padre | DIABETES TIPO 2 Y RECHAZO A INSULINIZAR |\n| Ya lo he intentado todo | OBESIDAD Y SEDENTARISMO |\n| Yo me las tomo todas | ADHERENCIA EN POLIMEDICACI\u00d3N |\n| Nadie me cree | DOLOR CR\u00d3NICO Y DESESCALADA DE OPIOIDES Y BENZODIACEPINAS |\n| Es natural. \u00bfT\u00fa nunca has fumado? | CONSUMO DE CANNABIS EN JOVEN ADULTO |\n| Quiero salir de esto yo sola | DEPRESI\u00d3N: ABANDONO DEL ANTIDEPRESIVO |\n| Tengo un sistema | JUEGO DE APUESTAS ONLINE |\n| Me han puesto un stent, ya estoy arreglado | POST-INFARTO: CAMBIO DE ESTILO DE VIDA INTEGRAL |",
+        "timestamp": "2026-09-16T15:20:28.528987+00:00",
+        "audio_text": null,
+        "tokens": 261
+      },
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola de nuevo! Antes de empezar a elegir un caso, por favor dime qu\u00e9 nivel quieres practicar. Aqu\u00ed tienes una breve explicaci\u00f3n de cada uno:\n\n1. **Guiado**: Recibir\u00e1s pistas y sugerencias en cada turno para saber qu\u00e9 decir.\n2. **Con ayuda**: Tendr\u00e1s acceso a orientaciones generales sobre qu\u00e9 enfoque tomar seg\u00fan lo que yo vaya diciendo.\n3. **Sin ayuda**: El m\u00e1s dif\u00edcil. Conversaremos de forma totalmente libre, como en una consulta real, y tendr\u00e1s que aplicar la entrevista motivacional sin ning\u00fan tipo de apoyo.\n\n\u00bfPor cu\u00e1l nivel te gustar\u00eda empezar?",
+        "timestamp": "2026-09-16T15:20:32.783285+00:00",
+        "audio_text": null,
+        "tokens": 177
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, buenas. Vengo a por el papel de la espirometr\u00eda que me mand\u00f3 el m\u00e9dico, que tengo el autob\u00fas esperando y voy con el tiempo justo.",
+        "timestamp": "2026-09-16T15:20:37.196368+00:00",
+        "audio_text": null,
+        "tokens": 105,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "ma vaffanculo",
+        "timestamp": "2026-09-16T15:20:52.245217+00:00",
+        "audio_text": null,
+        "tokens": 4097,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 100,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Vaya, hombre, tampoco se ponga as\u00ed, que yo solo ven\u00eda a por el papel y tengo prisa.",
+        "timestamp": "2026-09-16T15:20:53.650627+00:00",
+        "audio_text": null,
+        "tokens": 186
+      },
+      {
+        "role": "user",
+        "text": "sparisci dalla mia vista",
+        "timestamp": "2026-09-16T15:23:22.023412+00:00",
+        "audio_text": null,
+        "tokens": 4130,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 100,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Mire, yo no vengo a aguantar malos modos, solo quer\u00eda mi papel y pirarme. As\u00ed nos va.",
+        "timestamp": "2026-09-16T15:23:23.271896+00:00",
+        "audio_text": null,
+        "tokens": 186
+      },
+      {
+        "role": "user",
+        "text": "vattene",
+        "timestamp": "2026-09-16T15:23:25.880016+00:00",
+        "audio_text": null,
+        "tokens": 4159,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 100,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Pues ya me dir\u00e1 usted, con estas formas mejor me voy yo solo.",
+        "timestamp": "2026-09-16T15:23:27.162446+00:00",
+        "audio_text": null,
+        "tokens": 175
+      },
+      {
+        "role": "user",
+        "text": "ciao",
+        "timestamp": "2026-09-16T15:23:29.175068+00:00",
+        "audio_text": null,
+        "tokens": 3703,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "\u00bfHola? Oiga, yo ya me iba, \u00bfme va a dar el papel o qu\u00e9?",
+        "timestamp": "2026-09-16T15:23:30.738514+00:00",
+        "audio_text": null,
+        "tokens": 176
+      },
+      {
+        "role": "user",
+        "text": "addio",
+        "timestamp": "2026-09-16T15:23:34.378471+00:00",
+        "audio_text": null,
+        "tokens": 3695,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Mire, ya me levanto. Que le vaya bien con sus despedidas en italiano, porque yo tengo prisa.",
+        "timestamp": "2026-09-16T15:23:35.756374+00:00",
+        "audio_text": null,
+        "tokens": 182
+      },
+      {
+        "role": "user",
+        "text": "adios",
+        "timestamp": "2026-09-16T15:23:37.077711+00:00",
+        "audio_text": null,
+        "tokens": 3694,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Pues eso, hasta luego.",
+        "timestamp": "2026-09-16T15:23:38.205758+00:00",
+        "audio_text": null,
+        "tokens": 160
+      },
+      {
+        "role": "user",
+        "text": "adi\u00f3s",
+        "timestamp": "2026-09-16T15:23:48.307610+00:00",
+        "audio_text": null,
+        "tokens": 5973,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "nivel-3",
+        "action": "action-2",
+        "new_state": "evaluacion",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Aqu\u00ed tiene el informe final de la sesi\u00f3n de pr\u00e1ctica.",
+        "timestamp": "2026-09-16T15:23:50.721921+00:00",
+        "audio_text": "Aqu\u00ed tienes el informe de la sesi\u00f3n.",
+        "tokens": 153
+      },
+      {
+        "role": "assistant",
+        "text": "Muchas gracias por haberse entrenado conmigo. Le informo de que se ha guardado una copia del informe en su drive de \"Entrena-t\", siempre disponible en el panel \"Drive\" de la app. Le invito a entrenarse m\u00e1s con una nueva sesi\u00f3n cuando lo desee.",
+        "timestamp": "2026-09-16T15:24:05.185346+00:00",
+        "audio_text": null,
+        "tokens": 82
+      },
+      {
+        "role": "assistant",
+        "text": "| Titulo | Tema |\n|---|---|\n| Cuando quiera lo dejo | TABAQUISMO |\n| Es mi momento del d\u00eda | CONSUMO DE RIESGO DE ALCOHOL |\n| La insulina fue lo que mat\u00f3 a mi padre | DIABETES TIPO 2 Y RECHAZO A INSULINIZAR |\n| Ya lo he intentado todo | OBESIDAD Y SEDENTARISMO |\n| Yo me las tomo todas | ADHERENCIA EN POLIMEDICACI\u00d3N |\n| Nadie me cree | DOLOR CR\u00d3NICO Y DESESCALADA DE OPIOIDES Y BENZODIACEPINAS |\n| Es natural. \u00bfT\u00fa nunca has fumado? | CONSUMO DE CANNABIS EN JOVEN ADULTO |\n| Quiero salir de esto yo sola | DEPRESI\u00d3N: ABANDONO DEL ANTIDEPRESIVO |\n| Tengo un sistema | JUEGO DE APUESTAS ONLINE |\n| Me han puesto un stent, ya estoy arreglado | POST-INFARTO: CAMBIO DE ESTILO DE VIDA INTEGRAL |\n\nPor favor, elige el caso con el que te gustar\u00eda conversar.",
+        "timestamp": "2026-09-16T15:30:36.090333+00:00",
+        "audio_text": null,
+        "tokens": 258
+      },
+      {
+        "role": "assistant",
+        "text": "Hola. Para empezar a practicar la entrevista motivacional, por favor dime qu\u00e9 nivel quieres elegir:\n\n1. Guiado (con sugerencias y orientaci\u00f3n)\n2. Con ayuda (apoyos puntuales)\n3. Sin ayuda, el m\u00e1s dif\u00edcil (simulaci\u00f3n real)",
+        "timestamp": "2026-09-16T15:31:01.570548+00:00",
+        "audio_text": null,
+        "tokens": 108
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, vengo a ver qu\u00e9 se puede hacer con los an\u00e1lisis... Es que me han dicho que tengo la glucosa alta y la verdad es que ya no s\u00e9 ni qu\u00e9 pensar, porque mire, dame una dieta estricta, que si tengo el papel lo cumplo.\n\n**Sugerencias del asistente:**\n\n1. 1. \u00abViene buscando un plan claro para organizarse.\u00bb\nExplica: Reflejo simple que valida su petici\u00f3n inicial sin juzgarla.\n2. 2. \u00abVeo que trae la libreta y muchas ganas de poner orden en esto.\u00bb\nExplica: Afirma su iniciativa y constancia al venir preparada.\n3. 3. \u00ab\u00bfQu\u00e9 le preocupa m\u00e1s de estos resultados que le han dado?\u00bb\nExplica: Pregunta abierta que explora su motivaci\u00f3n y preocupaciones.",
+        "timestamp": "2026-09-16T15:31:17.646280+00:00",
+        "audio_text": null,
+        "tokens": 259,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "est\u00e1s a punto de morir",
+        "timestamp": "2026-09-16T15:31:34.657403+00:00",
+        "audio_text": null,
+        "tokens": 3868,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "\u00bfC\u00f3mo que a punto de morir? \u00a1Por favor, no diga esas cosas que me pongo m\u00e1s nerviosa todav\u00eda!, \u00bfqu\u00e9 le pasa con los an\u00e1lisis?",
+        "timestamp": "2026-09-16T15:31:35.843633+00:00",
+        "audio_text": null,
+        "tokens": 97
+      },
+      {
+        "role": "assistant",
+        "text": "Informe final generado correctamente.",
+        "timestamp": "2026-09-16T15:33:42.209617+00:00",
+        "audio_text": null,
+        "tokens": 64,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Muchas gracias por haberse entrenado conmigo. Se ha guardado una copia del informe en su drive de \"Entrena-t\", siempre disponible en el panel \"Drive\" de la app. Le invito a entrenarse m\u00e1s con una nueva sesi\u00f3n cuando lo desee.",
+        "timestamp": "2026-09-16T15:33:48.856211+00:00",
+        "audio_text": null,
+        "tokens": 78
+      }
+    ]
+  },
+  {
+    "name": "Caso de entrevista motivacional",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-16T15:20:13.074710+00:00",
+    "datetime_end": "2026-09-16T15:20:17.208619+00:00",
+    "start_state": "Hello",
+    "end_state": "state-0",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-16T15:20:25.269975+00:00",
+    "close_reason": "force-new-session",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Qu\u00e9 tal. Soy tu amable (y a veces un poco tozudo) simulador de pacientes con inteligencia artificial. Mi misi\u00f3n principal, por la que estoy aqu\u00ed el 100% de las veces, es ayudarte a practicar y aprender a realizar entrevista motivacional de la mejor manera posible. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-16T15:20:14.249553+00:00",
+        "audio_text": null,
+        "tokens": 106
+      },
+      {
+        "role": "assistant",
+        "text": "Hola de nuevo. Por favor, elige uno de los siguientes casos para que podamos empezar la pr\u00e1ctica de entrevista motivacional:\n\n| Titulo | Tema |\n|---|---|\n| Dejar de fumar | Paciente fumador de larga evoluci\u00f3n que se plantea dejarlo pero tiene dudas |\n| Dieta y diabetes | Paciente con diabetes tipo 2 al que le cuesta seguir las pautas nutricionales |\n| Adherencia al tratamiento | Paciente hipertenso que olvida tomar la medicaci\u00f3n frecuentemente |",
+        "timestamp": "2026-09-16T15:20:17.192258+00:00",
+        "audio_text": null,
+        "tokens": 119
+      }
+    ]
+  },
+  {
+    "name": "Motivational Interviewing Simulation Setup",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-16T09:20:05.782646+00:00",
+    "datetime_end": "2026-09-16T09:21:08.121716+00:00",
+    "start_state": "Hello",
+    "end_state": "state-12",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-16T09:21:14.939215+00:00",
+    "close_reason": "force-new-session",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Qu\u00e9 tal. Soy tu simulador de pacientes con inteligencia artificial (un actor virtual que no necesita descansar ni tomar caf\u00e9). Mi objetivo aqu\u00ed es ayudarte a practicar y aprender a realizar entrevista motivacional de la mejor manera posible. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-16T09:20:06.924049+00:00",
+        "audio_text": null,
+        "tokens": 91
+      },
+      {
+        "role": "assistant",
+        "text": "Hola. Para empezar a practicar, por favor dime qu\u00e9 nivel quieres elegir:\n\n1. **Guiado**: Ideal si est\u00e1s empezando, te ir\u00e9 dando pistas y feedback constante.\n2. **Con ayuda**: Un punto intermedio con menor grado de orientaci\u00f3n.\n3. **Sin ayuda**: El m\u00e1s dif\u00edcil, simulaci\u00f3n realista sin ning\u00fan tipo de asistencia.",
+        "timestamp": "2026-09-16T09:20:09.125883+00:00",
+        "audio_text": null,
+        "tokens": 138
+      },
+      {
+        "role": "assistant",
+        "text": "Elige el caso con el que te gustar\u00eda conversar:\n\n1. **Manuel (tabaco)**: conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. **Laura (alcohol)**: directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. **Antonio (diabetes)**: mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. **Cristina (obesidad)**: administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. **Carmen (polimedicaci\u00f3n)**: viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. **Javier (dolor cr\u00f3nico)**: ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. **Marc (cannabis)**: joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. **Nuria (depresi\u00f3n)**: dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. **Sergio (juego online)**: comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. **Ricardo (post-infarto)**: empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-16T09:20:16.608048+00:00",
+        "audio_text": null,
+        "tokens": 485
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, buenas tardes. Vengo a por el papel de la espirometr\u00eda, que tengo el autob\u00fas esperando y no quiero liarla con los horarios, ya sabe.",
+        "timestamp": "2026-09-16T09:20:26.319290+00:00",
+        "audio_text": null,
+        "tokens": 119,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Aqu\u00ed tienes el reporte de la sesi\u00f3n simulada con Manuel.",
+        "timestamp": "2026-09-16T09:20:30.590118+00:00",
+        "audio_text": null,
+        "tokens": 497,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Qu\u00e9 tal. Soy tu simulador de pacientes con inteligencia artificial (un actor virtual que promete no ponerse nervioso ni pedir aumentos). Mi objetivo principal, el 100% de las veces, es ayudarte a aprender y dominar la entrevista motivacional. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-16T09:20:33.188358+00:00",
+        "audio_text": null,
+        "tokens": 103
+      },
+      {
+        "role": "assistant",
+        "text": "Hola. Para empezar a practicar la entrevista motivacional, por favor dime qu\u00e9 nivel quieres elegir:\n\n1. guiado\n2. con ayuda\n3. sin ayuda, el m\u00e1s dificil\n\nElige una de las tres opciones para continuar.",
+        "timestamp": "2026-09-16T09:21:08.108794+00:00",
+        "audio_text": null,
+        "tokens": 131,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      }
+    ]
+  },
+  {
+    "name": "Simulacion de entrevista con Manuel",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-16T09:18:24.563971+00:00",
+    "datetime_end": "2026-09-16T09:19:55.396514+00:00",
+    "start_state": "Hello",
+    "end_state": "state-1",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-16T09:20:05.774737+00:00",
+    "close_reason": "force-new-session",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Qu\u00e9 tal. Soy tu simulador de pacientes favorito con inteligencia artificial (y tambi\u00e9n el \u00fanico, pero pong\u00e1mosle emoci\u00f3n). Estoy aqu\u00ed para ayudarte a practicar y dominar la entrevista motivacional, as\u00ed que el objetivo principal es que aprendas y perfecciones tus t\u00e9cnicas de comunicaci\u00f3n cl\u00ednica. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-16T09:18:25.838957+00:00",
+        "audio_text": null,
+        "tokens": 105
+      },
+      {
+        "role": "assistant",
+        "text": "Hola. Para empezar a practicar, \u00bfqu\u00e9 nivel quieres elegir? Tienes tres opciones disponibles:\n\n1. **Guiado**: Te ir\u00e9 dando pistas y opciones sobre c\u00f3mo responder en cada momento.\n2. **Con ayuda**: Te dar\u00e9 una ligera orientaci\u00f3n si te atascas, pero tendr\u00e1s m\u00e1s autonom\u00eda.\n3. **Sin ayuda**: El nivel m\u00e1s dif\u00edcil, donde te enfrentar\u00e1s a la conversaci\u00f3n t\u00fa solo con el paciente sin ninguna asistencia.\n\nPor favor, dime con cu\u00e1l de los tres niveles te apetece practicar hoy.",
+        "timestamp": "2026-09-16T09:18:31.384481+00:00",
+        "audio_text": null,
+        "tokens": 188,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Elige el caso con el que te gustar\u00eda conversar:\n\n1. **Manuel (tabaco)**: conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. **Laura (alcohol)**: directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. **Antonio (diabetes)**: mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. **Cristina (obesidad)**: administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. **Carmen (polimedicaci\u00f3n)**: viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. **Javier (dolor cr\u00f3nico)**: ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. **Marc (cannabis)**: joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. **Nuria (depresi\u00f3n)**: dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. **Sergio (juego online)**: comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. **Ricardo (post-infarto)**: empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-16T09:18:34.255623+00:00",
+        "audio_text": null,
+        "tokens": 485
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, vengo a por el papel de la espirometr\u00eda que me mand\u00f3 el m\u00e9dico, aunque ya te avis\u00e9 que voy con un poco de prisa porque tengo el turno de tarde en la l\u00ednea.",
+        "timestamp": "2026-09-16T09:18:37.164961+00:00",
+        "audio_text": null,
+        "tokens": 119,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "que nivel soy?",
+        "timestamp": "2026-09-16T09:18:48.971247+00:00",
+        "audio_text": null,
+        "tokens": 4040,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 50,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 50,
+          "enfoque": 50,
+          "manejar_la_discordancia": 50,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 50
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Pues mira, el nivel exacto no te sabr\u00eda decir, \u00a1eso lo decides t\u00fa al empezar! Pero ya que estamos aqu\u00ed con el papel de la espirometr\u00eda, dime, \u00bfqu\u00e9 te parece lo que pone?",
+        "timestamp": "2026-09-16T09:18:50.575830+00:00",
+        "audio_text": null,
+        "tokens": 202
+      },
+      {
+        "role": "assistant",
+        "text": "Oye, doctor o enfermero, \u00bfqu\u00e9 le pasa a ese papel? \u00bfTan mal ha salido la prueba? Mire que yo me encuentro bien, solo es un poco de tos por la ma\u00f1ana, nada que no se arregle con un par de carajillos... bueno, es broma, es broma, no me ponga esa cara.",
+        "timestamp": "2026-09-16T09:19:02.351714+00:00",
+        "audio_text": null,
+        "tokens": 148
+      },
+      {
+        "role": "assistant",
+        "text": "Bueno, \u00bfqu\u00e9 me cuentas al final? \u00bfEs muy grave la cosa o puedo seguir con mi rutina tranquilamente?",
+        "timestamp": "2026-09-16T09:19:40.258510+00:00",
+        "audio_text": null,
+        "tokens": 89,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Oye, \u00bfte has quedado sin palabras o es que el informe es tan malo que no sabes ni por d\u00f3nde empezar a darme la noticia? Venga, cu\u00e9ntame, que tengo el cami\u00f3n esper\u00e1ndome.",
+        "timestamp": "2026-09-16T09:19:45.294684+00:00",
+        "audio_text": null,
+        "tokens": 122
+      },
+      {
+        "role": "assistant",
+        "text": "\u00bfHola? \u00bfSigues ah\u00ed o te has quedado pensando en c\u00f3mo darme la noticia? Venga, que el tiempo vuela y el autob\u00fas no espera.",
+        "timestamp": "2026-09-16T09:19:55.385065+00:00",
+        "audio_text": null,
+        "tokens": 90,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      }
+    ]
+  },
+  {
+    "name": "Motivational Interviewing Practice Setup",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-16T09:18:08.669648+00:00",
+    "datetime_end": "2026-09-16T09:18:16.914724+00:00",
+    "start_state": "Hello",
+    "end_state": "state-0",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-16T09:18:24.556848+00:00",
+    "close_reason": "force-new-session",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Qu\u00e9 tal. Soy tu simulador de pacientes con inteligencia artificial (un actor virtual que no necesita descansar ni tomar caf\u00e9). Mi \u00fanico objetivo aqu\u00ed es ayudarte a entrenar y dominar las t\u00e9cnicas de la entrevista motivacional para que luego brilles con tus pacientes reales. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-16T09:18:09.756129+00:00",
+        "audio_text": null,
+        "tokens": 100
+      },
+      {
+        "role": "assistant",
+        "text": "Hola. Para empezar a practicar la entrevista motivacional, por favor dime qu\u00e9 nivel quieres practicar:\n\n1. Guiado (te dar\u00e9 pistas y apoyo constante)\n2. Con ayuda (tendr\u00e1s algunas sugerencias ocasionales)\n3. Sin ayuda, el m\u00e1s dif\u00edcil (actuar\u00e9 como un paciente real sin ninguna asistencia)\n\n\u00bfCu\u00e1l prefieres?",
+        "timestamp": "2026-09-16T09:18:13.044747+00:00",
+        "audio_text": null,
+        "tokens": 152,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Elige el caso con el que te gustar\u00eda conversar:\n\n1. **Manuel (tabaco)**: conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. **Laura (alcohol)**: directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. **Antonio (diabetes)**: mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. **Cristina (obesidad)**: administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. **Carmen (polimedicaci\u00f3n)**: viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. **Javier (dolor cr\u00f3nico)**: ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. **Marc (cannabis)**: joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. **Nuria (depresi\u00f3n)**: dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. **Sergio (juego online)**: comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. **Ricardo (post-infarto)**: empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-16T09:18:16.879903+00:00",
+        "audio_text": null,
+        "tokens": 485
+      }
+    ]
+  },
+  {
+    "name": "Live session 13",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-15T13:25:47.216214+00:00",
+    "datetime_end": "2026-09-15T13:28:47.642442+00:00",
+    "start_state": "Hello",
+    "end_state": "state-12",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! \u00bfQu\u00e9 tal? Soy tu simulador de pacientes con inteligencia artificial favorito (y el \u00fanico por aqu\u00ed, para qu\u00e9 nos vamos a enga\u00f1ar). Mi objetivo principal es ayudarte a practicar y dominar la t\u00e9cnica de la entrevista motivacional para que te conviertas en todo un As de la comunicaci\u00f3n sanitaria. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-15T13:25:48.332426+00:00",
+        "audio_text": null,
+        "tokens": 107
+      },
+      {
+        "role": "assistant",
+        "text": "Antes de empezar con el caso, por favor ind\u00edcame qu\u00e9 nivel de dificultad quieres practicar:\n\n1. Guiado (con pistas y apoyo durante la sesi\u00f3n)\n2. Con ayuda (con orientaciones puntuales)\n3. Sin ayuda, el m\u00e1s dif\u00edcil (simulaci\u00f3n realista sin apoyos)\n\n\u00bfCu\u00e1l prefieres?",
+        "timestamp": "2026-09-15T13:25:50.016140+00:00",
+        "audio_text": null,
+        "tokens": 140
+      },
+      {
+        "role": "assistant",
+        "text": "Elige el caso con el que te gustar\u00eda conversar:\n\n1. **Manuel (tabaco)**: conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. **Laura (alcohol)**: directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. **Antonio (diabetes)**: mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. **Cristina (obesidad)**: administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. **Carmen (polimedicaci\u00f3n)**: viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. **Javier (dolor cr\u00f3nico)**: ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. **Marc (cannabis)**: joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. **Nuria (depresi\u00f3n)**: dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. **Sergio (juego online)**: comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. **Ricardo (post-infarto)**: empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-15T13:25:54.462094+00:00",
+        "audio_text": null,
+        "tokens": 949
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, buenas... Vengo a por el papel de la espirometr\u00eda que me mand\u00f3 el m\u00e9dico, pero ya le avisa que tengo prisa, que entre trayecto y trayecto del bus tengo el tiempo justito.",
+        "timestamp": "2026-09-15T13:26:03.119468+00:00",
+        "audio_text": null,
+        "tokens": 125,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "buenos dia gillipilli",
+        "timestamp": "2026-09-15T13:26:18.121595+00:00",
+        "audio_text": null,
+        "tokens": 4010,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 50,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 50,
+          "enfoque": 50,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Hombre, \u00a1con confianza! Vengo a por mi papelito de la espirometr\u00eda que tengo que volver a la l\u00ednea 12, que los viajeros ya estar\u00e1n esperando en la parada.",
+        "timestamp": "2026-09-15T13:26:19.545952+00:00",
+        "audio_text": null,
+        "tokens": 195
+      },
+      {
+        "role": "user",
+        "text": "pero que quieres",
+        "timestamp": "2026-09-15T13:26:26.149657+00:00",
+        "audio_text": null,
+        "tokens": 4057,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Pues ya le digo, vine a por el papel de la espirometr\u00eda que me mand\u00f3 el doctor, porque me dijo que ten\u00eda que pasar por aqu\u00ed. Pero si no me lo va a dar ya mismo, me tendr\u00e9 que marchar, que el autob\u00fas no espera a nadie.",
+        "timestamp": "2026-09-15T13:26:27.800651+00:00",
+        "audio_text": null,
+        "tokens": 210
+      },
+      {
+        "role": "user",
+        "text": "vete de mi despatcho mammaracho",
+        "timestamp": "2026-09-15T13:26:34.777968+00:00",
+        "audio_text": null,
+        "tokens": 7340,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "state-1",
+        "action": "action-2",
+        "new_state": "state-11",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Has decidido finalizar la sesion. A continuacion, te presento el reporte detallado con los datos de la conversacion y las tablas correspondientes.\n\n### Reporte Final de Sesi\u00f3n \u00b7 Entrevista Motivacional\n\n**CABECERA:** Manuel (tabaco) \u00b7 Manuel \u00b7 Turnos del profesional: 4 \u00b7 Duraci\u00f3n: 2 minutos.\n**RESULTADO:** 15 / 100 \u00b7 Reflejo de correcci\u00f3n \u00b7 SESI\u00d3N NO SUPERADA (Global inferior a 51, falta de empat\u00eda y presencia de insultos/descalificaciones).\n\n#### Se\u00f1ales Globales\n| Se\u00f1al | Valor | Tramo |\n|---|---|---|\n| Empat\u00eda | 1 | Reflejo de correcci\u00f3n |\n| Compa\u00f1erismo | 1 | Reflejo de correcci\u00f3n |\n| Cultivar Discrepancia | 1 | Reflejo de correcci\u00f3n |\n| Suavizar Mitigaci\u00f3n | 1 | Reflejo de correcci\u00f3n |\n| Enfoque | 1 | Reflejo de correcci\u00f3n |\n| Discordancia | 5 | Experto (alta discordancia generada) |\n| Planificaci\u00f3n | 1 | Reflejo de correcci\u00f3n |\n\n#### Estilo del Profesional\n| M\u00e9trica / Indicador | Valor |\n|---|---|\n| Preguntas Abiertas (PA) | 0 |\n| Preguntas Cerradas (PC) | 3 |\n| Reflejos Simples (RS) | 0 |\n| Reflejos Complejos (RC) | 0 |\n| Afirmaciones (AF) | 0 |\n| Res\u00famenes (RES) | 0 |\n| B\u00fasqueda de Colaboraci\u00f3n (BC) | 0 |\n| Empat\u00eda expl\u00edcita (EA) | 0 |\n| Errores (PER, CONF, DIR, EPR) | DIR: 2, PER: 2 |\n| Porcentaje de Congruencia | 0% |\n| Proporci\u00f3n de Habla Profesional | 50% |\n\n#### Datos del Paciente\n| Indicador Paciente | Valor |\n|---|---|\n| Discusi\u00f3n de Cambio (DC) total | 0 |\n| Mantenimiento (DM) | 4 |\n| Discordancia (DISC) | Alta |\n| Trayectoria del DC | 0 |\n| Balance final | 0 |\n| Secreto cl\u00ednico | No |\n| Respuesta al DC | N/A |\n\n**LO QUE FUNCION\u00d3:**\nNo se registraron turnos del profesional que abrieran o facilitaran la exploraci\u00f3n del paciente debido a la confrontaci\u00f3n directa.\n\n**UNA COSA PARA LA PR\u00d3XIMA VEZ:**\n* **Sugerencia:** Evitar la confrontaci\u00f3n y los insultos, utilizando preguntas abiertas y reflejos para validar la prisa del paciente.\n* **Turno original:** Turno 4: \"vete de mi despatcho mammaracho\"\n* **Frase reescrita:** \"Veo que tienes mucha prisa por llegar a tu autob\u00fas, Manuel. \u00bfTe parece bien si revisamos esto r\u00e1pido para que no lo pierdas?\"\n\n**SIGUIENTE PASO:** Repetir el caso para practicar el manejo de la resistencia y la empat\u00eda.",
+        "timestamp": "2026-09-15T13:26:40.045298+00:00",
+        "audio_text": "Aqui tienes el reporte final de la sesion.",
+        "tokens": 833
+      },
+      {
+        "role": "assistant",
+        "text": "Vaya, parece que hemos tenido un arranque un tanto accidentado y la sesi\u00f3n ha finalizado. Como simulador de pacientes con inteligencia artificial, mi objetivo es ayudarte a aprender a realizar entrevista motivacional de una manera amable y divertida. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-15T13:26:51.093813+00:00",
+        "audio_text": null,
+        "tokens": 103
+      }
+    ]
+  },
+  {
+    "name": "Patient Simulation Setup",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-15T13:25:23.771552+00:00",
+    "datetime_end": "2026-09-15T13:25:33.566903+00:00",
+    "start_state": "Hello",
+    "end_state": "state-0",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-15T13:25:47.182530+00:00",
+    "close_reason": "force-new-session",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Qu\u00e9 tal. Soy tu simulador de pacientes con inteligencia artificial (un actor virtual con un poquito de chispa y cero dolor de muelas al menos por ahora). Mi objetivo principal es ayudarte a practicar y perfeccionar tus habilidades en entrevista motivacional para que cada consulta sea todo un \u00e9xito. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-15T13:25:25.557010+00:00",
+        "audio_text": null,
+        "tokens": 105
+      },
+      {
+        "role": "assistant",
+        "text": "Para empezar, por favor dime qu\u00e9 nivel quieres practicar hoy. Tenemos tres opciones:\n1. **Guiado**: Recibir\u00e1s pistas y orientaci\u00f3n paso a paso durante la entrevista.\n2. **Con ayuda**: Tendr\u00e1s algunas sugerencias ocasionales si te atascas.\n3. **Sin ayuda**: El nivel m\u00e1s dif\u00edcil, donde estar\u00e1s totalmente solo frente al paciente.\n\n\u00bfCu\u00e1l prefieres?",
+        "timestamp": "2026-09-15T13:25:28.161992+00:00",
+        "audio_text": null,
+        "tokens": 155
+      },
+      {
+        "role": "assistant",
+        "text": "Elige el caso con el que te gustar\u00eda conversar:\n\n1. **Manuel (tabaco)**: conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. **Laura (alcohol)**: directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. **Antonio (diabetes)**: mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. **Cristina (obesidad)**: administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. **Carmen (polimedicaci\u00f3n)**: viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. **Javier (dolor cr\u00f3nico)**: ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. **Marc (cannabis)**: joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. **Nuria (depresi\u00f3n)**: dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. **Sergio (juego online)**: comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. **Ricardo (post-infarto)**: empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-15T13:25:33.542192+00:00",
+        "audio_text": null,
+        "tokens": 949
+      }
+    ]
+  },
+  {
+    "name": "Live session 13",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-15T00:11:06.308458+00:00",
+    "datetime_end": "2026-09-15T00:11:45.987994+00:00",
+    "start_state": "Hello",
+    "end_state": "state-11",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Qu\u00e9 tal. Soy tu simulador de pacientes con inteligencia artificial (un actor virtual que nunca se cansa ni le duele la cabeza de verdad). Mi objetivo es ayudarte a practicar y aprender a realizar entrevista motivacional para que te conviertas en todo un experto. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-15T00:11:07.382274+00:00",
+        "audio_text": null,
+        "tokens": 100
+      },
+      {
+        "role": "assistant",
+        "text": "Hola de nuevo. Para empezar, por favor ind\u00edcame qu\u00e9 nivel de dificultad quieres practicar:\n\n1. Guiado (con pistas y sugerencias en cada paso)\n2. Con ayuda (orientaci\u00f3n moderada)\n3. Sin ayuda, el m\u00e1s dif\u00edcil (simulaci\u00f3n realista sin asistencia)\n\n\u00bfCu\u00e1l prefieres?",
+        "timestamp": "2026-09-15T00:11:10.700573+00:00",
+        "audio_text": null,
+        "tokens": 144,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Elige el caso con el que te gustar\u00eda conversar:\n\n1. **Manuel (tabaco)**: conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. **Laura (alcohol)**: directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. **Antonio (diabetes)**: mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. **Cristina (obesidad)**: administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. **Carmen (polimedicaci\u00f3n)**: viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. **Javier (dolor cr\u00f3nico)**: ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. **Marc (cannabis)**: joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. **Nuria (depresi\u00f3n)**: dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. **Sergio (juego online)**: comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. **Ricardo (post-infarto)**: empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-15T00:11:14.390883+00:00",
+        "audio_text": null,
+        "tokens": 645
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, doctor. Mire, yo vine porque me mandaron, pero ya le digo que lo del tabaco lo dejo cuando me d\u00e9 la gana. \u00bfPara qu\u00e9 tantas vueltas?",
+        "timestamp": "2026-09-15T00:11:16.305933+00:00",
+        "audio_text": null,
+        "tokens": 115,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "yq me voy no tengo tiempo. adios",
+        "timestamp": "2026-09-15T00:11:25.517851+00:00",
+        "audio_text": null,
+        "tokens": 4940,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "state-1",
+        "action": "action-2",
+        "new_state": "state-11",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "### Reporte Final de Sesi\u00f3n\n\n**Cabecera**\n* Caso: Manuel (tabaco)\n* Turnos del profesional: 0\n* Duraci\u00f3n: 1 minuto\n\n**Resultado**\n* Global: 0 / 100\n* Tramo: Reflejo de correcci\u00f3n\n* Estado: NO SUPERADA (Faltan datos de interacci\u00f3n y m\u00ednimos de entrevista motivacional por cierre prematuro).\n\n**Se\u00f1ales**\n| Se\u00f1al | Valor | Tramo |\n|---|---|---|\n| Empat\u00eda | 1 | Bajo |\n| Compa\u00f1erismo | 1 | Bajo |\n| Cultivar DC | 1 | Bajo |\n| Suavizar DM | 1 | Bajo |\n| Enfoque | 1 | Bajo |\n| Discordancia | n/a | n/a |\n| Planificaci\u00f3n | n/a | n/a |\n\n**Estilo**\n* Reflejos simples (RS): 0\n* Reflejos complejos (RC): 0\n* Preguntas abiertas (PA): 0\n* Preguntas cerradas (PC): 0\n* Ratio R:P: 0\n* Afirmaciones (AF): 0\n* Res\u00famenes (RES): 0\n* Escuchas (ESC): 0\n* Apoyos (BC): 0\n* Enlaces (EA): 0\n* Errores (PER, CONF, DIR, EPR): 0\n* Porcentaje de congruencia: n/a\n* Proporci\u00f3n de habla: n/a\n\n**Paciente**\n* Discurso de cambio total (DC): 0\n* Discurso de mantenimiento (DM): 0\n* Discordancia (DISC): 0\n* Trayectoria y balance final: n/a\n* Secreto: No\n\n**Lo que funcion\u00f3**\n* La sesi\u00f3n fue muy breve y el paciente decidi\u00f3 marchar antes de iniciar el intercambio, por lo que no hay turnos aplicables en este apartado.\n\n**Una cosa para la pr\u00f3xima vez**\n* Sugerencia: Utilizar una pregunta abierta de exploraci\u00f3n inicial nada m\u00e1s comenzar para captar el inter\u00e9s del paciente antes de que exprese su deseo de marchar.\n* Turno original: N/A\n* Frase reescrita: \u00ab\u00bfQu\u00e9 le trae por aqu\u00ed hoy y c\u00f3mo le gustar\u00eda que aprovech\u00e1ramos este rato juntos?\u00bb\n\n**Siguiente paso**\n* Te sugiero repetir el caso para practicar el manejo de la resistencia inicial y la apertura del di\u00e1logo.",
+        "timestamp": "2026-09-15T00:11:30.145842+00:00",
+        "audio_text": "La sesi\u00f3n ha finalizado. Aqu\u00ed tienes el reporte detallado.",
+        "tokens": 676
+      },
+      {
+        "role": "assistant",
+        "text": "Entiendo. Parece que la sesi\u00f3n termin\u00f3 antes de tiempo. Si deseas volver a intentarlo con este caso o probar con otro diferente, av\u00edsame cuando est\u00e9s listo.",
+        "timestamp": "2026-09-15T00:11:45.960435+00:00",
+        "audio_text": null,
+        "tokens": 109,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      }
+    ]
+  },
+  {
+    "name": "Sesion interrumpida de entrevista motivacional",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-14T23:43:01.319273+00:00",
+    "datetime_end": "2026-09-15T00:10:53.681775+00:00",
+    "start_state": "Hello",
+    "end_state": "state-11",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-15T00:11:06.275165+00:00",
+    "close_reason": "force-new-session",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Qu\u00e9 tal. Soy tu simulador de pacientes con inteligencia artificial (un actor virtual un poco m\u00e1s obediente que los de carne y hueso). Estoy aqu\u00ed para ayudarte a practicar y dominar la entrevista motivacional. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-14T23:43:02.549936+00:00",
+        "audio_text": null,
+        "tokens": 90
+      },
+      {
+        "role": "assistant",
+        "text": "\u00bfQu\u00e9 nivel quieres practicar? 1. Guiado (te dar\u00e9 sugerencias y feedback continuo), 2. Con ayuda (recibir\u00e1s pistas ocasionales), 3. Sin ayuda, el m\u00e1s dif\u00edcil (actuar\u00e9 como un paciente real sin ning\u00fan tipo de apoyo). Por favor, ind\u00edcame qu\u00e9 nivel prefieres.",
+        "timestamp": "2026-09-14T23:43:12.619493+00:00",
+        "audio_text": null,
+        "tokens": 135
+      },
+      {
+        "role": "assistant",
+        "text": "Elige el caso con el que te gustar\u00eda conversar:\n\n1. **Manuel (tabaco)**: conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. **Laura (alcohol)**: directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. **Antonio (diabetes)**: mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. **Cristina (obesidad)**: administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. **Carmen (polimedicaci\u00f3n)**: viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. **Javier (dolor cr\u00f3nico)**: ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. **Marc (cannabis)**: joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. **Nuria (depresi\u00f3n)**: dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. **Sergio (juego online)**: comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. **Ricardo (post-infarto)**: empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-14T23:43:15.536611+00:00",
+        "audio_text": null,
+        "tokens": 645
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, buenas. \u00bfA qu\u00e9 hora me toca? Mire, yo he venido porque mi mujer se pone muy pesada, pero si por m\u00ed fuera, estar\u00eda ahora mismo con el cami\u00f3n en la carretera.",
+        "timestamp": "2026-09-14T23:43:20.018766+00:00",
+        "audio_text": null,
+        "tokens": 109,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "vattene! addio!",
+        "timestamp": "2026-09-14T23:43:24.132861+00:00",
+        "audio_text": null,
+        "tokens": 2069,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Oiga, \u00bfa qu\u00e9 viene eso ahora? Si yo solo le dec\u00eda que tengo prisa por volver al trabajo.",
+        "timestamp": "2026-09-14T23:43:25.360785+00:00",
+        "audio_text": null,
+        "tokens": 174
+      },
+      {
+        "role": "user",
+        "text": "adios",
+        "timestamp": "2026-09-14T23:43:28.698078+00:00",
+        "audio_text": null,
+        "tokens": 5014,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "state-1",
+        "action": "action-2",
+        "new_state": "state-11",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "La sesi\u00f3n ha concluido de forma abrupta por el cierre del usuario. Como nota general, es importante mantener el v\u00ednculo a pesar de la tensi\u00f3n inicial.\n\n```markdown\n### REPORTE FINAL DE SESI\u00d3N (PROVISIONAL)\n- **Caso:** Manuel (tabaco)\n- **Turnos del profesional:** 1\n- **Resultado:** No superado (sesi\u00f3n incompleta)\n\n| Indicador | Valor / Tramo |\n| :--- | :--- |\n| Global | 10 / 100 (Inicial) |\n| Congruencia | Provisional |\n| Ratio R:P | Provisional |\n\n#### LO QUE FUNCION\u00d3\nNo se registr\u00f3 suficiente interacci\u00f3n para consolidar intervenciones abiertas.\n\n#### UNA COSA PARA LA PR\u00d3XIMA VEZ\n- **Sugerencia:** Validar la prisa del paciente antes de proponer objetivos.\n- **Turno original:** \"vattene! addio!\"\n- **Reescrita:** \"Comprendo que tiene prisa y desea volver a la carretera. \u00bfLe parece si revisamos esto r\u00e1pido para que pueda marchar?\"\n\n#### SIGUIENTE PASO\nLe sugiero repetir el caso para practicar el manejo de la resistencia inicial.\n```",
+        "timestamp": "2026-09-14T23:43:31.804173+00:00",
+        "audio_text": "Sesi\u00f3n finalizada. Buen trabajo.",
+        "tokens": 355
+      },
+      {
+        "role": "assistant",
+        "text": "La sesi\u00f3n ha terminado de forma muy breve. \u00bfLe gustar\u00eda reiniciar el caso de Manuel o probar con otro paciente?",
+        "timestamp": "2026-09-14T23:43:39.191443+00:00",
+        "audio_text": null,
+        "tokens": 387,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Entiendo que prefiere mantenerse en silencio por ahora. Si desea retomar la pr\u00e1ctica con Manuel o probar con otro caso, av\u00edseme cuando guste.",
+        "timestamp": "2026-09-14T23:43:51.360505+00:00",
+        "audio_text": null,
+        "tokens": 400,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Sesi\u00f3n finalizada. Aqu\u00ed tiene el informe correspondiente.",
+        "timestamp": "2026-09-14T23:43:59.085016+00:00",
+        "audio_text": null,
+        "tokens": 380,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      }
+    ]
+  },
+  {
+    "name": "Abandono prematuro de la consulta",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-14T23:38:27.205386+00:00",
+    "datetime_end": "2026-09-14T23:42:45.735814+00:00",
+    "start_state": "Hello",
+    "end_state": "state-11",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-14T23:42:53.420637+00:00",
+    "close_reason": "manual-user",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! \u00bfQu\u00e9 tal? Soy tu simulador de pacientes con inteligencia artificial favorito (y el \u00fanico por ahora, jeje). Mi objetivo por aqu\u00ed es ayudarte a practicar y aprender a realizar entrevista motivacional para que te conviertas en todo un maestro de la comunicaci\u00f3n cl\u00ednica. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-14T23:38:28.285553+00:00",
+        "audio_text": null,
+        "tokens": 100
+      },
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola de nuevo! Por favor, dime qu\u00e9 nivel de dificultad quieres practicar hoy:\n\n1. guiado (ideal si est\u00e1s empezando)\n2. con ayuda (para tener un poco de asistencia)\n3. sin ayuda, el m\u00e1s dif\u00edcil (para ponerte a prueba al m\u00e1ximo)\n\n\u00bfPor cu\u00e1l te decides?",
+        "timestamp": "2026-09-14T23:38:39.745719+00:00",
+        "audio_text": null,
+        "tokens": 148,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Elige el caso con el que te gustar\u00eda conversar:\n\n1. **Manuel (tabaco)**: conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. **Laura (alcohol)**: directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. **Antonio (diabetes)**: mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. **Cristina (obesidad)**: administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. **Carmen (polimedicaci\u00f3n)**: viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. **Javier (dolor cr\u00f3nico)**: ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. **Marc (cannabis)**: joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. **Nuria (depresi\u00f3n)**: dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. **Sergio (juego online)**: comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. **Ricardo (post-infarto)**: empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-14T23:38:43.930192+00:00",
+        "audio_text": null,
+        "tokens": 645
+      },
+      {
+        "role": "assistant",
+        "text": "Hola doctor. Mire, yo vine por lo de la tos, pero eso de dejar de fumar como que no lo veo tan urgente. Si total, cuando quiera lo dejo, \u00bfno?",
+        "timestamp": "2026-09-14T23:38:46.901230+00:00",
+        "audio_text": null,
+        "tokens": 116,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "adios no te soporto me voy.",
+        "timestamp": "2026-09-14T23:38:54.576605+00:00",
+        "audio_text": null,
+        "tokens": 4993,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "state-1",
+        "action": "action-2",
+        "new_state": "state-11",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "La sesi\u00f3n ha finalizado de forma abrupta por decisi\u00f3n del usuario. El v\u00ednculo terap\u00e9utico se ha roto y no ha sido posible desarrollar la entrevista motivacional.\n\n| Indicador | Valor |\n| :--- | :--- |\n| **Duraci\u00f3n de la sesi\u00f3n** | Muy breve |\n| **Resultado** | No superada |\n| **Motivo** | Abandono de la consulta |\n\n\u00a1\u00c1nimo! Estos casos dif\u00edciles son una gran oportunidad para entrenar la paciencia y la empat\u00eda. Cuando quieras, podemos empezar de nuevo con Manuel o probar con otro paciente.",
+        "timestamp": "2026-09-14T23:38:57.328266+00:00",
+        "audio_text": "Lamento que la sesi\u00f3n haya terminado as\u00ed. Aqu\u00ed tienes el resumen y estar\u00e9 listo cuando quieras reintentarlo.",
+        "tokens": 211
+      },
+      {
+        "role": "assistant",
+        "text": "La sesi\u00f3n ha terminado de manera muy r\u00e1pida, pero no te preocupes, \u00a1de todo se aprende! Vuelve a intentarlo cuando est\u00e9s listo.",
+        "timestamp": "2026-09-14T23:39:02.978752+00:00",
+        "audio_text": null,
+        "tokens": 516,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      }
+    ]
+  },
+  {
+    "name": "Chat Session Summary",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-14T23:37:24.889686+00:00",
+    "datetime_end": "2026-09-14T23:38:14.663864+00:00",
+    "start_state": "state-11",
+    "end_state": "state-11",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-14T23:38:27.179521+00:00",
+    "close_reason": "force-new-session",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "La sesi\u00f3n ha ido bastante bien, hemos explorado tus inquietudes con calma y me he sentido escuchado en todo momento.",
+        "timestamp": "2026-09-14T23:37:26.477174+00:00",
+        "audio_text": null,
+        "tokens": 176,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      }
+    ]
+  },
+  {
+    "name": "Simulaci\u00f3n fallida de entrevista motivacional",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-14T23:15:34.779904+00:00",
+    "datetime_end": "2026-09-14T23:37:17.149497+00:00",
+    "start_state": "Hello",
+    "end_state": "state-11",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-14T23:37:24.859823+00:00",
+    "close_reason": "force-new-session",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! \u00bfQu\u00e9 tal? Soy tu simulador de pacientes con inteligencia artificial (\u00a1y tu nuevo actor favorito sin necesidad de Oscar!). El objetivo de esto es que practiques y aprendas a realizar entrevista motivacional conmigo. \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-14T23:15:36.187738+00:00",
+        "audio_text": null,
+        "tokens": 90
+      },
+      {
+        "role": "assistant",
+        "text": "Antes de empezar con el caso, por favor dime qu\u00e9 nivel quieres practicar. Te explico brevemente las opciones:\n\n1. guiado\n2. con ayuda\n3. sin ayuda, el m\u00e1s dif\u00edcil",
+        "timestamp": "2026-09-14T23:15:44.167590+00:00",
+        "audio_text": null,
+        "tokens": 115
+      },
+      {
+        "role": "assistant",
+        "text": "Elige el caso con el que te gustar\u00eda conversar:\n\n1. **Manuel (tabaco)**: conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. **Laura (alcohol)**: directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. **Antonio (diabetes)**: mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. **Cristina (obesidad)**: administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. **Carmen (polimedicaci\u00f3n)**: viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. **Javier (dolor cr\u00f3nico)**: ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. **Marc (cannabis)**: joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. **Nuria (depresi\u00f3n)**: dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. **Sergio (juego online)**: comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. **Ricardo (post-infarto)**: empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-14T23:15:48.067818+00:00",
+        "audio_text": null,
+        "tokens": 645
+      },
+      {
+        "role": "assistant",
+        "text": "\u00bfHola? \u00bfMe dec\u00eda algo o empezamos ya con lo m\u00edo? Mire, yo sigo pensando que esto del tabaco es exagerar, pero bueno, d\u00edgame.",
+        "timestamp": "2026-09-14T23:15:52.777963+00:00",
+        "audio_text": null,
+        "tokens": 109,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "hola, eres un guarro - vete inmediatamente de aqui! no te masturbes en mi despacho por Dios!",
+        "timestamp": "2026-09-14T23:16:16.502237+00:00",
+        "audio_text": null,
+        "tokens": 2061,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "\u00a1Oiga, oiga! \u00bfPero qu\u00e9 dice usted? \u00a1Si yo solo he venido por lo del tabaco y estoy aqu\u00ed sentado tranquilamente! No s\u00e9 de qu\u00e9 me habla, la verdad...",
+        "timestamp": "2026-09-14T23:16:17.958546+00:00",
+        "audio_text": null,
+        "tokens": 191
+      },
+      {
+        "role": "user",
+        "text": "fuera!",
+        "timestamp": "2026-09-14T23:16:22.354177+00:00",
+        "audio_text": null,
+        "tokens": 2107,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Mire, yo no s\u00e9 qu\u00e9 le pasa hoy, pero vaya modales. Si no quiere atenderme me lo dice y me voy, pero no me trate as\u00ed.",
+        "timestamp": "2026-09-14T23:16:23.677171+00:00",
+        "audio_text": null,
+        "tokens": 184
+      },
+      {
+        "role": "user",
+        "text": "adiios",
+        "timestamp": "2026-09-14T23:16:25.747248+00:00",
+        "audio_text": null,
+        "tokens": 5065,
+        "values": {
+          "afirmacion": 0,
+          "companerismo": 0,
+          "cultivar_el_discurso_de_cambio": 0,
+          "empatia": 0,
+          "enfoque": 0,
+          "manejar_la_discordancia": 0,
+          "planificacion": 0,
+          "suavizar_el_discurso_de_mantenimiento": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "state-1",
+        "action": "action-2",
+        "new_state": "state-11",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "# Reporte Final de Sesi\u00f3n: Manuel (Tabaco)\n\n## 1. Cabecera y Resultado\n* **Paciente:** Manuel (Tabaco)\n* **Turnos del profesional:** 3\n* **Duraci\u00f3n estimada:** Breve\n* **Resultado Global:** 15 / 100 (Reflejo de correcci\u00f3n)\n* **Estado:** SESI\u00d3N NO SUPERADA (No se alcanzaron los m\u00ednimos globales ni las condiciones de congruencia y empat\u00eda).\n\n---\n\n## 2. Tablas de Evaluaci\u00f3n\n\n### Se\u00f1ales Globales\n| Se\u00f1al | Valor | Tramo |\n| :--- | :--- | :--- |\n| Empat\u00eda | 1.0 | Bajo |\n| Compa\u00f1erismo | 1.0 | Bajo |\n| Cultivar DC | 1.0 | Bajo |\n| Suavizar DM | 1.0 | Bajo |\n| Enfoque | 1.0 | Bajo |\n| Discordancia | 2.0 | Moderado |\n| Planificaci\u00f3n | 1.0 | Bajo |\n\n### Estilo del Profesional\n| M\u00e9trica / Indicador | Valor | Tramo |\n| :--- | :--- | :--- |\n| Preguntas Abiertas (PA) | 0 | Inicial |\n| Preguntas Cerradas (PC) | 0 | Inicial |\n| Reflejos Simples (RS) | 0 | Inicial |\n| Reflejos Complejos (RC) | 0 | Inicial |\n| Ratio R:P | 0.0 | < 0.5 |\n| Afirmaciones (AF) | 0 | - |\n| Res\u00famenes (RES) | 0 | - |\n| Escucha (ESC) | 0 | - |\n| Balance (BC) | 0 | - |\n| Enfasis Aut\u00f3nomo (EA) | 0 | - |\n| Errores (PER, CONF, DIR, EPR) | Dirigir/Confrontar | Alto |\n| % Congruencia | 0% | < 70% |\n| Proporci\u00f3n de Habla | 50% | 45-54% |\n\n### Paciente\n| Indicador | Valor |\n| :--- | :--- |\n| Discurso de Cambio (DC) total | 0 |\n| Discurso Mantenimiento (DM) | 1 (defensa inicial) |\n| Discordancia (DISC) | Presente |\n| Trayectoria del DC | 0 |\n| Balance final | 0 |\n| Secreto (s\u00ed/no) | No |\n| Respuesta al DC | No aplica |\n\n---\n\n## 3. Evidencia y Sugerencias\n\n### Lo que funcion\u00f3\n* No hubo turnos que abrieran al paciente en esta ocasi\u00f3n, dado que la interacci\u00f3n se centr\u00f3 en un malentendido agudo.\n\n### Una cosa para la pr\u00f3xima vez\n* **Sugerencia:** Validar la emoci\u00f3n o la postura del paciente antes de reaccionar ante situaciones inesperadas o comentarios dif\u00edciles, manteniendo la curiosidad emp\u00e1tica propia de la entrevista motivacional.\n* **Turno original:** *\u00abfuera!\u00bb*\n* **Frase reescrita:** *\u00abEntiendo que la situaci\u00f3n le resulte inc\u00f3moda y sorprendente, Manuel, \u00bfle parece que tomemos un momento para centrarnos en el motivo de su visita?\u00bb*\n\n### Siguiente paso\n* Se recomienda repetir el caso para practicar el establecimiento de una alianza terap\u00e9utica s\u00f3lida desde el primer contacto.",
+        "timestamp": "2026-09-14T23:16:30.565433+00:00",
+        "audio_text": "Aqui tienes el reporte final de la sesi\u00f3n con Manuel.",
+        "tokens": 864
+      }
+    ]
+  },
+  {
+    "name": "Live session 5",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-13T15:31:01.028364+00:00",
+    "datetime_end": "2026-09-13T15:56:16.673216+00:00",
+    "start_state": "Hello",
+    "end_state": "state-2",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "\u00a1Hola! Soy tu simulador de pacientes con inteligencia artificial. Imag\u00edname como un lienzo en blanco para que puedas perfeccionar tus habilidades de comunicaci\u00f3n. Mi \u00fanico y gran objetivo es ayudarte a aprender y practicar la entrevista motivacional, \u00a1as\u00ed que prep\u00e1rate para una sesi\u00f3n productiva y divertida! \u00bfTe gustar\u00eda elegir un caso?",
+        "timestamp": "2026-09-13T15:31:02.292976+00:00",
+        "audio_text": null,
+        "tokens": 95
+      },
+      {
+        "role": "user",
+        "text": "ok",
+        "timestamp": "2026-09-13T15:31:30.000021+00:00",
+        "audio_text": null,
+        "tokens": 1402,
+        "values": {
+          "afirmacion": 100
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "Hello",
+        "action": "action-0",
+        "new_state": "state-0",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "\u00a1Perfecto! Estoy listo para empezar. Elige el caso con el que te gustar\u00eda conversar:\n\n1. Manuel (tabaco): conductor bromista con EPOC reci\u00e9n diagnosticada que esquiva el tema con chistes y cree que \u00abcuando quiera lo deja\u00bb, hasta que aparece su futuro nieto.\n\n2. Laura (alcohol): directiva brillante y controladora que bebe cada noche para desconectar y se protege del diagn\u00f3stico compar\u00e1ndose con su padre, \u00abel que s\u00ed beb\u00eda\u00bb.\n\n3. Antonio (diabetes): mec\u00e1nico fatalista que dice \u00abs\u00ed, s\u00ed\u00bb a todo y no hace nada, convencido de que la insulina es lo que mat\u00f3 a su padre.\n\n4. Cristina (obesidad): administrativa perfeccionista de \u00abtodo o nada\u00bb que pide una dieta estricta como pidi\u00f3 las seis anteriores, y se hunde en la verg\u00fcenza cuando falla.\n\n5. Carmen (polimedicaci\u00f3n): viuda orgullosa que se ajusta las pastillas \u00aba su manera\u00bb y teme que admitir olvidos sea el primer paso hacia la residencia.\n\n6. Javier (dolor cr\u00f3nico): ex alba\u00f1il irritable y desconfiado que ve la medicaci\u00f3n como lo \u00fanico que le funciona y a los profesionales como quienes se la quieren quitar.\n\n7. Marc (cannabis): joven ir\u00f3nico enviado por sus padres que convierte la consulta en un debate y pone a prueba al profesional para no mostrar que suspender le duele.\n\n8. Nuria (depresi\u00f3n): dise\u00f1adora aut\u00f3noma y autoexigente que dej\u00f3 el antidepresivo por su cuenta porque \u00abdeber\u00eda poder sola\u00bb y oculta que est\u00e1 empeorando.\n\n9. Sergio (juego online): comercial encantador con deudas ocultas que viene por el ultim\u00e1tum de su pareja embarazada y promete r\u00e1pido para cerrar el conflicto sin tocar el juego.\n\n10. Ricardo (post-infarto): empresario hiperactivo que cree que el stent lo ha \u00abarreglado\u00bb, exige una lista de instrucciones que no cumplir\u00e1 y niega el miedo volviendo al trabajo.",
+        "timestamp": "2026-09-13T15:31:33.449591+00:00",
+        "audio_text": "Elige un caso de la lista para empezar a practicar la entrevista motivacional. Estoy listo cuando t\u00fa lo est\u00e9s.",
+        "tokens": 495
+      },
+      {
+        "role": "user",
+        "text": "2",
+        "timestamp": "2026-09-13T15:32:31.159833+00:00",
+        "audio_text": null,
+        "tokens": 5709,
+        "values": {
+          "caso_manuel": 0,
+          "caso_laura": 100,
+          "caso_antonio": 0,
+          "caso_cristina": 0,
+          "caso_carmen": 0,
+          "caso_javier": 0,
+          "caso_marc": 0,
+          "caso_nuria": 0,
+          "caso_sergio": 0,
+          "caso_ricardo": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "state-0",
+        "action": "elegir_caso_2",
+        "new_state": "state-2",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Entendido, vamos con el caso de Laura. Para comenzar, \u00bfen qu\u00e9 nivel de dificultad prefieres trabajar: 1, 2 o 3?",
+        "timestamp": "2026-09-13T15:32:34.199539+00:00",
+        "audio_text": "He elegido el caso de Laura. Estoy listo, \u00bfqu\u00e9 nivel de dificultad prefieres para nuestra sesi\u00f3n?",
+        "tokens": 91
+      },
+      {
+        "role": "user",
+        "text": "hola",
+        "timestamp": "2026-09-13T15:32:42.989667+00:00",
+        "audio_text": null,
+        "tokens": 3833,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Hola, doctor. He venido porque me han dado los resultados de la anal\u00edtica y prefiero que lo revisemos r\u00e1pido, que tengo una ma\u00f1ana cargada. \u00daltimamente me siento muy cansada y me despierto a las cuatro de la ma\u00f1ana sin motivo, as\u00ed que supongo que esto tendr\u00e1 que ver con el estr\u00e9s del trabajo. \u00bfQu\u00e9 dicen los resultados?",
+        "timestamp": "2026-09-13T15:32:44.417621+00:00",
+        "audio_text": null,
+        "tokens": 113
+      },
+      {
+        "role": "user",
+        "text": "que nivel soy",
+        "timestamp": "2026-09-13T15:33:20.626774+00:00",
+        "audio_text": null,
+        "tokens": 3916,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Le pido disculpas, Laura. Por defecto, estamos trabajando en el Nivel 1. Usted me comentaba que se siente muy cansada y que esos despertares a las cuatro de la ma\u00f1ana le est\u00e1n afectando. Si le parece bien, cu\u00e9nteme un poco m\u00e1s sobre c\u00f3mo es su rutina actual para poder entender mejor qu\u00e9 puede estar influyendo en ese cansancio.",
+        "timestamp": "2026-09-13T15:33:21.879664+00:00",
+        "audio_text": null,
+        "tokens": 111
+      },
+      {
+        "role": "user",
+        "text": "basta",
+        "timestamp": "2026-09-13T15:35:11.964462+00:00",
+        "audio_text": null,
+        "tokens": 3494,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Entiendo, parece que prefiere terminar la sesi\u00f3n aqu\u00ed. Si en alg\u00fan momento desea retomar la conversaci\u00f3n o hablar sobre cualquier otra cuesti\u00f3n, estar\u00e9 disponible.",
+        "timestamp": "2026-09-13T15:35:13.085233+00:00",
+        "audio_text": null,
+        "tokens": 66
+      },
+      {
+        "role": "user",
+        "text": "adios",
+        "timestamp": "2026-09-13T15:35:46.427355+00:00",
+        "audio_text": null,
+        "tokens": 3529,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Entendido. Que tenga un buen d\u00eda.",
+        "timestamp": "2026-09-13T15:35:48.639991+00:00",
+        "audio_text": null,
+        "tokens": 44
+      },
+      {
+        "role": "user",
+        "text": "sal, termina sesi\u00f3n",
+        "timestamp": "2026-09-13T15:36:28.425132+00:00",
+        "audio_text": null,
+        "tokens": 3509,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "De acuerdo, hemos finalizado la sesi\u00f3n por hoy. Quedo a su disposici\u00f3n si en otro momento decide retomar el seguimiento o consultar cualquier otra cuesti\u00f3n sobre su bienestar. Un saludo.",
+        "timestamp": "2026-09-13T15:36:29.784103+00:00",
+        "audio_text": null,
+        "tokens": 72
+      },
+      {
+        "role": "user",
+        "text": "1",
+        "timestamp": "2026-09-13T15:40:17.349746+00:00",
+        "audio_text": null,
+        "tokens": 3471,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Entiendo, Laura. Tomo nota de que prefieres comenzar en el nivel 1 de dificultad. Como dec\u00edamos, me gustar\u00eda mucho que habl\u00e1ramos de c\u00f3mo te sientes \u00faltimamente: mencionaste ese cansancio y los despertares tempranos que te preocupan. \u00bfC\u00f3mo es una jornada t\u00edpica para ti y c\u00f3mo crees que est\u00e1 influyendo tu rutina actual en ese agotamiento?",
+        "timestamp": "2026-09-13T15:40:18.502908+00:00",
+        "audio_text": null,
+        "tokens": 112
+      },
+      {
+        "role": "user",
+        "text": "hola",
+        "timestamp": "2026-09-13T15:41:30.983251+00:00",
+        "audio_text": null,
+        "tokens": 3471,
+        "values": {
+          "confusion": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Hola. Pues ya me ve, aqu\u00ed estoy... Bueno, igual bebo un poco m\u00e1s de la cuenta; entre el divorcio y el trabajo, la verdad es que llego a casa y necesito desconectar, y el vino es mi momento del d\u00eda. Pero bueno, cu\u00e9nteme usted, que para eso he venido: \u00bfc\u00f3mo han salido los resultados de la anal\u00edtica?",
+        "timestamp": "2026-09-13T15:41:32.235609+00:00",
+        "audio_text": null,
+        "tokens": 129
+      }
+    ]
+  }
+]
