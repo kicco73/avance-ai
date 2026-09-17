@@ -10,6 +10,7 @@ from system.try_again_error import TryAgainError
 
 from ai import SystemPrompt
 from automaton.automaton import Automaton
+from .markdown_repairer import MarkdownRepairer
 
 from .env import Env
 
@@ -231,6 +232,10 @@ class TextPrompt(Prompt):
 
 	def __init__(self, base_prompt: str) -> None:
 		super().__init__(base_prompt)
+		self._markdown_repairer = MarkdownRepairer()
+
+	def decode(self, raw: str) -> str:
+		return self._markdown_repairer.repair(raw)
 
 
 EMBED_AUDIO_TAG_PROMPT = """
