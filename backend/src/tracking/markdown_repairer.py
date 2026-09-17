@@ -4,7 +4,7 @@ import re
 
 
 class MarkdownRepairer:
-    """Repairs common structural errors in LLM-generated Markdown."""
+    """Best-effort sanitizer for LLM-generated Markdown."""
 
     _FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
     _LIST_RE = re.compile(r"^(\s*)([-+*]|\d+[.)])\s+(.*)$")
@@ -18,12 +18,74 @@ class MarkdownRepairer:
 
         lines = markdown.split("\n")
 
+        lines = self._repair_attached_tables(lines)
+
         lines = self._repair_fences(lines)
         lines = self._repair_tables(lines)
         lines = self._repair_lists(lines)
         lines = self._repair_emphasis(lines)
 
         return "\n".join(lines).strip()
+
+
+    def _repair_attached_tables(self, lines: list[str]) -> list[str]:
+        """
+        Turns:
+
+            Some text: | A | B |
+            | — | — |
+            | x | y |
+
+        into:
+
+            Some text:
+
+            | A | B |
+            | --- | --- |
+            | x | y |
+        """
+
+        result: list[str] = []
+        i = 0
+
+        while i < len(lines):
+            line = lines[i]
+
+            if "|" not in line or i + 1 >= len(lines):
+                result.append(line)
+                i += 1
+                continue
+
+            found = False
+
+            for match in re.finditer(r"\|", line):
+                position = match.start()
+
+                prose = line[:position].rstrip()
+                table_header = line[position:].strip()
+
+                if not prose:
+                    continue
+
+                if not self._is_table_row(table_header):
+                    continue
+
+                if not self._is_table_separator(lines[i + 1]):
+                    continue
+
+                result.append(prose)
+                result.append("")
+                result.append(table_header)
+
+                i += 1
+                found = True
+                break
+
+            if not found:
+                result.append(line)
+                i += 1
+
+        return result
 
 
     def _repair_fences(self, lines: list[str]) -> list[str]:
@@ -43,7 +105,6 @@ class MarkdownRepairer:
                 if fence_char is None:
                     fence_char = char
                     fence_length = length
-
                 elif char == fence_char and length >= fence_length:
                     fence_char = None
                     fence_length = 0
@@ -123,8 +184,11 @@ class MarkdownRepairer:
                     result.append(
                         self._make_separator(columns)
                     )
+                    result.append(
+                        self._normalize_row(separator, columns)
+                    )
 
-                    i += 1
+                    i += 2
 
                     while i < len(lines):
                         row = lines[i]
@@ -166,10 +230,18 @@ class MarkdownRepairer:
         if len(cells) < 2:
             return False
 
-        return all(
-            self._TABLE_SEPARATOR_CELL_RE.fullmatch(cell.strip())
-            for cell in cells
-        )
+        for cell in cells:
+            cell = (
+                cell.strip()
+                .replace("—", "-")
+                .replace("–", "-")
+                .replace("−", "-")
+            )
+
+            if not self._TABLE_SEPARATOR_CELL_RE.fullmatch(cell):
+                return False
+
+        return True
 
     @staticmethod
     def _split_row(line: str) -> list[str]:
@@ -188,6 +260,7 @@ class MarkdownRepairer:
 
         if len(cells) < columns:
             cells.extend([""] * (columns - len(cells)))
+
         elif len(cells) > columns:
             cells = cells[:columns - 1] + [
                 " | ".join(cells[columns - 1:])
@@ -200,7 +273,12 @@ class MarkdownRepairer:
         normalized: list[str] = []
 
         for cell in cells[:columns]:
-            cell = cell.strip()
+            cell = (
+                cell.strip()
+                .replace("—", "-")
+                .replace("–", "-")
+                .replace("−", "-")
+            )
 
             left = cell.startswith(":")
             right = cell.endswith(":")
@@ -228,7 +306,6 @@ class MarkdownRepairer:
 
         in_fence = False
         fence_char: str | None = None
-
         previous_list_indent: int | None = None
 
         for line in lines:
@@ -260,6 +337,7 @@ class MarkdownRepairer:
 
             indent, marker, content = match.groups()
             indent_length = len(indent.expandtabs(2))
+
             indent_length = (indent_length // 2) * 2
 
             if previous_list_indent is None:
