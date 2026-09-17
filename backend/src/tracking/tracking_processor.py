@@ -401,17 +401,15 @@ class TrackingProcessor(object):
 
 	def build_tool_set(self, state: State) -> ToolSet | None:
 		"""`state`'s own tool catalog (see automaton.State.
-		ai_may_read_sources/ai_must_read_sources/ai_may_write_sources) —
-		None (none of the three declared) all the way down to a request
+		ai_may_read_sources/ai_must_read_sources) —
+		None (neither declared) all the way down to a request
 		identical to before tool-calling existed. Resolved fresh per call
 		against this turn's own automaton/session/env, same SourceNamespace
-		shape a source.<name> trigger/env: reference already uses — `env`
-		given here too, so a write tool (a source's `update`) can
-		actually persist through it mid-generation."""
+		shape a source.<name> trigger/env: reference already uses."""
 		if not state.ai_source_names:
 			return None
 		return SourceNamespace(self.db, self.user.automaton, self.user.session_id, env=self.env).tool_set(
-			state.ai_may_read_sources, state.ai_must_read_sources, state.ai_may_write_sources,
+			state.ai_may_read_sources, state.ai_must_read_sources,
 		)
 
 	def force_required_tools_for(self, state: State) -> bool:

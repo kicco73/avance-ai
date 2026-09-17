@@ -7,11 +7,11 @@ in-memory copy, so every test here seeds real Archive rows instead of
 building a MemoryArchive.
 
 select_rows_containing()/select_rows_where()/
-select_rows_in_range()/value()/column()/row_where()/save_as() are the only
-methods this driver implements (see SourceDriver's own docstring on why a whole-file
-read isn't a source.* capability at all — and `update`, part of the
-uniform interface, stays unsupported here).
-"""
+select_rows_in_range()/value()/column()/row_where() are the only
+methods this driver implements — read-only, straight through to the
+real project files every time, with no per-session copy of anything
+(see SourceDriver's own docstring on why a whole-file read isn't a
+source.* capability at all)."""
 from __future__ import annotations
 
 import pytest
@@ -103,15 +103,16 @@ def test_select_rows_containing_ands_several_values_together_while_one_value_ret
     assert driver.select_rows_containing("VY3003") == "code,date\nVY3003,2026-06-01\nVY3003,2026-06-02\n"
 
 
-def test_create_delete_and_read_do_not_exist_and_update_is_unsupported_on_the_archive_driver(db):
+def test_create_delete_read_update_and_save_as_do_not_exist_on_the_archive_driver(db):
     driver, _ = _seeded_driver(db, "notes.txt", "hello", content_type="text/plain")
 
     assert not hasattr(driver, "create")
     assert not hasattr(driver, "delete")
     assert not hasattr(driver, "read")
+    assert not hasattr(driver, "update")
+    assert not hasattr(driver, "save_as")
     assert "update" not in AvanceArchiveSource.SUPPORTED_METHODS
-    with pytest.raises(ValueError, match="source.pino.update.*not supported"):
-        driver.update(fields={"a": "b"})
+    assert "save_as" not in AvanceArchiveSource.SUPPORTED_METHODS
 
 
 def test_select_rows_containing_returns_whole_rows_and_takes_no_keys_argument(db):
@@ -291,79 +292,18 @@ def test_source_namespace_resolves_a_declared_name_to_its_driver_and_raises_for_
         SourceNamespace(db, automaton).nope
 
 
-class TestPerSessionReadCache:
-    """With no session_id (a wake-up re-evaluation, a test replay), a
-    read goes straight to the canonical archive and never writes a
-    cache copy. With one, it reads through cache/sessions/<id>/<archive
-    path> instead, duplicating the canonical content into it on a miss."""
+def test_a_read_goes_straight_to_the_real_project_file_with_no_session_scoped_copy_of_anything(db):
+    """There is no per-session cache any more — every driver, whatever
+    session_id it carries, reads (and re-reads, after a change) the
+    same real project file everyone else does."""
+    revision = _seed(db, {"notes.txt": b"note\noriginal\n"}, {"notes.txt": "text/plain"})
+    automaton = _automaton(PROJECT_ID, revision)
 
-    def test_a_session_reads_through_its_own_cache_copy_frozen_at_first_read_while_no_session_reads_canonical(self, db):
-        revision = _seed(db, {"notes.txt": b"note\noriginal\n"}, {"notes.txt": "text/plain"})
-        automaton = _automaton(PROJECT_ID, revision)
+    assert _driver(automaton, db, "notes.txt", session_id=None).select_rows_containing("original") == "note\noriginal\n"
+    assert _driver(automaton, db, "notes.txt", session_id=42).select_rows_containing("original") == "note\noriginal\n"
+    assert not any(name.startswith("cache/") for name in db.list_archives(PROJECT_ID, revision=revision))
 
-        assert _driver(automaton, db, "notes.txt", session_id=None).select_rows_containing("original") == "note\noriginal\n"
-        assert not any(name.startswith("cache/") for name in db.list_archives(PROJECT_ID, revision=revision))
-
-        assert _driver(automaton, db, "notes.txt", session_id=42).select_rows_containing("original") == "note\noriginal\n"
-        assert db.get_archive(PROJECT_ID, "cache/sessions/42/notes.txt", revision=revision) == b"note\noriginal\n"
-        db.save_project_files(PROJECT_ID, {"notes.txt": b"note\nedited\n"}, {"notes.txt": "text/plain"})
-        PROJECT_FILE_CACHE.forget_project(PROJECT_ID)
-        assert _driver(automaton, db, "notes.txt", session_id=42).select_rows_containing("original") == "note\noriginal\n"
-        assert _driver(automaton, db, "notes.txt", session_id=None).select_rows_containing("edited") == "note\nedited\n"
-
-    def test_different_sessions_get_independent_cache_copies_and_select_matches_through_them(self, db):
-        revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
-        automaton = _automaton(PROJECT_ID, revision)
-
-        assert _driver(automaton, db, "cities.csv", session_id=1).select_rows_containing("paris") == "city,country\nParis,France\nparis,Texas\n"
-        _driver(automaton, db, "cities.csv", session_id=2).select_rows_containing("x")
-
-        assert db.get_archive(PROJECT_ID, "cache/sessions/1/cities.csv", revision=revision) == CSV.encode()
-        assert db.get_archive(PROJECT_ID, "cache/sessions/2/cities.csv", revision=revision) == CSV.encode()
-
-
-class TestSaveAs:
-
-    def test_a_saved_record_reads_back_in_the_same_session_while_the_projects_own_file_is_untouched(self, db):
-        revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
-        automaton = _automaton(PROJECT_ID, revision)
-
-        assert _driver(automaton, db, "cities.csv", session_id=7).save_as("Rome", country="Italy") == "1 row added"
-
-        assert _driver(automaton, db, "cities.csv", session_id=7).select_rows_containing("Rome") == "city,country\nRome,Italy\n"
-        assert _driver(automaton, db, "cities.csv", session_id=8).select_rows_containing("Rome") == ""
-        assert db.get_archive(PROJECT_ID, "cities.csv", revision=revision) == CSV.encode()
-
-    def test_saving_under_a_key_a_row_already_carries_replaces_that_row_whole(self, db):
-        revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
-        driver = _driver(_automaton(PROJECT_ID, revision), db, "cities.csv", session_id=7)
-
-        assert driver.save_as("Berlin", country="Deutschland") == "1 row replaced"
-
-        assert driver.select_rows_containing() == "city,country\nParis,France\nBerlin,Deutschland\nparis,Texas\nLondon,UK\n"
-
-    def test_a_column_left_out_is_written_empty_and_a_name_that_is_not_a_column_is_an_error_text(self, db):
-        revision = _seed(db, {"flights.csv": FLIGHTS.encode()}, {"flights.csv": "text/csv"})
-        driver = _driver(_automaton(PROJECT_ID, revision), db, "flights.csv", session_id=7)
-
-        assert driver.save_as("VY4000", data_partenza="2026-09-01") == "1 row added"
-        assert driver.value("VY4000", key="datetime_partenza_reale") == ""
-        assert driver.save_as("VY4000", nope="x").startswith("error: unknown column(s) 'nope'")
-
-    def test_the_files_own_delimiter_and_quoting_survive_a_save(self, db):
-        revision = _seed(db, {"cities.csv": b"city;country\nParis;France\n"}, {"cities.csv": "text/csv"})
-        driver = _driver(_automaton(PROJECT_ID, revision), db, "cities.csv", session_id=7)
-
-        driver.save_as("Rome", country="Italy; Lazio")
-
-        assert driver.row_where("city", "=", "Rome") == {"city": "Rome", "country": "Italy; Lazio"}
-
-    def test_without_a_session_there_is_no_cache_copy_to_write_and_the_save_is_refused(self, db):
-        revision = _seed(db, {"cities.csv": CSV.encode()}, {"cities.csv": "text/csv"})
-
-        with pytest.raises(ValueError, match="cannot be written here"):
-            _driver(_automaton(PROJECT_ID, revision), db, "cities.csv", session_id=None).save_as("Rome", country="Italy")
-
-    def test_save_as_is_never_a_model_tool(self, db):
-        assert "save_as" in AvanceArchiveSource.SUPPORTED_METHODS
-        assert "save_as" not in AvanceArchiveSource.TOOL_METHODS
+    db.save_project_files(PROJECT_ID, {"notes.txt": b"note\nedited\n"}, {"notes.txt": "text/plain"})
+    PROJECT_FILE_CACHE.forget_project(PROJECT_ID)
+    assert _driver(automaton, db, "notes.txt", session_id=42).select_rows_containing("edited") == "note\nedited\n"
+    assert _driver(automaton, db, "notes.txt", session_id=None).select_rows_containing("edited") == "note\nedited\n"

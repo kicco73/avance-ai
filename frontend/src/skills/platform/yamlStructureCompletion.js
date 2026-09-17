@@ -29,8 +29,7 @@ const STATE_FIELDS = [
   { name: 'ai-memory-scope' },
   { name: 'attachments', nested: true },
   { name: 'ai-may-read-sources', nested: true },
-  { name: 'ai-must-read-sources', nested: true },
-  { name: 'ai-may-write-sources', nested: true }
+  { name: 'ai-must-read-sources', nested: true }
 ]
 
 const ACTION_FIELDS = [

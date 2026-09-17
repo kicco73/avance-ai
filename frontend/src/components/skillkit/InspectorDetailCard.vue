@@ -106,7 +106,7 @@ function commitBoolField(field, value) {
 
 const hasConfiguredSources = computed(() => {
   const d = props.selectedElement?.data
-  return (d?.aiMayReadSources?.length ?? 0) + (d?.aiMustReadSources?.length ?? 0) + (d?.aiMayWriteSources?.length ?? 0) > 0
+  return (d?.aiMayReadSources?.length ?? 0) + (d?.aiMustReadSources?.length ?? 0) > 0
 })
 
 const isDeleteDisabled = computed(() => {

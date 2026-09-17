@@ -1,10 +1,9 @@
 """ToolSet — the model's own callable catalog for a state's declared
-`ai-may-read-sources:`/`ai-must-read-sources:`/`ai-may-write-sources:` (see
-automaton.State), built by SourceNamespace.tool_set(may_read, must_read,
-may_write): one ToolSpec per read method the source's own driver supports
-(tracking.sources.READ_METHODS), one `update` per write source, and call()
-resolving through the same SourceNamespace (and so the same per-session
-read cache and Env) a source.<name>.<method>() expression already uses.
+`ai-may-read-sources:`/`ai-must-read-sources:` (see automaton.State),
+built by SourceNamespace.tool_set(may_read, must_read): one ToolSpec per
+read method the source's own driver supports (tracking.sources.
+READ_METHODS), and call() resolving through the same SourceNamespace
+(and so the same Env) a source.<name>.<method>() expression already uses.
 """
 from __future__ import annotations
 
@@ -12,7 +11,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, EnvKey, Source, State
 from db.db import Db
-from tracking.sources import METHOD_SCHEMAS, WRITE_METHOD, SourceNamespace
+from tracking.sources import METHOD_SCHEMAS, SourceNamespace
 from tracking.sources.avance_archive import AvanceArchiveSource
 from tracking.project_files import PROJECT_FILE_CACHE
 
@@ -70,14 +69,14 @@ def _names(tool_set) -> set[str]:
 
 
 def _read_names(source_name: str) -> list[str]:
-    return [f"source_{source_name}_{method}" for method in AvanceArchiveSource.TOOL_METHODS if method != WRITE_METHOD]
+    return [f"source_{source_name}_{method}" for method in AvanceArchiveSource.TOOL_METHODS]
 
 
 def _spec(tool_set, name: str):
     return next(spec for spec in tool_set.specs() if spec.name == name)
 
 
-def test_specs_cover_only_the_named_sources_with_every_supported_read_and_update_but_never_value(db):
+def test_specs_cover_only_the_named_sources_with_every_supported_read_but_never_value(db):
     two = _two_sources(db)
     assert _names(SourceNamespace(db, two).tool_set(["flights", "tickets"])) == {
         *_read_names("flights"), *_read_names("tickets"),
@@ -94,15 +93,13 @@ def test_the_driver_alone_says_which_of_its_methods_the_model_gets(db):
     assert not {"value", "column"} & set(AvanceArchiveSource.TOOL_METHODS)
 
 
-def test_an_unknown_name_anywhere_or_a_write_on_a_driver_without_update_raises(db):
+def test_an_unknown_name_anywhere_raises(db):
     automaton = _two_sources(db)
 
     with pytest.raises(ValueError, match="source.nope"):
         SourceNamespace(db, automaton).tool_set(["nope"])
     with pytest.raises(ValueError, match="source.nope"):
         SourceNamespace(db, automaton).tool_set([], ["nope"])
-    with pytest.raises(ValueError, match="source.flights.update"):
-        SourceNamespace(db, automaton).tool_set([], [], ["flights"])
 
 
 def test_description_is_the_method_blurb_plus_the_sources_own_ai_definition_never_its_ui_description(db):
@@ -142,15 +139,8 @@ def test_parameter_schemas_are_the_uniform_method_schemas_unless_the_driver_narr
     assert in_range["required"] == ["column", "start", "end"]
     assert "strings" in in_range["properties"]
 
-    update = METHOD_SCHEMAS["update"]
-    assert update["required"] == ["values", "fields"]
-    assert update["properties"]["fields"]["type"] == "object"
-    assert update["properties"]["fields"]["additionalProperties"] == {"type": "string"}
-    assert update["properties"]["fields"]["minProperties"] == 1
 
-
-def test_required_specs_cover_only_the_must_sources_and_only_ever_their_reads(db):
-    """`must` forces a read only — a write is never forced."""
+def test_required_specs_cover_only_the_must_sources(db):
     two = _two_sources(db)
     assert SourceNamespace(db, two).tool_set(["flights", "tickets"]).required_specs() == []
 

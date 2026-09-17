@@ -255,7 +255,6 @@ states:
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
 | `ai-must-read-sources` | no | list of source names | `[]` | Same, but the read is forced once per entry into this state — §4.2. A source name can appear in at most one of the two read fields. |
-| `ai-may-write-sources` | no | list of source names | `[]` | Sources whose `update` the model may call here — §4.2. There is no `must-write`: a write is never forced. No driver implements `update` today, so this field currently has no effect — reserved for a future writable source. |
 | `input` | no | list of `env:` key names | `[]` | Env keys read into this turn's own system prompt, as a read-only "Current environment" block — §4.3. |
 | `output` | no | list of `env:` key names | `[]` | Env keys the model may set this turn, through its own structured reply — merged onto the automaton's env once the turn completes — §4.3. |
 
@@ -266,15 +265,15 @@ Typical use: a safety/compliance message that must not be paraphrased.
 `contextual-prompt`, `general-prompt`, and this state's `attachments` are
 unused for that call.
 
-**4.2 Native tool-calling.** `ai-may-read-sources`/`ai-must-read-sources`/
-`ai-may-write-sources` each list names from this project's own top-level
-`sources:` (§5.2) the model may use, mid-turn, as native tools while
+**4.2 Native tool-calling.** `ai-may-read-sources`/`ai-must-read-sources`
+each list names from this project's own top-level `sources:` (§5.2) —
+always read-only — the model may use, mid-turn, as native tools while
 replying in this state — one tool per (source, method): a source named
-`flight_records` in a read field becomes one callable per read method its
-driver supports (`source_flight_records_select_rows_containing`,
+`flight_records` becomes one callable per read method its driver
+supports (`source_flight_records_select_rows_containing`,
 `source_flight_records_select_rows_where`,
-`source_flight_records_select_rows_in_range`). Reading and writing are independent grants; the two
-read fields differ only in how much the model is trusted to decide for itself:
+`source_flight_records_select_rows_in_range`). The two fields differ
+only in how much the model is trusted to decide for itself:
 
 - **`ai-may-read-sources`** — the model sees the source's reads and
   decides for itself whether/when to call one, same as any other
@@ -286,35 +285,26 @@ read fields differ only in how much the model is trusted to decide for itself:
   the same state), the model is restricted to calling one of *these*
   reads — it cannot just answer instead. From the second round of that
   same turn onward, and every turn after the first, it's `auto` again with
-  the full catalog (every field's tools together). Whether this is "the
+  the full catalog (both fields' tools together). Whether this is "the
   first turn since entering the state" is decided by the backend, from
   the session's own transition/message history — **never left to the
   model to decide, and never re-askable by prompting alone.** Its purpose
   is to make the model *observe* the source's current values before it
   answers.
-- **`ai-may-write-sources`** — the source's `update` (§5.2), at the
-  model's discretion. Never forced: there is no `must-write` counterpart,
-  and `update` is never in the forced set even when the same source is
-  also in `ai-must-read-sources`. No driver implements `update` today
-  (`avance:<path>`'s own `save_as` is a script's, never the model's —
-  §5.2), so this field currently has no effect.
 
-A source named in any field must declare its own `ai-definition` (§5.2) —
-a build error otherwise, the same requirement a signal's own `definition`
-gets. The same source name can't appear in both read fields for one
-state. A source in `ai-may-write-sources` whose driver has no `update`
-fails the build with the same "undefined name(s): source.<name>.update"
-message a script calling it would get — today, that's every entry in
-this field, since no driver implements `update` yet.
+A source named in either field must declare its own `ai-definition`
+(§5.2) — a build error otherwise, the same requirement a signal's own
+`definition` gets. The same source name can't appear in both fields for
+one state.
 
-No field has a project-wide default, deliberately: a tool catalog costs
-real tokens on **every** turn in that state, whether or not the model
-ends up calling anything — each tool's own JSON schema plus the
+Neither field has a project-wide default, deliberately: a tool catalog
+costs real tokens on **every** turn in that state, whether or not the
+model ends up calling anything — each tool's own JSON schema plus the
 provider's own function-calling overhead, on the order of ~1,000 tokens
 per turn for three declared sources. Declaring the catalog per state
-also documents *where* the model is allowed to look and write, not just
-that it's allowed to — a state with none of the three fields sends the
-exact same request a turn always did, before tool-calling existed at all.
+also documents *where* the model is allowed to look, not just that it's
+allowed to — a state with neither field sends the exact same request a
+turn always did, before tool-calling existed at all.
 
 Every tool takes the same arguments, whatever the driver:
 `select_rows_containing` takes `values` (an array of strings — the row
@@ -322,8 +312,7 @@ filter, possibly empty); `select_rows_where` takes `column`,
 `operator` (`=`, `!=`, `>`, `>=`, `<`, `<=`), `value`, and optionally
 `strings` (an array of strings, same semantics as `select_rows_containing`'s
 own `values`, further narrowing the match); `select_rows_in_range` takes
-`column`, `start`, `end`, and the same optional `strings`;
-`update` takes `values` and `fields` (column → new value, at least one).
+`column`, `start`, `end`, and the same optional `strings`.
 Every read returns whole rows — there is no column projection in the
 model's own interface. A driver may *narrow* one of those schemas for the
 model (`SourceDriver.parameter_schema`) — never changes their shape; no
@@ -332,7 +321,7 @@ driver does today.
 **4.3 Model-visible env: `input`/`output`.** Whether the model reads or
 sets a given top-level `env:` key (§5.3) is decided entirely by *this
 state's own* `input`/`output` lists — not a property of the key itself,
-and independent of `ai-may-read-sources`/`ai-may-write-sources` above
+and independent of `ai-may-read-sources`/`ai-must-read-sources` above
 (those gate `sources:`, never `env:`).
 
 - **`input`** — read-only. A state with a non-empty `input` gets its
@@ -369,7 +358,7 @@ and independent of `ai-may-read-sources`/`ai-may-write-sources` above
 An `input`/`output` name must be declared in the project's own `env:`
 section, and that env key must declare its own `ai-definition` — a build
 error otherwise, the same requirement `ai-may-read-sources`/
-`ai-may-write-sources` place on a source's own `ai-definition`.
+`ai-must-read-sources` place on a source's own `ai-definition`.
 
 ## 5. `actions:` (nested under a state)
 
@@ -443,7 +432,7 @@ user.role == "admin"
 | `env.<name>` | A key declared in top-level `env:` (§5.3) — never a model-reported free-form value | attribute |
 | `session.<name>` | Engine fact about the current user+project session (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call**, e.g. `session.number_of_user_sessions()` |
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
-| `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select_rows_containing(...)`/`.update(...)` |
+| `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select_rows_containing(...)` |
 | `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `task.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
 | `choice.<key>` | `<key>` an env key declared of type `choice` (§5.3): the option just pressed, for the one trigger evaluation the press starts — `""` in every other evaluation and under every other `choice` key. Exactly `choice.<key>`, in `trigger:`, `env:` and `on-exit:` — never in `task:`, which runs later, against a scope of its own | attribute |
 

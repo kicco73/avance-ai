@@ -57,7 +57,6 @@ class State:
     reactions_enabled: bool = False
     ai_may_read_sources: tuple[str, ...] = ()
     ai_must_read_sources: tuple[str, ...] = ()
-    ai_may_write_sources: tuple[str, ...] = ()
     line: int | None = None
     input: tuple[str, ...] = ()
     output: tuple[str, ...] = ()
@@ -69,9 +68,9 @@ class State:
 
     @property
     def ai_source_names(self) -> tuple[str, ...]:
-        """Every source name this state exposes to the model, for either
-        reading or writing — empty means no tool catalog at all."""
-        return self.ai_may_read_sources + self.ai_must_read_sources + self.ai_may_write_sources
+        """Every source name this state exposes to the model to read —
+        empty means no tool catalog at all."""
+        return self.ai_may_read_sources + self.ai_must_read_sources
 
 
 @dataclass
@@ -160,7 +159,6 @@ class StatePayload(TypedDict):
     actions: list[ActionPayload]
     ai_may_read_sources: list[str]
     ai_must_read_sources: list[str]
-    ai_may_write_sources: list[str]
     input: list[str]
     output: list[str]
 

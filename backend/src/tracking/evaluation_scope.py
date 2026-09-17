@@ -73,10 +73,9 @@ class EvaluationScopeBuilder(object):
         constructor dependency any caller has to wire up separately — to
         know where to actually read from (see Automaton.
         set_storage_location). `session_id`: the firing chat session,
-        forwarded to SourceNamespace for its own per-session read cache
-        (tracking.sources.avance_archive) — None outside a real chat
-        session (a wake-up re-evaluation, a test replay), where a source
-        driver just reads its canonical archive directly instead."""
+        forwarded to SourceNamespace for AiService's own per-tool-call log
+        line — None outside a real chat session (a wake-up re-evaluation,
+        a test replay)."""
         signal_values = SignalEvaluator().validate(automaton, raw_signal_values)
         source_namespace = SourceNamespace(self._db, automaton, session_id, env=self._env)
         project_files = project_files_for(self._db, automaton)
@@ -103,9 +102,7 @@ class EvaluationScopeBuilder(object):
         )
         if self._ai_service is not None:
             tool_set = (
-                source_namespace.tool_set(
-                    state.ai_may_read_sources, state.ai_must_read_sources, state.ai_may_write_sources,
-                )
+                source_namespace.tool_set(state.ai_may_read_sources, state.ai_must_read_sources)
                 if state is not None and state.ai_source_names else None
             )
             scope["task"] = task_namespace.with_ai_service(self._ai_service, tool_set=tool_set)

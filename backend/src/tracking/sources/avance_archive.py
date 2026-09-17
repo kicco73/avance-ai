@@ -29,13 +29,12 @@ a whole file is exactly what bounding a result doesn't make sense for.
 
 Where the bytes come from is not this driver's business: it asks the
 ProjectFiles it was handed (see tracking.project_files), which is the
-database at this automaton's pinned revision — through a per-session
-cache copy — or, for an automaton that carries its own files, the
-package's own data/ directory."""
+database at this automaton's pinned revision, or, for an automaton that
+carries its own files, the package's own data/ directory — the real
+project files, read directly, every time."""
 from __future__ import annotations
 
 import csv
-import io
 
 from system.logging_factory import LoggerFactory
 
@@ -52,7 +51,6 @@ _DELIMITERS = ",;\t|"
 class AvanceArchiveSource(SourceDriver):
     SUPPORTED_METHODS = frozenset({
         "select_rows_containing", "select_rows_where", "select_rows_in_range", "value", "column", "row_where",
-        "save_as",
     })
     TOOL_METHODS = ("select_rows_containing", "select_rows_where", "select_rows_in_range")
     METHOD_DESCRIPTIONS = {
@@ -81,12 +79,6 @@ class AvanceArchiveSource(SourceDriver):
             "Every `column` cell of the rows matching *every* given value, case-insensitive, as a list — "
             "e.g. source.<name>.column('codice_volo', 'Barcelona'); no values means the whole column. "
             "[] if no row matches or the column doesn't exist. Scripts/triggers only, never a model tool."
-        ),
-        "save_as": (
-            "Writes one record into this session's own copy of the file, under `key` — the first column's "
-            "value — e.g. source.<name>.save_as('VY3003', data_partenza='2026-08-16', stato='confermato'). "
-            "The row carrying that key is replaced; when no row does, one is added. Every other column is "
-            "left empty, and a name that isn't a column is an error. Scripts/triggers only, never a model tool."
         ),
         "row_where": (
             "The first row where a column satisfies a comparison (same operators and `*strings` as "
@@ -224,38 +216,6 @@ class AvanceArchiveSource(SourceDriver):
             logger.warning("source.%s.column(%r): result over %d chars — narrow it with values", self._name, column, MAX_SOURCE_RESULT_CHARS)
             return []
         return values_found
-
-    def save_as(self, key: str | float, **columns: str | float) -> str:
-        found = self._records()
-        if found is None:
-            return f"error: '{self._archive_path}' has no header row to save a record into."
-        header_text, delimiter, names, records = found
-        unknown = [name for name in columns if name not in names]
-        if unknown:
-            return self._unknown_column(", ".join(unknown), names)
-        cells = [str(key)] + [str(columns.get(name, "")) for name in names[1:]]
-        row_text = self._row_text(cells, delimiter)
-        texts: list[str] = []
-        replaced = False
-        for text, row in records:
-            matched = not replaced and bool(row) and row[0].strip() == str(key)
-            texts.append(row_text if matched else text)
-            replaced = replaced or matched
-        if not replaced:
-            texts.append(row_text)
-        content = self._terminated(header_text) + "".join(self._terminated(text) for text in texts)
-        self._files.write(self._archive_path, content.encode("utf-8"))
-        return f"1 row {'replaced' if replaced else 'added'}"
-
-    @staticmethod
-    def _row_text(cells: list[str], delimiter: str) -> str:
-        buffer = io.StringIO()
-        csv.writer(buffer, delimiter=delimiter, lineterminator="\n").writerow(cells)
-        return buffer.getvalue()
-
-    @staticmethod
-    def _terminated(text: str) -> str:
-        return text if text.endswith("\n") else text + "\n"
 
     def value(self, *values: str | float, key: str) -> str:
         found = self._matches(values)

@@ -107,7 +107,7 @@ class SetProjectFieldRequest(BaseModel):
         """Trims string values so incidental UI whitespace (e.g. "Action ")
         never creates a duplicate distinct from "Action". A bare boolean
         (history-cutoff/chat) passes through untouched; a mapping (env) or
-        a list (ai-may-read-sources/ai-must-read-sources/ai-may-write-sources) is stripped
+        a list (ai-may-read-sources/ai-must-read-sources) is stripped
         entry by entry the same way."""
         if isinstance(value, str):
             return value.strip()

@@ -49,7 +49,7 @@ class SourceContext:
     def __post_init__(self) -> None:
         if self.files is None:
             from tracking.project_files import project_files_for
-            object.__setattr__(self, "files", project_files_for(self.db, self.automaton, self.session_id))
+            object.__setattr__(self, "files", project_files_for(self.db, self.automaton))
 
 
 class SourceDriver:
@@ -116,16 +116,6 @@ class SourceDriver:
 
     def row_where(self, column: str, operator: str, value: str | float, *strings: str | float) -> dict[str, str]:
         raise self._unsupported("row_where")
-
-    def update(self, *values: str, fields: dict[str, str]) -> str:
-        """Assigns `fields` (column -> new value) to every row containing
-        *every* value, and reports how many rows it touched ("1 row
-        updated"). Unsupported by default — a driver that can't write
-        simply never declares it in SUPPORTED_METHODS."""
-        raise self._unsupported("update")
-
-    def save_as(self, key: str | float, **columns: str | float) -> str:
-        raise self._unsupported("save_as")
 
     def parameter_schema(self, method: str) -> dict | None:
         """A driver-specific *narrowing* of `method`'s uniform JSON Schema

@@ -107,7 +107,6 @@ class TestSetStateField:
         payload = editor.set_state_field("a", "ai-may-read-sources", ["pino"])
         assert payload["ai_may_read_sources"] == ["pino"]
         assert payload["ai_must_read_sources"] == []
-        assert payload["ai_may_write_sources"] == []
         state = builds(editor.serialize(), SOURCE_ARCHIVES).states["a"]
         assert state.ai_may_read_sources == ("pino",)
         assert state.ai_must_read_sources == ()
@@ -117,10 +116,6 @@ class TestSetStateField:
         assert payload["ai_must_read_sources"] == ["pino"]
         assert payload["ai_may_read_sources"] == []
         assert builds(editor.serialize(), SOURCE_ARCHIVES).states["a"].ai_must_read_sources == ("pino",)
-
-        payload = editor.set_state_field("a", "ai-may-write-sources", ["pino"])
-        assert payload["ai_may_write_sources"] == ["pino"]
-        assert "ai-may-write-sources: [pino]" in editor.serialize() or "- pino" in editor.serialize()
 
 
 class TestSetActionField:

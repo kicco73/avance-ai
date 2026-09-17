@@ -34,13 +34,9 @@ holding them left AutomatonLoader's cache; now they are dropped by the
 bound, plus one explicit invalidation where a draft revision is
 rewritten in place (ProjectManager.finalize_update).
 
-The per-session cache copy is a decorator rather than part of the
-database implementation, because it is a *source's* policy and not a
-property of reading from a database: `attachment.read` never cached and
-still does not. What it guards against is a draft revision being
-rewritten in place while a test session runs on it — not a republish, an
-automaton is already per-revision — so it has nothing to do for a
-compiled product, which has no draft.
+A source reads the same real files every other reader does — there is
+no per-session copy of anything: a build/publish is the only thing that
+changes what is stored, and every reader always sees it.
 """
 from __future__ import annotations
 
@@ -49,7 +45,6 @@ from pathlib import Path
 from typing import Callable, TYPE_CHECKING
 
 from automaton.media_types import media_type_for
-from project.archive.layout import CACHE_DIR
 
 if TYPE_CHECKING:
     from automaton.model import Automaton
@@ -72,11 +67,6 @@ class ProjectFiles:
 
     def read(self, path: str) -> tuple[bytes, str] | None:
         raise NotImplementedError
-
-    def write(self, path: str, content: bytes) -> None:
-        raise ValueError(
-            f"'{path}' cannot be written here — a source only writes into the cache copy of a real session."
-        )
 
     def cache_key(self, path: str) -> str:
         """What identifies this file across the whole process, for
@@ -166,47 +156,6 @@ class DbProjectFiles(ProjectFiles):
         return self._automaton.revision
 
 
-class SessionCachedProjectFiles(ProjectFiles):
-    """One session's own frozen copy of whatever it reads, duplicated
-    from `inner` on a miss. The first read of a session pays for a second
-    round trip; in exchange the rest of the conversation keeps seeing the
-    same content even if the project is edited underneath it."""
-
-    def __init__(self, inner: ProjectFiles, db: "Db", automaton: "Automaton", session_id: int) -> None:
-        self._inner = inner
-        self._db = db
-        self._automaton = automaton
-        self._session_id = session_id
-
-    def resolve(self, name: str) -> str | None:
-        return self._inner.resolve(name)
-
-    def _cache_path(self, path: str) -> str:
-        return f"{CACHE_DIR}/sessions/{self._session_id}/{path}"
-
-    def write(self, path: str, content: bytes) -> None:
-        project_id, revision = self._automaton.project_id, self._automaton.revision
-        assert project_id is not None and revision is not None
-        self._db.write_archive_at_revision(
-            project_id, self._cache_path(path), revision, content, media_type_for(path),
-        )
-
-    def read(self, path: str) -> tuple[bytes, str] | None:
-        project_id, revision = self._automaton.project_id, self._automaton.revision
-        assert project_id is not None and revision is not None
-        cache_path = self._cache_path(path)
-        cached = self._db.get_archive(project_id, cache_path, revision=revision)
-        if cached is not None:
-            media_type = self._db.get_archive_content_type(project_id, cache_path, revision=revision)
-            return cached, media_type or "text/plain"
-        found = self._inner.read(path)
-        if found is None:
-            return None
-        content, media_type = found
-        self._db.write_archive_at_revision(project_id, cache_path, revision, content, media_type)
-        return content, media_type
-
-
 class ProjectFileCache:
     """A byte-bounded LRU of file contents, shared by every reader.
 
@@ -289,17 +238,13 @@ class CachedProjectFiles(ProjectFiles):
         return self._cache.read(self._inner.cache_key(path), lambda: self._inner.read(path))
 
 
-def project_files_for(db: "Db | None", automaton: "Automaton", session_id: int | None = None) -> ProjectFiles:
+def project_files_for(db: "Db | None", automaton: "Automaton") -> ProjectFiles:
     """The one selection point. An automaton that carries its own files
     reads them; one pinned to a stored revision reads those; one with
     neither has nothing to read, whatever database it is handed. Either
-    real reader is composed behind the shared byte-bounded cache, and a
-    source's own per-session frozen copy on top of that."""
+    real reader is composed behind the shared byte-bounded cache."""
     if automaton.archives_dir is not None:
         return CachedProjectFiles(PackageProjectFiles(automaton.archives_dir), PROJECT_FILE_CACHE)
     if db is None or automaton.revision is None:
         return NoProjectFiles()
-    files = CachedProjectFiles(DbProjectFiles(db, automaton), PROJECT_FILE_CACHE)
-    if session_id is None:
-        return files
-    return SessionCachedProjectFiles(files, db, automaton, session_id)
+    return CachedProjectFiles(DbProjectFiles(db, automaton), PROJECT_FILE_CACHE)

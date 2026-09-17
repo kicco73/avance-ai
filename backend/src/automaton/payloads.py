@@ -102,7 +102,6 @@ class PayloadsMixin(object):
             "actions": [self.get_action_payload(a) for a in state.actions],
             "ai_may_read_sources": list(state.ai_may_read_sources),
             "ai_must_read_sources": list(state.ai_must_read_sources),
-            "ai_may_write_sources": list(state.ai_may_write_sources),
             "input": list(state.input),
             "output": list(state.output),
         }

@@ -158,7 +158,6 @@ class AutomatonYamlEditor:
             "actions": [self._action_payload_from_raw(raw_action, state_name) for raw_action in raw_actions],
             "ai_may_read_sources": list(raw_state.get("ai-may-read-sources") or []),
             "ai_must_read_sources": list(raw_state.get("ai-must-read-sources") or []),
-            "ai_may_write_sources": list(raw_state.get("ai-may-write-sources") or []),
             "input": list(raw_state.get("input") or []),
             "output": list(raw_state.get("output") or []),
         }

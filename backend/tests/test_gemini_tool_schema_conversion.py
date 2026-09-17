@@ -76,14 +76,13 @@ async def test_a_narrowed_update_schema_keeps_enums_properties_and_descriptions_
     assert "additionalProperties" not in dumped and "minProperties" not in dumped
 
 
-def test_an_update_tool_with_an_empty_fields_schema_can_never_reach_this_conversion_at_all():
-    """No driver in tracking.sources.SOURCE_DRIVERS supports the `update`
-    method at all today — an `ai-may-write-sources` declaration always
-    fails to build (undefined source.<name>.update), so a `fields` schema
+def test_a_write_source_declaration_can_never_reach_this_conversion_at_all():
+    """Sources are read-only — an `ai-may-write-sources` declaration
+    always fails to build outright, so a write tool's `fields` schema
     narrowed down to zero properties (what Gemini's own Schema, unlike
     plain JSON Schema, rejects outright for an OBJECT) never reaches this
     conversion for any provider, Gemini included."""
-    with pytest.raises(ValueError, match=r"references undefined name\(s\): source\.flights\.update"):
+    with pytest.raises(ValueError, match=r"'ai-may-write-sources' is no longer a valid field — sources are read-only"):
         AutomatonBuilder().build({"index.yml": """
 project:
   id: test_project

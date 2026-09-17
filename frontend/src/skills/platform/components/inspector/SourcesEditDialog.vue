@@ -1,6 +1,5 @@
 <script setup>
 import { inject, ref } from 'vue'
-import { identifierRegistry } from '../../../../identifierRegistry.js'
 
 const props = defineProps({
   sources: { type: Array, required: true },
@@ -11,35 +10,27 @@ const props = defineProps({
 const ACCESS_LEVELS = [
   { id: 'none', label: 'No access', title: 'The model never sees it in this state' },
   { id: 'may', label: 'May read', title: 'The model may read it, at its own choice' },
-  { id: 'must', label: 'Must read', title: 'Forced: read once per entry into this state' },
-  { id: 'write', label: 'May write', title: 'The model may update it while replying' }
+  { id: 'must', label: 'Must read', title: 'Forced: read once per entry into this state' }
 ]
 
 const ACCESS_FIELDS = {
   may: 'ai-may-read-sources',
-  must: 'ai-must-read-sources',
-  write: 'ai-may-write-sources'
+  must: 'ai-must-read-sources'
 }
 
 const may = ref([...(props.stateData.aiMayReadSources || [])])
 const must = ref([...(props.stateData.aiMustReadSources || [])])
-const write = ref([...(props.stateData.aiMayWriteSources || [])])
 
 const closeDialog = inject('closeDialog')
 
-function levelsFor(name) {
-  return ACCESS_LEVELS.filter((level) => level.id !== 'write' || 'update' in (identifierRegistry.value[`source.${name}`] ?? {}))
-}
-
 function levelOf(name) {
   if (must.value.includes(name)) return 'must'
-  if (write.value.includes(name)) return 'write'
   if (may.value.includes(name)) return 'may'
   return 'none'
 }
 
 function setLevel(name, level) {
-  Object.entries({ may, must, write }).forEach(([key, list]) => {
+  Object.entries({ may, must }).forEach(([key, list]) => {
     const current = list.value
     const next = key === level ? [...current.filter((n) => n !== name), name] : current.filter((n) => n !== name)
     if (next.length === current.length && next.every((n, i) => n === current[i])) return
@@ -65,7 +56,7 @@ function setLevel(name, level) {
       <span class="inspector-source-name">{{ src.name }}</span>
       <div class="inspector-source-levels">
         <button
-          v-for="level in levelsFor(src.name)"
+          v-for="level in ACCESS_LEVELS"
           :key="level.id"
           type="button"
           class="inspector-source-level"

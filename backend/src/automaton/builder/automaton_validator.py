@@ -13,10 +13,10 @@ from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.trigger_namespaces import TriggerNamespaces
 from metrics.metrics_framework import metric_names
 from tracking.actuators import ChatNamespace, DriveNamespace, MAX_ATTACHMENT_READ_BYTES, TaskNamespace
-from tracking.sources import READ_METHOD, WRITE_METHOD, driver_class_for
+from tracking.sources import READ_METHOD, driver_class_for
 
 STATE_SOURCE_FIELDS = (
-    ("ai-may-read-sources", READ_METHOD), ("ai-must-read-sources", READ_METHOD), ("ai-may-write-sources", WRITE_METHOD),
+    ("ai-may-read-sources", READ_METHOD), ("ai-must-read-sources", READ_METHOD),
 )
 
 
@@ -380,7 +380,6 @@ class AutomatonValidator:
         by_field = {
             "ai-may-read-sources": state.ai_may_read_sources,
             "ai-must-read-sources": state.ai_must_read_sources,
-            "ai-may-write-sources": state.ai_may_write_sources,
         }
         for field_name, method in STATE_SOURCE_FIELDS:
             for source_name in by_field[field_name]:
@@ -395,7 +394,7 @@ class AutomatonValidator:
                         f"State '{state.key}': {field_name} '{source_name}' — source '{source_name}' has no "
                         "own 'ai-definition', required for a source exposed to the model as a tool."
                     )
-                if (source.url or method == WRITE_METHOD) and method not in self.supported_methods(source):
+                if source.url and method not in self.supported_methods(source):
                     raise ValueError(
                         f"State '{state.key}': {field_name} '{source_name}' references undefined name(s): "
                         f"source.{source_name}.{method}"

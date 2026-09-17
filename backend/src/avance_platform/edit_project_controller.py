@@ -27,7 +27,7 @@ from controllers.base_controller import BaseController, delete, get, post, put
 STATE_EDITABLE_FIELDS = {
     "ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat-enabled", "reactions-enabled",
     "signal-tracking-strategy", "ai-memory-scope",
-    "ai-may-read-sources", "ai-must-read-sources", "ai-may-write-sources", "input", "output",
+    "ai-may-read-sources", "ai-must-read-sources", "input", "output",
 }
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit", "env"}
 INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger"}

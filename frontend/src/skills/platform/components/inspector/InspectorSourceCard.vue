@@ -113,7 +113,7 @@ function handleDelete() {
           v-autosize
           class="inspector-detail-textarea"
           rows="3"
-          placeholder="What this file contains and how the model should search it — e.g. which values to combine to get a single row. Required once this source is listed in a state's own ai-may-read-sources/ai-must-read-sources/ai-may-write-sources."
+          placeholder="What this file contains and how the model should search it — e.g. which values to combine to get a single row. Required once this source is listed in a state's own ai-may-read-sources/ai-must-read-sources."
           @click.stop
           @blur="commitAiDefinition"
         ></textarea>

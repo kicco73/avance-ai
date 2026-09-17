@@ -2,7 +2,7 @@
 "data sources" a project's own `sources:` section declares by name, each
 bound (via its own `url:` field, see tracking.sources.url) to a driver
 whose every method is bounded by construction (tracking.sources.base.
-SourceDriver — the `select_rows_*` reads and `update` today). `source.<name>` is resolved
+SourceDriver — the `select_rows_*` reads today). `source.<name>` is resolved
 dynamically, per project, against that declaration — nothing is
 registered ahead of time. Adding a driver means adding a module plus one
 entry in driver_class_for below, never touching
@@ -88,20 +88,8 @@ METHOD_SCHEMAS: dict[str, dict] = {
         },
         "required": ["column", "start", "end"],
     },
-    "update": {
-        "type": "object",
-        "properties": {
-            "values": _VALUES_PARAMETER,
-            "fields": {
-                "type": "object", "additionalProperties": {"type": "string"}, "minProperties": 1,
-                "description": "Column name → new value, assigned to every matching row.",
-            },
-        },
-        "required": ["values", "fields"],
-    },
 }
 READ_METHOD = "select_rows_containing"
-WRITE_METHOD = "update"
 _FIXED_PARAMS: dict[str, tuple[str, ...]] = {
     "select_rows_where": ("column", "operator", "value"),
     "select_rows_in_range": ("column", "start", "end"),
@@ -111,20 +99,16 @@ _FIXED_PARAMS: dict[str, tuple[str, ...]] = {
 class ToolSet:
     """The model's own callable catalog for one turn — one tool per
     read method its driver lists in TOOL_METHODS for every source a state
-    names in ai-may-read-sources/ai-must-read-sources,
-    `update` for every one in ai-may-write-sources (see automaton.State),
+    names in ai-may-read-sources/ai-must-read-sources (see automaton.State),
     resolved through the same SourceNamespace instance (and so the same
-    per-session read cache and the same Env) a source.<name>.<method>()
+    Env) a source.<name>.<method>()
     expression already uses. Same shape as TaskNamespace — a catalog plus
     per-session execution — but never its mechanics: call() below runs
     inline, inside AiService's own tool-call loop, and the model waits on
     its result within that same request — never scheduled as an
     ActionTask/SchedulerService job, never persisted the way a task script is."""
 
-    def __init__(
-        self, namespace: "SourceNamespace", may_read: list[Source], must_read: list[Source],
-        may_write: list[Source] | None = None,
-    ) -> None:
+    def __init__(self, namespace: "SourceNamespace", may_read: list[Source], must_read: list[Source]) -> None:
         self._namespace = namespace
         self._resolved: dict[str, tuple[str, str]] = {}
         self._sources: dict[str, Source] = {}
@@ -134,15 +118,10 @@ class ToolSet:
             self._add_read_tools(source, required=False)
         for source in must_read:
             self._add_read_tools(source, required=True)
-        for source in may_write or []:
-            driver = self._namespace.driver_for(source)
-            if WRITE_METHOD not in driver.TOOL_METHODS:
-                raise ValueError(f"source.{source.name}.{WRITE_METHOD}(...): not supported by this source.")
-            self._add_tool(source, driver, WRITE_METHOD, required=False)
 
     def _add_read_tools(self, source: Source, *, required: bool) -> None:
         driver = self._namespace.driver_for(source)
-        supported = [method for method in driver.TOOL_METHODS if method != WRITE_METHOD]
+        supported = list(driver.TOOL_METHODS)
         if not supported:
             raise ValueError(f"source.{source.name}.{READ_METHOD}(...): not supported by this source.")
         for method in supported:
@@ -182,7 +161,7 @@ class ToolSet:
         AiService restricts tool_choice to on the first tool-call round
         after this state was entered (see TrackingProcessor.
         force_required_tools_for). Empty when this state declares no
-        ai-must-read-sources at all; never contains an `update`."""
+        ai-must-read-sources at all."""
         return [spec for spec in self._specs if spec.name in self._required_names]
 
     def tool_event(self, name: str, arguments: dict, phase: str, **result_fields) -> dict:
@@ -237,10 +216,7 @@ class ToolSet:
         select_rows_in_range's `column`/`operator`/`value`/`start`/`end`) —
         those must be passed positionally too, since Python rejects a
         keyword argument for a parameter a positional *args also reaches.
-        Every other argument is passed through by keyword. A write
-        (`method == WRITE_METHOD`) also gets `origin="tool"` injected here,
-        in Python, never through `arguments` — origin is never part of any
-        tool's own JSON schema, so the model can neither see nor spoof it."""
+        Every other argument is passed through by keyword."""
         resolved = self._resolved.get(name)
         if resolved is None:
             return f"error: unknown tool '{name}'."
@@ -255,8 +231,6 @@ class ToolSet:
             keywords = {
                 key: value for key, value in arguments.items() if key not in fixed and key != variadic_name
             }
-            if method == WRITE_METHOD:
-                keywords["origin"] = "tool"
             return await asyncio.to_thread(bound_method, *positional, *variadic, **keywords)
         except Exception as exc:
             return f"error: {exc}"
@@ -267,7 +241,7 @@ class SourceNamespace:
         self._context = SourceContext(
             db=db, automaton=automaton, session_id=session_id,
             env=env if env is not None else Env(),
-            files=project_files_for(db, automaton, session_id),
+            files=project_files_for(db, automaton),
         )
 
     @property
@@ -293,17 +267,13 @@ class SourceNamespace:
             raise AttributeError(name)
         return self.driver_for(self._declared(name))
 
-    def tool_set(
-        self, may_read_names: Sequence[str], must_read_names: Sequence[str] = (), may_write_names: Sequence[str] = (),
-    ) -> ToolSet:
+    def tool_set(self, may_read_names: Sequence[str], must_read_names: Sequence[str] = ()) -> ToolSet:
         """The catalog for a state's own ai-may-read-sources/
-        ai-must-read-sources/ai-may-write-sources lists — resolved against
-        this same automaton's declared sources (AutomatonBuilder already
-        validated every name, that the two read lists are disjoint, and
-        that every write source's driver supports update, at build time —
+        ai-must-read-sources lists — resolved against this same
+        automaton's declared sources (AutomatonBuilder already validated
+        every name and that the two lists are disjoint, at build time —
         so an unresolvable one here would only ever mean a stale automaton
         snapshot, not a real config error)."""
         return ToolSet(
             self, [self._declared(name) for name in may_read_names], [self._declared(name) for name in must_read_names],
-            [self._declared(name) for name in may_write_names],
         )

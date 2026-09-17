@@ -40,13 +40,15 @@ LEGACY_STATE_SOURCE_FIELDS = {
     "ai-must-query-sources": "ai-must-read-sources",
 }
 
+REMOVED_STATE_SOURCE_FIELDS = {"ai-may-write-sources"}
+
 STATE_FIELDS = {
     "ui-label", "ui-description", "contextual-prompt", "fixed-message", "actions",
     "attachments", "chat-enabled", "history-cutoff", "reactions-enabled",
     "transition-log-level", "signal-tracking-strategy", "ai-memory-scope", "input", "output",
-} | {field for field, _ in STATE_SOURCE_FIELDS} | set(LEGACY_STATE_SOURCE_FIELDS)
+} | {field for field, _ in STATE_SOURCE_FIELDS} | set(LEGACY_STATE_SOURCE_FIELDS) | REMOVED_STATE_SOURCE_FIELDS
 
-STATE_SUGGESTED_FIELDS = STATE_FIELDS - set(LEGACY_STATE_SOURCE_FIELDS)
+STATE_SUGGESTED_FIELDS = STATE_FIELDS - set(LEGACY_STATE_SOURCE_FIELDS) - REMOVED_STATE_SOURCE_FIELDS
 
 SIGNAL_FIELDS = {"ui-label", "ui-description", "definition", "attachments"}
 REACTION_FIELDS = {"ui-label", "ui-description", "definition"}
@@ -203,8 +205,13 @@ class AutomatonBuilder(object):
                 raise ValueError(
                     f"State '{key}': '{legacy_field}' is no longer a valid field — use '{replacement}' instead "
                     "('ai-may-read-sources': the model decides whether to call a source's reads; "
-                    "'ai-must-read-sources': forced once per entry into this state; "
-                    "'ai-may-write-sources': the model may call a source's update)."
+                    "'ai-must-read-sources': forced once per entry into this state)."
+                )
+        for removed_field in REMOVED_STATE_SOURCE_FIELDS:
+            if removed_field in raw_state:
+                raise ValueError(
+                    f"State '{key}': '{removed_field}' is no longer a valid field — sources are read-only, "
+                    "a state can no longer declare one the model may write to."
                 )
         raw_source_lists: dict[str, list[str]] = {}
         for field_name, _method in STATE_SOURCE_FIELDS:
@@ -300,7 +307,6 @@ class AutomatonBuilder(object):
             reactions_enabled=raw_state.get("reactions-enabled", False),
             ai_may_read_sources=tuple(raw_source_lists["ai-may-read-sources"]),
             ai_must_read_sources=tuple(raw_source_lists["ai-must-read-sources"]),
-            ai_may_write_sources=tuple(raw_source_lists["ai-may-write-sources"]),
             input=input_names,
             output=output_names,
             line=line,
