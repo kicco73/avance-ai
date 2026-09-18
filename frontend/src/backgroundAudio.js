@@ -48,9 +48,11 @@ export function createBackgroundAudio() {
   }
 
   function play(url) {
+    const wasPlaying = backgroundAudioPlaying.value
     releaseIfOwner()
     backgroundAudioUrl.value = url
     backgroundAudioPlaying.value = false
+    if (wasPlaying) toggle()
   }
 
   function stop() {

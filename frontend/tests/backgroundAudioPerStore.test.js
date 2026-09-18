@@ -98,6 +98,27 @@ describe('background audio is scoped per chat store, not shared globally', () =>
     expect(reloadedLiveStore.backgroundAudioPlaying.value).toBe(false)
   })
 
+  it('keeps playing through a new show_media if the previous one was already playing', () => {
+    bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: `show_media('${AUDIO_URL}')` })
+    liveStore.toggleBackgroundAudio()
+    expect(liveStore.backgroundAudioPlaying.value).toBe(true)
+
+    bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: `show_media('${AUDIO_URL}?v=2')` })
+
+    expect(liveStore.backgroundAudioUrl.value).toContain('v=2')
+    expect(liveStore.backgroundAudioPlaying.value).toBe(true)
+  })
+
+  it('stays paused across a new show_media if nothing was playing yet', () => {
+    bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: `show_media('${AUDIO_URL}')` })
+    expect(liveStore.backgroundAudioPlaying.value).toBe(false)
+
+    bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: `show_media('${AUDIO_URL}?v=2')` })
+
+    expect(liveStore.backgroundAudioUrl.value).toContain('v=2')
+    expect(liveStore.backgroundAudioPlaying.value).toBe(false)
+  })
+
   it('forgets the music (button disappears) when its own store leaves the session', () => {
     bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: `show_media('${AUDIO_URL}')` })
     expect(liveStore.backgroundAudioUrl.value).not.toBeNull()
