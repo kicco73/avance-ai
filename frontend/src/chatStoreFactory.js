@@ -17,6 +17,7 @@ import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
 import { runTaskScript } from './taskActions.js'
+import { stopBackgroundAudio } from './backgroundAudioStore.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
 
@@ -110,6 +111,7 @@ export function createChatStore({
 
   busChannel.subscribe('session.info', (frame) => {
     if (!answersUs(frame)) return
+    if (currentSessionId.value != null && frame.session_id !== currentSessionId.value) stopBackgroundAudio()
     awaitingSession = false
     blockedReason.value = null
     blockedDetail.value = ''
@@ -133,6 +135,7 @@ export function createChatStore({
 
   busChannel.subscribe('session.blocked', (frame) => {
     if (!answersUs(frame)) return
+    stopBackgroundAudio()
     awaitingSession = false
     currentSessionId.value = null
     state.value = null
@@ -145,6 +148,7 @@ export function createChatStore({
 
   busChannel.subscribe('session.ended', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
+    stopBackgroundAudio()
     selectedSessionActive.value = false
     sessionEndReason.value = frame.reason ?? null
     if (sessionsPanelOpen.value) loadSessions()
