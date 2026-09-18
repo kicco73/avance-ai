@@ -270,12 +270,14 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
-  z-index: -1;
+  z-index: 0;
   pointer-events: none;
   background: var(--app-base-gradient);
 }
 
 .app {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   height: 100vh;
