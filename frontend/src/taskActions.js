@@ -4,6 +4,7 @@ import { notify } from './toastStore.js'
 import { infoDialog, customDialog } from './dialogStore.js'
 import { playBackgroundAudio } from './backgroundAudioStore.js'
 import { mediaKindFromUrl } from './mediaKind.js'
+import { resolveApiUrl } from './api/core.js'
 
 const MediaDialog = defineAsyncComponent(() => import('./components/MediaDialog.vue'))
 
@@ -12,11 +13,12 @@ function show(body_md) {
 }
 
 function show_media(url) {
-  if (mediaKindFromUrl(url) === 'audio') {
-    playBackgroundAudio(url)
+  const resolvedUrl = resolveApiUrl(url)
+  if (mediaKindFromUrl(resolvedUrl) === 'audio') {
+    playBackgroundAudio(resolvedUrl)
     return
   }
-  customDialog({ component: MediaDialog, props: { url }, wide: true })
+  customDialog({ component: MediaDialog, props: { url: resolvedUrl }, wide: true })
 }
 
 export const taskLocals = { celebrate, notify, show, show_media }

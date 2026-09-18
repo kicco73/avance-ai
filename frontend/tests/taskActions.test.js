@@ -2,11 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/confetti.js', () => ({ celebrate: vi.fn() }))
 vi.mock('../src/toastStore.js', () => ({ notify: vi.fn() }))
+vi.mock('../src/backgroundAudioStore.js', () => ({ playBackgroundAudio: vi.fn() }))
+vi.mock('../src/dialogStore.js', () => ({ infoDialog: vi.fn(), customDialog: vi.fn() }))
 
 describe('runTaskScript', () => {
   let taskActions
   let confetti
   let toastStore
+  let backgroundAudioStore
+  let dialogStore
   let consoleErrorSpy
 
   beforeEach(async () => {
@@ -14,6 +18,8 @@ describe('runTaskScript', () => {
     taskActions = await import('../src/taskActions.js')
     confetti = await import('../src/confetti.js')
     toastStore = await import('../src/toastStore.js')
+    backgroundAudioStore = await import('../src/backgroundAudioStore.js')
+    dialogStore = await import('../src/dialogStore.js')
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -53,5 +59,21 @@ describe('runTaskScript', () => {
   it('catches a syntactically invalid script instead of throwing', () => {
     expect(() => taskActions.runTaskScript('celebrate(')).not.toThrow()
     expect(consoleErrorSpy).toHaveBeenCalled()
+  })
+
+  it('resolves a backend-relative media url onto the configured API origin before playing audio', () => {
+    taskActions.runTaskScript("show_media('/api/core/projects/text_adventure/files/media/title.mp3/content')")
+    expect(backgroundAudioStore.playBackgroundAudio).toHaveBeenCalledWith(
+      'http://localhost:8000/api/core/projects/text_adventure/files/media/title.mp3/content'
+    )
+  })
+
+  it('resolves a backend-relative media url before opening the media dialog for non-audio media', () => {
+    taskActions.runTaskScript("show_media('/api/core/projects/text_adventure/files/media/start.jpeg/content')")
+    expect(dialogStore.customDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        props: { url: 'http://localhost:8000/api/core/projects/text_adventure/files/media/start.jpeg/content' }
+      })
+    )
   })
 })

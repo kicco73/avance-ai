@@ -2,6 +2,12 @@ import { currentScreen, setApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
 import { emitProjectChanged } from '../projectChangeEvents.js'
 
+const API_URL = import.meta.env.VITE_API_URL ?? '/api'
+
+export function resolveApiUrl(path) {
+  return path.startsWith('/api') ? API_URL + path.slice('/api'.length) : path
+}
+
 async function readSseResult(res, onProgress) {
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
