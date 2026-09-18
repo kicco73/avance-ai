@@ -83,6 +83,21 @@ describe('background audio is scoped per chat store, not shared globally', () =>
     expect(liveStore.backgroundAudioUrl.value).not.toBeNull()
   })
 
+  it('restores the play button on a resumed session after a fresh page load', async () => {
+    bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: `show_media('${AUDIO_URL}')` })
+    expect(liveStore.backgroundAudioUrl.value).not.toBeNull()
+
+    const { createChatStore } = await import('../src/chatStoreFactory.js')
+    const reloadedLiveStore = createChatStore({ kind: 'live', getSessionsList: vi.fn().mockResolvedValue([]) })
+    expect(reloadedLiveStore.backgroundAudioUrl.value).toBeNull()
+
+    await reloadedLiveStore.loadMessages('proj')
+    bus.deliverEntered({ sessionId: 7, projectId: 'proj', state: STATE })
+
+    expect(reloadedLiveStore.backgroundAudioUrl.value).toContain('title.mp3')
+    expect(reloadedLiveStore.backgroundAudioPlaying.value).toBe(false)
+  })
+
   it('forgets the music (button disappears) when its own store leaves the session', () => {
     bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: `show_media('${AUDIO_URL}')` })
     expect(liveStore.backgroundAudioUrl.value).not.toBeNull()
