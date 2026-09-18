@@ -17,7 +17,7 @@ import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
 import { runTaskScript } from './taskActions.js'
-import { stopBackgroundAudio } from './backgroundAudioStore.js'
+import { createBackgroundAudio } from './backgroundAudio.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
 
@@ -47,6 +47,7 @@ export function createChatStore({
   const state = ref(null)
   const currentSessionId = ref(null)
   watch(currentSessionId, (now, before) => watchSession(now, before))
+  const { backgroundAudioUrl, backgroundAudioPlaying, playBackgroundAudio, stopBackgroundAudio, toggleBackgroundAudio } = createBackgroundAudio()
   const selectedSessionActive = ref(false)
   const sessionEndReason = ref(null)
   const sessionChannel = ref(null)
@@ -203,7 +204,7 @@ export function createChatStore({
   busChannel.subscribe('ui.notification', (frame) => {
     if (!frame.task) return
     if (frame.session_id != null ? frame.session_id !== currentSessionId.value : frame.project_id !== currentProjectId.value) return
-    runTaskScript(frame.task)
+    runTaskScript(frame.task, { playBackgroundAudio })
   })
 
   busChannel.subscribe('output.reaction', (frame) => {
@@ -294,6 +295,7 @@ export function createChatStore({
 
   async function selectSession(session) {
     if (session.id === currentSessionId.value) return
+    stopBackgroundAudio()
     currentSessionId.value = session.id
     selectedSessionActive.value = session.current
     sessionChannel.value = session.channel ?? null
@@ -603,6 +605,7 @@ export function createChatStore({
     currentProjectId.value = null
     selectedSessionActive.value = true
     sessions.value = []
+    stopBackgroundAudio()
   }
 
   async function handleReset() {
@@ -653,6 +656,7 @@ export function createChatStore({
     abandonOpenReplies,
     state, currentSessionId, selectedSessionActive, sessionEndReason, sessionChannel, conversationElsewhere,
     blockedReason, blockedDetail,
+    backgroundAudioUrl, backgroundAudioPlaying, toggleBackgroundAudio, stopBackgroundAudio,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,
     chart, dismissChart,

@@ -76,6 +76,7 @@ class TurnInput(object):
             if refusal is not None:
                 entering.put(SESSION_BLOCKED, {**refusal, "session_type": kind})
                 return
+            fires_init_action = session.pop("_pending_init_action", False)
             entered = replace(message, session_id=session["id"])
             said = self._turn_service.read_history(session["id"])
             announcement = Outbound(entered)
@@ -83,6 +84,8 @@ class TurnInput(object):
             announcement.recalled(said)
             announcement.offered(self._turn_service.buttons_for(session["id"], session["state"]))
             await announcement.flush()
+        if fires_init_action:
+            self._turn_service.fire_pending_init_action(session["id"], self._project_id(message))
         for _ in filter(None, [not said]):
             await bus.publish(replace(entered, type=SESSION_OPENED, body={}))
 

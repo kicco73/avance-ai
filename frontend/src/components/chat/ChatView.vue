@@ -21,7 +21,6 @@ import {
 } from '../../chatStoreFactory.js'
 import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
 import { customDialog } from '../../dialogStore.js'
-import { backgroundAudioUrl } from '../../backgroundAudioStore.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
@@ -54,7 +53,11 @@ const {
   blockedDetail,
   reloadMessages,
   chart,
-  dismissChart
+  dismissChart,
+  backgroundAudioUrl,
+  backgroundAudioPlaying,
+  toggleBackgroundAudio,
+  stopBackgroundAudio
 } = props.store
 
 watch(chart, (next) => {
@@ -106,6 +109,7 @@ onBeforeUnmount(() => {
     manualApplyAspectPreference.value = applyAspect.value
     applyAspect.value = true
   }
+  stopBackgroundAudio()
 })
 
 function submit() {
@@ -198,7 +202,7 @@ watch(
         >«</button>
       </template>
       <template #right>
-        <MusicToggleButton />
+        <MusicToggleButton :url="backgroundAudioUrl" :playing="backgroundAudioPlaying" @toggle="toggleBackgroundAudio" />
         <template v-if="!hideSessionsPanel">
           <ProjectsMenu
             session-actions

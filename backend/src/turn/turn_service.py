@@ -311,10 +311,24 @@ class TurnService(object):
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton = self.__project_service.get_automaton_for_session(session["id"])
 		response = self._session_response(session, current=True)
-		if strategy.fires_init_action(automaton):
-			self._backfill_declared_env_keys(automaton, project_id, session["id"])
-			self._fire_init_action(automaton, session["id"], project_id)
+		response["_pending_init_action"] = strategy.fires_init_action(automaton)
 		return response
+
+	def fire_pending_init_action(self, session_id: int, project_id: str) -> None:
+		"""Runs a just-created session's own init-action, deferred until
+		after its session.info has already reached the client (see
+		TurnInput._entering) — fired inline here instead, `chat.*`'s own
+		on-exit push (ChatNamespace.push_notification) would reach the
+		frontend's ui.notification handler before session.info did, and
+		its session_id wouldn't match currentSessionId yet: a real
+		notification, silently dropped as if for someone else's
+		conversation. `enter_session`'s own path never has this problem —
+		it never fires init-action synchronously at all, only lazily on
+		the next request, by which point session.info is long since
+		delivered (see _ensure_project_bootstrap)."""
+		automaton = self.__project_service.get_automaton_for_session(session_id)
+		self._backfill_declared_env_keys(automaton, project_id, session_id)
+		self._fire_init_action(automaton, session_id, project_id)
 
 	def reset_test_sessions(self, project_id: str) -> dict:
 		reset_session_ids = [

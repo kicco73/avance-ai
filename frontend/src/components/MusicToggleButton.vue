@@ -1,16 +1,21 @@
 <script setup>
-import { backgroundAudioUrl, backgroundAudioPlaying, toggleBackgroundAudio } from '../backgroundAudioStore.js'
+defineProps({
+  url: { type: String, default: null },
+  playing: { type: Boolean, default: false }
+})
+
+defineEmits(['toggle'])
 </script>
 
 <template>
   <button
-    v-if="backgroundAudioUrl"
+    v-if="url"
     type="button"
     class="app-header-icon-btn"
-    :title="backgroundAudioPlaying ? 'Mute music' : 'Play music'"
-    @click="toggleBackgroundAudio"
+    :title="playing ? 'Pause music' : 'Play music'"
+    @click="$emit('toggle')"
   >
-    <svg v-if="backgroundAudioPlaying" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+    <svg v-if="playing" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
       <rect x="7" y="4" width="4" height="16" rx="1" />
       <rect x="13" y="4" width="4" height="16" rx="1" />
     </svg>

@@ -2,14 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/confetti.js', () => ({ celebrate: vi.fn() }))
 vi.mock('../src/toastStore.js', () => ({ notify: vi.fn() }))
-vi.mock('../src/backgroundAudioStore.js', () => ({ playBackgroundAudio: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ infoDialog: vi.fn(), customDialog: vi.fn() }))
 
 describe('runTaskScript', () => {
   let taskActions
   let confetti
   let toastStore
-  let backgroundAudioStore
+  let playBackgroundAudio
   let dialogStore
   let consoleErrorSpy
 
@@ -18,8 +17,8 @@ describe('runTaskScript', () => {
     taskActions = await import('../src/taskActions.js')
     confetti = await import('../src/confetti.js')
     toastStore = await import('../src/toastStore.js')
-    backgroundAudioStore = await import('../src/backgroundAudioStore.js')
     dialogStore = await import('../src/dialogStore.js')
+    playBackgroundAudio = vi.fn()
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -62,14 +61,14 @@ describe('runTaskScript', () => {
   })
 
   it('resolves a backend-relative media url onto the configured API origin before playing audio', () => {
-    taskActions.runTaskScript("show_media('/api/core/projects/text_adventure/files/media/title.mp3/content')")
-    expect(backgroundAudioStore.playBackgroundAudio).toHaveBeenCalledWith(
+    taskActions.runTaskScript("show_media('/api/core/projects/text_adventure/files/media/title.mp3/content')", { playBackgroundAudio })
+    expect(playBackgroundAudio).toHaveBeenCalledWith(
       'http://localhost:8000/api/core/projects/text_adventure/files/media/title.mp3/content'
     )
   })
 
   it('resolves a backend-relative media url before opening the media dialog for non-audio media', () => {
-    taskActions.runTaskScript("show_media('/api/core/projects/text_adventure/files/media/start.jpeg/content')")
+    taskActions.runTaskScript("show_media('/api/core/projects/text_adventure/files/media/start.jpeg/content')", { playBackgroundAudio })
     expect(dialogStore.customDialog).toHaveBeenCalledWith(
       expect.objectContaining({
         props: { url: 'http://localhost:8000/api/core/projects/text_adventure/files/media/start.jpeg/content' }
