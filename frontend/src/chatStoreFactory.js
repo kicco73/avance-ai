@@ -47,7 +47,10 @@ export function createChatStore({
   const state = ref(null)
   const currentSessionId = ref(null)
   watch(currentSessionId, (now, before) => watchSession(now, before))
-  const { backgroundAudioUrl, backgroundAudioPlaying, playBackgroundAudio, stopBackgroundAudio, toggleBackgroundAudio } = createBackgroundAudio()
+  const {
+    backgroundAudioUrl, backgroundAudioPlaying,
+    playBackgroundAudio, stopBackgroundAudio, pauseBackgroundAudio, toggleBackgroundAudio,
+  } = createBackgroundAudio()
   const selectedSessionActive = ref(false)
   const sessionEndReason = ref(null)
   const sessionChannel = ref(null)
@@ -656,7 +659,7 @@ export function createChatStore({
     abandonOpenReplies,
     state, currentSessionId, selectedSessionActive, sessionEndReason, sessionChannel, conversationElsewhere,
     blockedReason, blockedDetail,
-    backgroundAudioUrl, backgroundAudioPlaying, toggleBackgroundAudio, stopBackgroundAudio,
+    backgroundAudioUrl, backgroundAudioPlaying, toggleBackgroundAudio, stopBackgroundAudio, pauseBackgroundAudio,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,
     chart, dismissChart,

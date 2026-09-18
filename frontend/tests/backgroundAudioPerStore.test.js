@@ -69,6 +69,20 @@ describe('background audio is scoped per chat store, not shared globally', () =>
     expect(previewStore.backgroundAudioPlaying.value).toBe(false)
   })
 
+  it('stops whichever other store was playing when a new one starts — only one plays at a time', () => {
+    bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: `show_media('${AUDIO_URL}')` })
+    bus.deliver({ type: 'ui.notification', session_id: 8, project_id: 'proj', task: `show_media('${AUDIO_URL}')` })
+
+    liveStore.toggleBackgroundAudio()
+    expect(liveStore.backgroundAudioPlaying.value).toBe(true)
+
+    previewStore.toggleBackgroundAudio()
+
+    expect(previewStore.backgroundAudioPlaying.value).toBe(true)
+    expect(liveStore.backgroundAudioPlaying.value).toBe(false)
+    expect(liveStore.backgroundAudioUrl.value).not.toBeNull()
+  })
+
   it('forgets the music (button disappears) when its own store leaves the session', () => {
     bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: `show_media('${AUDIO_URL}')` })
     expect(liveStore.backgroundAudioUrl.value).not.toBeNull()

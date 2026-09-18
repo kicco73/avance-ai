@@ -61,6 +61,7 @@ export function createSampleChatStore({ stateKey = ref(''), appId = ref(null) } 
     backgroundAudioPlaying: ref(false),
     toggleBackgroundAudio: noop,
     stopBackgroundAudio: noop,
+    pauseBackgroundAudio: noop,
     handleNewSession: noop,
     handleCloseSession: noop,
     handleSend: noop,

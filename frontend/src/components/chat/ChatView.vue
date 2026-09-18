@@ -57,7 +57,7 @@ const {
   backgroundAudioUrl,
   backgroundAudioPlaying,
   toggleBackgroundAudio,
-  stopBackgroundAudio
+  pauseBackgroundAudio
 } = props.store
 
 watch(chart, (next) => {
@@ -73,6 +73,7 @@ const backLabel = computed(() => props.role === 'customer' ? 'Back to App store'
 
 const scrollEl = ref(null)
 const chatInputRef = ref(null)
+const rootEl = ref(null)
 
 defineExpose({
   focus: () => chatInputRef.value?.focus()
@@ -95,21 +96,32 @@ const chatDisabledReason = computed(() => {
 })
 
 function onVisibilityChange() {
-  if (document.visibilityState !== 'visible') return
+  if (document.visibilityState !== 'visible') {
+    pauseBackgroundAudio()
+    return
+  }
   if (!chatLoading.value) reloadMessages?.()
+}
+
+function onDocumentFocusChange(event) {
+  if (rootEl.value && !rootEl.value.contains(event.target)) pauseBackgroundAudio()
 }
 
 onMounted(() => {
   document.addEventListener('visibilitychange', onVisibilityChange)
+  document.addEventListener('focusin', onDocumentFocusChange)
+  document.addEventListener('click', onDocumentFocusChange, true)
   if (props.themeMode === 'manual') applyAspect.value = manualApplyAspectPreference.value
 })
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  document.removeEventListener('focusin', onDocumentFocusChange)
+  document.removeEventListener('click', onDocumentFocusChange, true)
   if (props.themeMode === 'manual') {
     manualApplyAspectPreference.value = applyAspect.value
     applyAspect.value = true
   }
-  stopBackgroundAudio()
+  pauseBackgroundAudio()
 })
 
 function submit() {
@@ -180,7 +192,7 @@ watch(
 </script>
 
 <template>
-  <div class="chat-window-outer">
+  <div class="chat-window-outer" ref="rootEl">
   <div
     class="chat-window-shell"
     :class="state?.key ? `state-${state.key}` : null"
