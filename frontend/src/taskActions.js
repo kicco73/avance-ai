@@ -1,9 +1,11 @@
+import { defineAsyncComponent } from 'vue'
 import { celebrate } from './confetti.js'
 import { notify } from './toastStore.js'
 import { infoDialog, customDialog } from './dialogStore.js'
 import { playBackgroundAudio } from './backgroundAudioStore.js'
 import { mediaKindFromUrl } from './mediaKind.js'
-import MediaDialog from './components/MediaDialog.vue'
+
+const MediaDialog = defineAsyncComponent(() => import('./components/MediaDialog.vue'))
 
 function show(body_md) {
   infoDialog({ body: body_md, markdown: true })

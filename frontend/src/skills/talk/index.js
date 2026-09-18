@@ -1,8 +1,10 @@
+import { defineAsyncComponent } from 'vue'
 import AudioToggleButton from './components/AudioToggleButton.vue'
 import SpokenTextButton from './components/SpokenTextButton.vue'
-import ServicesTab from './components/ServicesTab.vue'
 import { stateListener } from './availability.js'
 import { narrator } from './narrator.js'
+
+const ServicesTab = defineAsyncComponent(() => import('./components/ServicesTab.vue'))
 
 export const key = 'talk'
 

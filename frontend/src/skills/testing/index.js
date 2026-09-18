@@ -1,7 +1,9 @@
-import TestModePanel from './components/TestModePanel.vue'
-import TestInfoTab from './components/TestInfoTab.vue'
-import TestUserTab from './components/TestUserTab.vue'
-import ServicesTestingTab from './components/ServicesTestingTab.vue'
+import { defineAsyncComponent } from 'vue'
+
+const TestModePanel = defineAsyncComponent(() => import('./components/TestModePanel.vue'))
+const TestInfoTab = defineAsyncComponent(() => import('./components/TestInfoTab.vue'))
+const TestUserTab = defineAsyncComponent(() => import('./components/TestUserTab.vue'))
+const ServicesTestingTab = defineAsyncComponent(() => import('./components/ServicesTestingTab.vue'))
 
 export const key = 'testing'
 

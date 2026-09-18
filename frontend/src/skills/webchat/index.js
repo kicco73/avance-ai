@@ -1,4 +1,6 @@
-import HumanOperatorChatView from './components/HumanOperatorChatView.vue'
+import { defineAsyncComponent } from 'vue'
+
+const HumanOperatorChatView = defineAsyncComponent(() => import('./components/HumanOperatorChatView.vue'))
 
 export const key = 'webchat'
 

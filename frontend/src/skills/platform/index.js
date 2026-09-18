@@ -1,11 +1,13 @@
-import AdminHome from './components/AdminHome.vue'
-import ServerOpsActions from './components/ServerOpsActions.vue'
+import { defineAsyncComponent } from 'vue'
 import { liveModelStore } from './aiModelStore.js'
-import CustomerHome from './components/appStore/CustomerHome.vue'
-import LabelProjectView from './components/project/label/LabelProjectView.vue'
-import EditProjectView from './components/project/edit/EditProjectView.vue'
-import ManageUsersView from './components/settings/ManageUsersView.vue'
-import AppStoreView from './components/appStore/AppStoreView.vue'
+
+const AdminHome = defineAsyncComponent(() => import('./components/AdminHome.vue'))
+const ServerOpsActions = defineAsyncComponent(() => import('./components/ServerOpsActions.vue'))
+const CustomerHome = defineAsyncComponent(() => import('./components/appStore/CustomerHome.vue'))
+const LabelProjectView = defineAsyncComponent(() => import('./components/project/label/LabelProjectView.vue'))
+const EditProjectView = defineAsyncComponent(() => import('./components/project/edit/EditProjectView.vue'))
+const ManageUsersView = defineAsyncComponent(() => import('./components/settings/ManageUsersView.vue'))
+const AppStoreView = defineAsyncComponent(() => import('./components/appStore/AppStoreView.vue'))
 
 export const key = 'platform'
 

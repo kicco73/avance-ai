@@ -1,5 +1,7 @@
+import { defineAsyncComponent } from 'vue'
 import ProfilePhoneField from './components/ProfilePhoneField.vue'
-import ServicesTab from './components/ServicesTab.vue'
+
+const ServicesTab = defineAsyncComponent(() => import('./components/ServicesTab.vue'))
 
 export const key = 'whatsapp'
 

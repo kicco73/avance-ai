@@ -1,0 +1,375 @@
+avance-version: "1.7.0"
+
+project:
+  id: text_adventure
+  family: avance
+  ui-label: House of Darkness
+  ui-description: A text adventure set in a mysterious abandoned house.
+  new-session-strategy: restart
+  revision: 22
+  services:
+    talk: disabled
+
+
+env:
+  hp:
+    value: "3"
+    ui-description: Player's health points
+    ai-definition: The current health points of the player (integer from 0 to 3).
+  has_black_key:
+    value: "False"
+    ui-description: Whether the player has the black key
+    ai-definition: Boolean flag indicating if the player possesses the black key.
+  mirror_seen:
+    value: "False"
+    ui-description: Whether the mirror has been seen
+    ai-definition: Boolean flag indicating if the player has uncovered the mirror.
+  game_ended:
+    value: "False"
+    ui-description: Whether the game has ended
+    ai-definition: Boolean flag indicating if the game has reached an ending state.
+  player_name:
+    value: "user.name"
+    ui-description: Player name
+    ai-definition: The first name of the player.
+
+signals:
+  open:
+    ui-label: "Open"
+    ui-description: "Intent to open something (drawer, door, etc.)"
+    definition: "Evaluate if the user intends to open something on a scale from 0 to 100. Respond with a single integer."
+  enter_space:
+    ui-label: "Enter"
+    ui-description: "Intent to enter a room or a space"
+    definition: "Evaluate if the user intends to enter a room or space on a scale from 0 to 100. Respond with a single integer."
+  exit_space:
+    ui-label: "Exit"
+    ui-description: "Intent to exit or leave a room"
+    definition: "Evaluate if the user intends to exit or leave on a scale from 0 to 100. Respond with a single integer."
+  go_upstairs:
+    ui-label: "Go Upstairs"
+    ui-description: "Intent to go upstairs"
+    definition: "Evaluate if the user intends to go upstairs on a scale from 0 to 100. Respond with a single integer."
+  go_downstairs:
+    ui-label: "Go Downstairs"
+    ui-description: "Intent to go downstairs"
+    definition: "Evaluate if the user intends to go downstairs on a scale from 0 to 100. Respond with a single integer."
+  attack:
+    ui-label: "Attack"
+    ui-description: "Intent to attack or force something"
+    definition: "Evaluate if the user intends to attack or force something on a scale from 0 to 100. Respond with a single integer."
+  defend:
+    ui-label: "Defend"
+    ui-description: "Intent to defend oneself"
+    definition: "Evaluate if the user intends to defend oneself on a scale from 0 to 100. Respond with a single integer."
+  flee:
+    ui-label: "Flee"
+    ui-description: "Intent to flee or escape"
+    definition: "Evaluate if the user intends to flee or escape on a scale from 0 to 100. Respond with a single integer."
+
+init-action:
+  target: title
+  env:
+    hp: 3
+    has_black_key: false
+    mirror_seen: false
+    game_ended: false
+    player_name: user.name
+
+  on-exit: chat.show_media('media/title.mp3')
+states:
+  start:
+    ui-label: Start
+    contextual-prompt: |
+      The air is thick with dust and the scent of ozone. You regain consciousness in the grand foyer of a decaying Victorian mansion, battered by a relentless storm outside. Listen carefully, {player_name}: heavy oak doors are bolted shut, and a grandfather clock ticks in slow, mocking agony. Faintly, rhythmic echoing footsteps resonate from the floorboards above.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: go_stairs
+        ui-button: Climb the stairs
+        trigger: "signal.go_upstairs >= 60"
+        target: stairs
+      - name: go_hall
+        ui-button: Explore the ground floor
+        trigger: "signal.go_downstairs >= 60"
+        target: hall
+      - name: go_door
+        ui-button: Examine the front door
+        trigger: "signal.open >= 60"
+        target: door
+
+  stairs:
+    ui-label: Stairs
+    contextual-prompt: |
+      You ascend into absolute darkness, {player_name}, your fingers trailing along peeling wallpaper. A narrow, winding corridor stretches out, illuminated only by intermittent flashes of lightning. At the very end, a single door stands slightly ajar, exuding a chilling draft and a faint, cryptic scratching sound.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: go_room13
+        ui-button: Enter Room 13
+        trigger: "signal.enter_space >= 60"
+        target: room13
+      - name: go_start
+        ui-button: Go back
+        trigger: "signal.go_downstairs >= 60 or signal.exit_space >= 60"
+        target: start
+
+  room13:
+    ui-label: Room 13
+    contextual-prompt: |
+      Inside, the atmosphere is dead and suffocating, {player_name}. A massive, heavy-framed object stands draped under a dusty velvet sheet. Beneath the grime, a heavy wooden bureau rests against the wall. Carved deep into the wood paneling above is a cryptic phrase: What has no shadow shows the way.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: go_mirror
+        ui-button: Uncover the mirror
+        trigger: "signal.open >= 60"
+        target: mirror
+      - name: go_drawer
+        ui-button: Examine the drawer
+        trigger: "signal.open >= 50"
+        target: drawer
+      - name: go_stairs
+        ui-button: Leave
+        trigger: "signal.exit_space >= 60"
+        target: stairs
+
+  mirror:
+    ui-label: Mirror
+    contextual-prompt: |
+      You pull back the heavy fabric, {player_name}. The glass surface before you is entirely devoid of reflection, absorbing the ambient lightning. As you stare into the abyss, a faint, shifting shadow materializes within the glass, its silhouette gesturing faintly toward the bureau.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+      - mirror_seen
+    actions:
+      - name: go_drawer
+        ui-button: Examine the drawer
+        trigger: "signal.open >= 60"
+        target: drawer
+      - name: go_stairs
+        ui-button: Leave
+        trigger: "signal.exit_space >= 60"
+        target: stairs
+
+  drawer:
+    ui-label: Drawer
+    contextual-prompt: |
+      You approach the wooden bureau, {player_name}. A heavy brass lock secures the central compartment shut. Emblazoned into the metal plate is a stark, ominous number: 13.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: force_drawer
+        ui-button: Force the drawer
+        trigger: "signal.attack >= 60"
+        target: force
+      - name: go_hall
+        ui-button: Search downstairs
+        trigger: "signal.go_downstairs >= 60"
+        target: hall
+
+  force:
+    ui-label: Force Drawer
+    contextual-prompt: |
+      With a surge of desperation, {player_name}, you wrench the stubborn wood apart. Splinters tear into your flesh as the compartment yields violently. Deep inside rests a small, cold iron key, but the physical strain leaves you physically drained.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: check_hp_bad
+        trigger: "env.hp <= 0"
+        target: finalBad
+      - name: check_hp_ok
+        trigger: "env.hp > 0"
+        target: hall
+
+  hall:
+    ui-label: Hall
+    contextual-prompt: |
+      The lower level is a cavernous expanse of shadows, {player_name}. Looming shapes of covered furniture cast long, distorted silhouettes. A heavy portal leads to the exterior rear, and a flickering bronze lantern rests upon a side table.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: go_lantern
+        ui-button: Examine the lantern
+        trigger: "signal.open >= 60"
+        target: lantern
+      - name: go_backdoor
+        ui-button: Try the back door
+        trigger: "signal.open >= 50 or signal.flee >= 60"
+        target: backdoor
+      - name: go_start
+        ui-button: Return
+        trigger: "signal.go_upstairs >= 60"
+        target: start
+
+  lantern:
+    ui-label: Lantern
+    contextual-prompt: |
+      You inspect the flickering lantern, {player_name}. Scratched onto its metal base is an inscription: The key opens what has been forgotten. Stamped beneath the text is the number 13.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: go_backdoor
+        ui-button: Go to the back door
+        trigger: "signal.flee >= 60"
+        target: backdoor
+      - name: go_stairs
+        ui-button: Return upstairs
+        trigger: "signal.go_upstairs >= 60"
+        target: stairs
+
+  door:
+    ui-label: Front Door
+    contextual-prompt: |
+      You stand before the main exit, {player_name}. Thick iron bands reinforce the structure, and no handle or keyhole breaks the smooth expanse of aged timber. It is completely sealed from this side.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: go_start
+        ui-button: Return
+        trigger: "signal.exit_space >= 60"
+        target: start
+
+  backdoor:
+    ui-label: Back Door
+    contextual-prompt: |
+      A heavy wooden exit barred by a complex iron mechanism featuring a dark, vacant keyhole, {player_name}.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: use_key
+        ui-button: Use the key
+        trigger: "env.has_black_key == True and (signal.open >= 60 or signal.flee >= 60)"
+        target: escape
+        on-exit: env.game_ended = True
+      - name: try_door_fail
+        ui-button: Try the door without key
+        trigger: "env.has_black_key == False and signal.open >= 60"
+        target: backdoor_fail
+
+  backdoor_fail:
+    ui-label: Back Door Fail
+    contextual-prompt: |
+      You rattle the handle frantically, {player_name}, but the deadbolts refuse to budge. The harsh metallic clanging echoes through the hall, sending a sharp pain through your joints.
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+    actions:
+      - name: check_hp_bad_fail
+        trigger: "env.hp <= 0"
+        target: finalBad
+        on-exit: |
+          env.game_ended = True
+          chat.celebrate()
+      - name: check_hp_ok_fail
+        trigger: "env.hp > 0"
+        target: backdoor
+
+  escape:
+    ui-label: Escape (Good Ending)
+    fixed-message: "The key opens the door. Outside, the storm has stopped. Looking back, the house no longer has any windows. You have escaped successfully!"
+    chat-enabled: false
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+
+    actions: []
+  finalBad:
+    ui-label: Final Bad (Bad Ending)
+    fixed-message: "Darkness fills the corridor. The player wakes again in front of Room 13. The house will not let them leave."
+    input:
+      - hp
+      - has_black_key
+      - mirror_seen
+      - game_ended
+      - player_name
+    output:
+      - hp
+
+    chat-enabled: false
+
+    actions:
+      - name: action-0
+        ui-label: Try again
+        ui-description: ''
+        target: hall
+        on-exit: "chat.show(\n  \"\"\"\n  ### Resurrecting...\n  You have been teleported to the Hall again. \n  \n  **Good Luck!**\n  \"\"\"\n)\n\nenv.hp = 1\nenv.game_ended = False"
+  title:
+    ui-label: Title
+    fixed-message: "Press play to start"
+    actions:
+      - name: action-0
+        ui-label: Play Game
+        target: start
+    chat-enabled: false
+
+general-prompt: You are the master of a game. A text adventure set in a mysterious abandoned house where the player needs to find a way out. When you mention {player_name}, never use the family name, just the name. and possibly a common nickname for that.

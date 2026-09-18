@@ -1,6 +1,8 @@
-import BuildProjectView from './components/BuildProjectView.vue'
+import { defineAsyncComponent } from 'vue'
 import ProjectBuildButton from './components/ProjectBuildButton.vue'
-import ServicesBuildTab from './components/ServicesBuildTab.vue'
+
+const BuildProjectView = defineAsyncComponent(() => import('./components/BuildProjectView.vue'))
+const ServicesBuildTab = defineAsyncComponent(() => import('./components/ServicesBuildTab.vue'))
 
 export const key = 'build'
 

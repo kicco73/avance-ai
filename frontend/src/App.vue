@@ -1,11 +1,10 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import LiveChatWindow from './components/chat/LiveChatWindow.vue'
 import LoginView from './components/LoginView.vue'
 import TermsView from './components/TermsView.vue'
 import InviteRequiredView from './components/InviteRequiredView.vue'
 import ProfileView from './components/ProfileView.vue'
-import ServicesView from './components/services/ServicesView.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -31,6 +30,7 @@ const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 const chatWindowRef = ref(null)
 const dialogOpen = computed(() => !!activeDialog.value)
+const ServicesView = defineAsyncComponent(() => import('./components/services/ServicesView.vue'))
 const CORE_OVERLAYS = [
   { view: 'services', component: ServicesView },
 ]

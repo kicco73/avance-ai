@@ -195,7 +195,7 @@ function selectAttachment(fileName) { emit('select-attachment', fileName) }
           <span v-if="entry.signal.ui_description" class="inspector-signal-ui_description">{{ entry.signal.ui_description }}</span>
         </div>
       </Transition>
-      <template v-if="!editableFiles">
+      <template v-if="!editableFiles || expandedSignalName !== entry.signal.name">
         <div class="inspector-signal-bar-track">
           <div v-if="hasSignalValue(signalValues[entry.signal.name])" class="inspector-signal-bar-fill" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }" :style="{ width: signalValues[entry.signal.name].value + '%' }"></div>
           <div v-else class="inspector-signal-bar-fill inspector-signal-bar-na" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }"></div>

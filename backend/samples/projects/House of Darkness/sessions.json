@@ -1,0 +1,1176 @@
+[
+  {
+    "name": "Live session 21",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-17T18:59:13.707455+00:00",
+    "datetime_end": "2026-09-17T18:59:40.021527+00:00",
+    "start_state": "title",
+    "end_state": "stairs",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Press play to start",
+        "timestamp": "2026-09-17T18:59:20.391423+00:00",
+        "audio_text": null,
+        "tokens": 30
+      },
+      {
+        "role": "assistant",
+        "text": "The air is thick with dust and the scent of ozone. You regain consciousness in the grand foyer of a decaying Victorian mansion, battered by a relentless storm outside. Listen carefully, Enrico: heavy oak doors are bolted shut, and a grandfather clock ticks in slow, mocking agony. Faintly, rhythmic echoing footsteps resonate from the floorboards above.",
+        "timestamp": "2026-09-17T18:59:30.225637+00:00",
+        "audio_text": null,
+        "tokens": 90,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "go up",
+        "timestamp": "2026-09-17T18:59:37.607920+00:00",
+        "audio_text": null,
+        "tokens": 1368,
+        "values": {
+          "open": 0,
+          "go_upstairs": 100,
+          "go_downstairs": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "start",
+        "action": "go_stairs",
+        "new_state": "stairs",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "You ascend into absolute darkness, Enrico, your fingers trailing along peeling wallpaper. A narrow, winding corridor stretches out, illuminated only by intermittent flashes of lightning. At the very end, a single door stands slightly ajar, exuding a chilling draft and a faint, cryptic scratching sound.",
+        "timestamp": "2026-09-17T18:59:39.998492+00:00",
+        "audio_text": "You climb the stairs into darkness, Enrico, guided by lightning flashes toward a slightly ajar door.",
+        "tokens": 104
+      }
+    ]
+  },
+  {
+    "name": "Live session 11",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-15T13:18:19.176898+00:00",
+    "datetime_end": "2026-09-15T13:18:24.168063+00:00",
+    "start_state": "title",
+    "end_state": "start",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Press play to start",
+        "timestamp": "2026-09-15T13:18:20.416433+00:00",
+        "audio_text": null,
+        "tokens": 36
+      },
+      {
+        "role": "assistant",
+        "text": "The air is thick with dust and the scent of ozone. You regain consciousness in the grand foyer of a decaying Victorian mansion, battered by a relentless storm outside. Listen carefully, Enrico: heavy oak doors are bolted shut, and a grandfather clock ticks in slow, mocking agony. Faintly, rhythmic echoing footsteps resonate from the floorboards above.",
+        "timestamp": "2026-09-15T13:18:23.879078+00:00",
+        "audio_text": null,
+        "tokens": 102,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      }
+    ]
+  },
+  {
+    "name": "Live session 1",
+    "username": "itinococalero@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-14T18:09:23.501530+00:00",
+    "datetime_end": "2026-09-14T18:09:24.422398+00:00",
+    "start_state": "title",
+    "end_state": "title",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Press play to start",
+        "timestamp": "2026-09-14T18:09:24.404403+00:00",
+        "audio_text": null,
+        "tokens": 36
+      }
+    ]
+  },
+  {
+    "name": "Live session 7",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-14T14:04:43.841099+00:00",
+    "datetime_end": "2026-09-14T14:04:43.900653+00:00",
+    "start_state": "title",
+    "end_state": "title",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": []
+  },
+  {
+    "name": "Live session 5",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-14T12:08:21.441747+00:00",
+    "datetime_end": "2026-09-14T12:17:08.618798+00:00",
+    "start_state": "title",
+    "end_state": "start",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Premi play per iniziare",
+        "timestamp": "2026-09-14T12:08:22.444825+00:00",
+        "audio_text": null,
+        "tokens": 36
+      },
+      {
+        "role": "assistant",
+        "text": "Benvenuto di nuovo, Enrico. Il tempo fuori infuria e la villa ti attende. Scrivi la tua mossa per proseguire l'avventura.",
+        "timestamp": "2026-09-14T12:09:19.781266+00:00",
+        "audio_text": null,
+        "tokens": 60,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      }
+    ]
+  },
+  {
+    "name": "Victorian Villa Escape",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-14T11:54:26.732552+00:00",
+    "datetime_end": "2026-09-14T12:08:15.222882+00:00",
+    "start_state": "title",
+    "end_state": "start",
+    "labeled": false,
+    "comment": null,
+    "closed_at": "2026-09-14T12:08:21.410342+00:00",
+    "close_reason": "force-new-session",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Premi play per iniziare",
+        "timestamp": "2026-09-14T11:54:27.603320+00:00",
+        "audio_text": null,
+        "tokens": 37
+      },
+      {
+        "role": "assistant",
+        "text": "Benvenuto di nuovo, Enrico. Il tempo fuori infuria e il tic-tac del vecchio orologio a pendolo scandisce i tuoi progressi. Sei nel grand foyer della villa vittoriana. I pesanti portoni di quercia sono sbarrati, ma la tua avventura per la fuga continua. Cosa vuoi fare adesso?",
+        "timestamp": "2026-09-14T11:56:09.609128+00:00",
+        "audio_text": null,
+        "tokens": 96,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      }
+    ]
+  },
+  {
+    "name": "Live session 1",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-09-13T23:05:17.845511+00:00",
+    "datetime_end": "2026-09-13T23:21:55.239261+00:00",
+    "start_state": "title",
+    "end_state": "backdoor",
+    "labeled": false,
+    "comment": null,
+    "closed_at": null,
+    "close_reason": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Press play to start",
+        "timestamp": "2026-09-13T23:05:18.655166+00:00",
+        "audio_text": null,
+        "tokens": 35
+      },
+      {
+        "role": "assistant",
+        "text": "The storm howls outside, casting jagged shadows across the grand foyer. Listen to me, Enrico: those footsteps above are growing louder, descending the staircase. You need to act fast. To your left is a dusty parlor, and straight ahead lies a dark corridor. Which way do you want to go?",
+        "timestamp": "2026-09-13T23:05:33.956095+00:00",
+        "audio_text": null,
+        "tokens": 104,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "user",
+        "text": "sali",
+        "timestamp": "2026-09-13T23:05:48.279843+00:00",
+        "audio_text": null,
+        "tokens": 1464,
+        "values": {
+          "open": 0,
+          "go_upstairs": 100,
+          "go_downstairs": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "start",
+        "action": "go_stairs",
+        "new_state": "stairs",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Footsteps approach from the stairs, Enrico. Do you want to slip into the dusty parlor to your left, or continue down the dark corridor straight ahead?",
+        "timestamp": "2026-09-13T23:05:50.386844+00:00",
+        "audio_text": "Footsteps approach, Enrico. Do you want to hide in the parlor or brave the corridor?",
+        "tokens": 71
+      },
+      {
+        "role": "user",
+        "text": "sali",
+        "timestamp": "2026-09-13T23:05:56.727817+00:00",
+        "audio_text": null,
+        "tokens": 883,
+        "values": {
+          "enter_space": 0,
+          "exit_space": 0,
+          "go_downstairs": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "The wind howls outside the heavy oak door, Enrico. You hesitate in the gloom, listening intently as the scratching sound grows slightly closer. What is your next move?",
+        "timestamp": "2026-09-13T23:05:57.673255+00:00",
+        "audio_text": null,
+        "tokens": 92
+      },
+      {
+        "role": "user",
+        "text": "entra",
+        "timestamp": "2026-09-13T23:06:01.943307+00:00",
+        "audio_text": null,
+        "tokens": 1606,
+        "values": {
+          "enter_space": 95,
+          "exit_space": 0,
+          "go_downstairs": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "stairs",
+        "action": "go_room13",
+        "new_state": "room13",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "You push open the heavy door and step inside the dusty parlor, Enrico. The air here smells of old paper and dried lavender. A massive, heavy-framed object stands draped under a dusty velvet sheet to your right, and a heavy wooden bureau rests against the far wall. Carved deep into the wood paneling above is a cryptic phrase: *What has no shadow shows the way.* What would you like to examine?",
+        "timestamp": "2026-09-13T23:06:04.203900+00:00",
+        "audio_text": "You step inside the parlor, Enrico, as the door clicks softly behind you.",
+        "tokens": 122
+      },
+      {
+        "role": "user",
+        "text": "guarda il mobile",
+        "timestamp": "2026-09-13T23:06:14.998299+00:00",
+        "audio_text": null,
+        "tokens": 974,
+        "values": {
+          "open": 0,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "You approach the heavy wooden bureau, Enrico. The drawers are firmly shut, and a tarnished brass ring serves as a handle. Upon closer inspection, a small keyhole is nestled right beneath the ring, but you have no key for it yet. Above it, the carved phrase *What has no shadow shows the way* seems to mock you in the dim light.",
+        "timestamp": "2026-09-13T23:06:15.987438+00:00",
+        "audio_text": null,
+        "tokens": 121
+      },
+      {
+        "role": "user",
+        "text": "parla in italiano",
+        "timestamp": "2026-09-13T23:06:24.529006+00:00",
+        "audio_text": null,
+        "tokens": 1054,
+        "values": {
+          "open": 10,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Va bene, Enrico, d'ora in poi parleremo in italiano. Ti trovi nel sal polvoreso. Di fronte a te c'\u00e8 il pesante scrittoio di legno con la scritta intagliata: *Ci\u00f2 che non ha ombra mostra la via*. Sulla tua destra c'\u00e8 un grande oggetto coperto da un lenzuolo di velluto. Cosa vuoi fare?",
+        "timestamp": "2026-09-13T23:06:25.811432+00:00",
+        "audio_text": null,
+        "tokens": 133
+      },
+      {
+        "role": "user",
+        "text": "avvicinati",
+        "timestamp": "2026-09-13T23:06:31.375177+00:00",
+        "audio_text": null,
+        "tokens": 1146,
+        "values": {
+          "open": 10,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Ti avvicini ulteriormente al pesante scrittoio di legno, Enrico. L'aria \u00e8 immobile e carica di polvere. Osservando da vicino la serratura sotto l'anello di ottone, noti che la toppa \u00e8 completamente vuota. Nel frattempo, il lenzuolo di velluto sulla destra sembra quasi muoversi leggermente nella penombra. Cosa intendi fare?",
+        "timestamp": "2026-09-13T23:06:32.897717+00:00",
+        "audio_text": null,
+        "tokens": 131
+      },
+      {
+        "role": "user",
+        "text": "rompi il mobile",
+        "timestamp": "2026-09-13T23:06:40.071635+00:00",
+        "audio_text": null,
+        "tokens": 1235,
+        "values": {
+          "open": 10,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Cerchi di spingere e colpire il pesante scrittoio di legno con tutta la tua forza, Enrico, ma la struttura \u00e8 solida e vecchia di secoli. Non cedi di un millimetro, e l'unico risultato \u00e8 un forte tonfo che rimbomba nella stanza vuota. Il mobile rimane chiuso e intatto.",
+        "timestamp": "2026-09-13T23:06:41.342477+00:00",
+        "audio_text": null,
+        "tokens": 118
+      },
+      {
+        "role": "user",
+        "text": "mi aono fatto male?",
+        "timestamp": "2026-09-13T23:07:51.320659+00:00",
+        "audio_text": null,
+        "tokens": 1313,
+        "values": {
+          "open": 10,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Ti sei fatto un po' male alle mani colpendolo, Enrico, ma per fortuna la tua energia vitale \u00e8 intatta. Sei ancora in forze. Cosa vuoi fare adesso?",
+        "timestamp": "2026-09-13T23:07:52.488032+00:00",
+        "audio_text": null,
+        "tokens": 74
+      },
+      {
+        "role": "user",
+        "text": "ridimmi che c\u2019\u00e8",
+        "timestamp": "2026-09-13T23:08:12.759699+00:00",
+        "audio_text": null,
+        "tokens": 1359,
+        "values": {
+          "open": 10,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Certamente, Enrico. Ti trovi nel salone polveroso. Alla tua destra c'\u00e8 un grande oggetto coperto da un pesante lenzuolo di velluto. Di fronte a te si erge il vecchio scrittoio di legno con la serratura chiusa e la misteriosa iscrizione intagliata nel legno: *Ci\u00f2 che non ha ombra mostra la via*. Cosa vuoi fare?",
+        "timestamp": "2026-09-13T23:08:14.145087+00:00",
+        "audio_text": null,
+        "tokens": 132
+      },
+      {
+        "role": "user",
+        "text": "mira l\u2019oggetto",
+        "timestamp": "2026-09-13T23:08:33.531987+00:00",
+        "audio_text": null,
+        "tokens": 1450,
+        "values": {
+          "open": 10,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Ti volti verso il grande oggetto coperto dal pesante lenzuolo di velluto alla tua destra, Enrico. La forma ricorda chiaramente quella di una specchiera o di un quadro di grandi dimensioni. Il tessuto polveroso nasconde completamente la superficie sottostante. Vuoi tirare via il lenzuolo?",
+        "timestamp": "2026-09-13T23:08:34.704864+00:00",
+        "audio_text": null,
+        "tokens": 114
+      },
+      {
+        "role": "user",
+        "text": "scoprilo",
+        "timestamp": "2026-09-13T23:09:02.227341+00:00",
+        "audio_text": null,
+        "tokens": 2834,
+        "values": {
+          "open": 90,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "room13",
+        "action": "go_mirror",
+        "new_state": "mirror",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Con un gesto deciso tiri via il pesante lenzuolo di velluto, Enrico. Sotto si cela una grande specchiera antica, ma la sua superficie \u00e8 completamente nera, priva di qualsiasi riflesso, come se assorba la debole luce della stanza. Mentre la osservi, una debole ombra fluttuante si materializza all'interno del vetro, accennando un gesto verso il vicino scrittoio.",
+        "timestamp": "2026-09-13T23:09:05.263993+00:00",
+        "audio_text": "Tiri via il lenzuolo di velluto, Enrico, rivelando una grande specchiera dalla superficie completamente nera e priva di riflessi.",
+        "tokens": 143
+      },
+      {
+        "role": "user",
+        "text": "rimpili",
+        "timestamp": "2026-09-13T23:09:48.375693+00:00",
+        "audio_text": null,
+        "tokens": 1555,
+        "values": {
+          "open": 0,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Perfetto, Enrico. Lo specchio \u00e8 ora completamente scoperto e rivela quella misteriosa ombra che punta verso lo scrittoio. Cosa desideri fare?",
+        "timestamp": "2026-09-13T23:09:49.555839+00:00",
+        "audio_text": null,
+        "tokens": 93
+      },
+      {
+        "role": "user",
+        "text": "vai allo acrittoio",
+        "timestamp": "2026-09-13T23:10:21.431739+00:00",
+        "audio_text": null,
+        "tokens": 1529,
+        "values": {
+          "open": 0,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Ti avvicini di nuovo allo scrittoio, Enrico, ricordando il gesto dell'ombra nello specchio privo di riflessi. La serratura in ottone attende ancora di essere aperta, e l'iscrizione *Ci\u00f2 che non ha ombra mostra la via* ti suggerisce che forse la chiave o la soluzione \u00e8 nascosta proprio nello specchio o vicino ad esso. Come vuoi procedere?",
+        "timestamp": "2026-09-13T23:10:22.740204+00:00",
+        "audio_text": null,
+        "tokens": 138
+      },
+      {
+        "role": "user",
+        "text": "edamina lo specchio",
+        "timestamp": "2026-09-13T23:11:03.657419+00:00",
+        "audio_text": null,
+        "tokens": 1529,
+        "values": {
+          "open": 0,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Torni a esaminare la specchiera nera, Enrico. Avvicinandoti al vetro privo di riflessi, noti che la superficie non \u00e8 fatta di normale specchio, ma di una lastra scura e liscia come l'ossidiana. L'ombra all'interno sembra essersi mossa ancora una volta, indicando adesso non pi\u00f9 lo scrittoio, ma una fessura quasi invisibile lungo la cornice di legno intagliato della specchiera stessa. Cosa fai?",
+        "timestamp": "2026-09-13T23:11:04.914312+00:00",
+        "audio_text": null,
+        "tokens": 165
+      },
+      {
+        "role": "user",
+        "text": "c\u2019e qualche oggetto?",
+        "timestamp": "2026-09-13T23:11:30.255264+00:00",
+        "audio_text": null,
+        "tokens": 1484,
+        "values": {
+          "open": 40,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Esamini con attenzione la fessura lungo la cornice di legno intagliato della specchiera, Enrico. Infilando le dita nella fessura, senti il profilo freddo di un oggetto metallico nascosto l\u00ec dentro. Con un piccolo scatto, riesci a estrarre una vecchia chiave di ferro scuro, pesante e coperta di patina. Ora stringi la chiave tra le dita. Cosa vuoi fare?",
+        "timestamp": "2026-09-13T23:11:31.483996+00:00",
+        "audio_text": null,
+        "tokens": 151
+      },
+      {
+        "role": "user",
+        "text": "usala com cassetto",
+        "timestamp": "2026-09-13T23:12:03.023350+00:00",
+        "audio_text": null,
+        "tokens": 2745,
+        "values": {
+          "open": 90,
+          "exit_space": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "mirror",
+        "action": "go_drawer",
+        "new_state": "drawer",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Inserisci la pesante chiave di ferro nella serratura in ottone dello scrittoio, Enrico. Con un clic sordo, il meccanismo scatta e la serratura si apre, permettendoti di accedere finalmente al compartimento segreto.",
+        "timestamp": "2026-09-13T23:12:05.092445+00:00",
+        "audio_text": "Hai usato la chiave nello scrittoio, Enrico.",
+        "tokens": 88
+      },
+      {
+        "role": "user",
+        "text": "che c\u2019\u00e8 dentro?",
+        "timestamp": "2026-09-13T23:12:35.770901+00:00",
+        "audio_text": null,
+        "tokens": 1388,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Sollevi il coperchio del compartimento segreto dello scrittoio, Enrico. All'interno, adagiato su un velluto ormai logoro, c'\u00e8 un vecchio carillon di legno scuro e, accanto ad esso, un foglio di carta ripiegato con cura. Cosa vuoi fare?",
+        "timestamp": "2026-09-13T23:12:36.976502+00:00",
+        "audio_text": null,
+        "tokens": 130
+      },
+      {
+        "role": "user",
+        "text": "leggilo",
+        "timestamp": "2026-09-13T23:12:59.074239+00:00",
+        "audio_text": null,
+        "tokens": 1382,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Apri con cura il foglio di carta ripiegato, Enrico. La grafia, elegante ma tremolante, traccia queste parole: *\"Il tempo dimenticato non suona pi\u00f9 per chi resta, ma la chiave della fine si cela dove l'ombra incontra il legno.\"* Nel frattempo, il carillon accanto a te emette un debole e sordo rintocco, come se un meccanismo interno si fosse appena attivato. Cosa desideri fare?",
+        "timestamp": "2026-09-13T23:13:00.645158+00:00",
+        "audio_text": null,
+        "tokens": 165
+      },
+      {
+        "role": "user",
+        "text": "apri il carillon",
+        "timestamp": "2026-09-13T23:13:37.430922+00:00",
+        "audio_text": null,
+        "tokens": 1418,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Sollevi delicatamente il coperchio intarsiato del vecchio carillon, Enrico. All'interno, una piccola figura meccanica inizia a girare su se stessa, emettendo una melodia malinconica e distorta che riecheggia nella stanza vuota. Sotto la ballerina rotante, un minuscolo compartimento segreto si apre nel legno, rivelando una chiave d'argento finemente lavorata e un bigliettetto. Cosa vuoi fare?",
+        "timestamp": "2026-09-13T23:13:38.967089+00:00",
+        "audio_text": null,
+        "tokens": 155
+      },
+      {
+        "role": "user",
+        "text": "leggi il biglietto",
+        "timestamp": "2026-09-13T23:14:10.350706+00:00",
+        "audio_text": null,
+        "tokens": 1532,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Prendi il piccolo bigliettetto accanto alla chiave d'argento e lo spieghi, Enrico. Con una calligrafia minuta e precisa, vi \u00e8 scritto: *\"La porta in fondo al corridoio si aprir\u00e0 solo per chi possiede la luce d'argento.\"* La melodia del carillon si spegne lentamente, lasciando spazio a un silenzio surreale. Cosa fai adesso, Enrico?",
+        "timestamp": "2026-09-13T23:14:11.574259+00:00",
+        "audio_text": null,
+        "tokens": 151
+      },
+      {
+        "role": "user",
+        "text": "prendi la chiave",
+        "timestamp": "2026-09-13T23:14:41.569144+00:00",
+        "audio_text": null,
+        "tokens": 1529,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Prendi la chiave d'argento dal minuscolo compartimento del carillon, Enrico, stringendola fredda e leggera nel palmo della mano. Hai ottenuto la chiave d'argento. La porta in fondo al corridoio sembra ora l'unica via possibile. Dove vuoi dirigerti adesso, Enrico?",
+        "timestamp": "2026-09-13T23:14:42.897083+00:00",
+        "audio_text": null,
+        "tokens": 119
+      },
+      {
+        "role": "user",
+        "text": "che oggetti ho? inventario",
+        "timestamp": "2026-09-13T23:15:21.054614+00:00",
+        "audio_text": null,
+        "tokens": 1569,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Controlli le tue tasche e apri il palmo della mano, Enrico. Al momento possiedi: la vecchia chiave di ferro scuro, che hai usato per aprire lo scrittoio, e la chiave d'argento finemente lavorata trovata all'interno del carillon. Cosa vuoi fare con questi oggetti?",
+        "timestamp": "2026-09-13T23:15:22.212571+00:00",
+        "audio_text": null,
+        "tokens": 115
+      },
+      {
+        "role": "user",
+        "text": "aprire cassetto",
+        "timestamp": "2026-09-13T23:15:43.559530+00:00",
+        "audio_text": null,
+        "tokens": 1552,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Il coperchio dello scrittoio \u00e8 gi\u00e0 aperto, Enrico, e hai appena svuotato il suo compartimento segreto prendendo il carillon e la lettera. Non c'\u00e8 altro all'interno di quel cassetto. Vuoi esaminare qualcos'altro o usare la chiave d'argento?",
+        "timestamp": "2026-09-13T23:15:44.666837+00:00",
+        "audio_text": null,
+        "tokens": 113
+      },
+      {
+        "role": "user",
+        "text": "ci sono altri oggetti su cui usare laa chiave?",
+        "timestamp": "2026-09-13T23:16:13.974255+00:00",
+        "audio_text": null,
+        "tokens": 1517,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Guardandoti intorno nella stanza, Enrico, noti la pesante porta in legno in fondo al corridoio, quella menzionata nel biglietto, che sembra proprio attendere la chiave d'argento per essere aperta. Nient'altro in questa stanza sembra avere una serratura adatta.",
+        "timestamp": "2026-09-13T23:16:15.026670+00:00",
+        "audio_text": null,
+        "tokens": 108
+      },
+      {
+        "role": "user",
+        "text": "vai alla porta",
+        "timestamp": "2026-09-13T23:16:38.294001+00:00",
+        "audio_text": null,
+        "tokens": 1484,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Ti allontani dallo scrittoio e percorri i pochi passi che ti separano dalla pesante porta in legno in fondo al corridoio, Enrico. Ora che ti trovi di fronte ad essa, noti una serratura argentata che sembra fatta apposta per accogliere la chiave d'argento che stringi in mano. Cosa vuoi fare?",
+        "timestamp": "2026-09-13T23:16:39.413095+00:00",
+        "audio_text": null,
+        "tokens": 119
+      },
+      {
+        "role": "user",
+        "text": "usa la chiave",
+        "timestamp": "2026-09-13T23:17:09.870379+00:00",
+        "audio_text": null,
+        "tokens": 1560,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Inserisci la chiave d'argento nella serratura della pesante porta in legno, Enrico. Con un netto e metallico scatto, il meccanismo gira e la porta si sblocca, socchiudendosi lentamente per rivelare una luce fioca che proviene da uno spazio oltre il corridoio.",
+        "timestamp": "2026-09-13T23:17:10.937674+00:00",
+        "audio_text": null,
+        "tokens": 118
+      },
+      {
+        "role": "user",
+        "text": "apri",
+        "timestamp": "2026-09-13T23:17:26.763569+00:00",
+        "audio_text": null,
+        "tokens": 1569,
+        "values": {
+          "go_downstairs": 0,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Spingi completamente la pesante porta in legno, Enrico, facendola ruotare sui cardini arrugginiti. Oltre la soglia si apre una scala buia che scende verso il piano inferiore, avvolta in un freddo alone di mistero. Cosa vuoi fare?",
+        "timestamp": "2026-09-13T23:17:27.957288+00:00",
+        "audio_text": null,
+        "tokens": 114
+      },
+      {
+        "role": "user",
+        "text": "scendi",
+        "timestamp": "2026-09-13T23:17:45.987812+00:00",
+        "audio_text": null,
+        "tokens": 2932,
+        "values": {
+          "go_downstairs": 100,
+          "attack": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "drawer",
+        "action": "go_hall",
+        "new_state": "hall",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Metti piede sulle scale buie e inizi a scendere con cautela, Enrico. I gradini di pietra scricchiolano leggermente sotto i tuoi passi, mentre l'aria si fa pi\u00f9 fresca e carica del profumo di terra umida. Arrivi finalmente in una vasta e cavernosa stanza d'ombra. Looming shapes of covered furniture cast long, distorted silhouettes. Un pesante portale conduce all'esterno sul retro, e una lanterna di bronzo tremolante riposa su un tavolino. Cosa fai, Enrico?",
+        "timestamp": "2026-09-13T23:17:48.493658+00:00",
+        "audio_text": "Scendi le scale con cautela, Enrico.",
+        "tokens": 152
+      },
+      {
+        "role": "user",
+        "text": "vai alla lenterna",
+        "timestamp": "2026-09-13T23:18:44.149245+00:00",
+        "audio_text": null,
+        "tokens": 1511,
+        "values": {
+          "open": 0,
+          "go_upstairs": 0,
+          "flee": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Ti avvicini con cautela al tavolino laterale su cui riposa la lanterna di bronzo tremolante, Enrico. La flebile luce danza sulle pareti umide della cavernosa stanza, rischiarando appena le forme coperte dei mobili intorno a te. Vuoi prendere la lanterna?",
+        "timestamp": "2026-09-13T23:18:45.310571+00:00",
+        "audio_text": null,
+        "tokens": 120
+      },
+      {
+        "role": "user",
+        "text": "si. accendila",
+        "timestamp": "2026-09-13T23:19:26.926161+00:00",
+        "audio_text": null,
+        "tokens": 2745,
+        "values": {
+          "open": 100,
+          "go_upstairs": 0,
+          "flee": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "hall",
+        "action": "go_lantern",
+        "new_state": "lantern",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Sollevi con delicatezza la lanterna di bronzo dal tavolino, Enrico, e con un piccolo fiammifero accoppi lo stoppino. Una calda e stabile luce dorata si espande all'istante, scacciando le ombre pi\u00f9 fitte e rivelando chiaramente la stanza cavernosa e il pesante portale che conduce all'esterno.",
+        "timestamp": "2026-09-13T23:19:29.928749+00:00",
+        "audio_text": "Prendi la lanterna e la accendi, Enrico.",
+        "tokens": 117
+      },
+      {
+        "role": "user",
+        "text": "prendila",
+        "timestamp": "2026-09-13T23:20:10.501588+00:00",
+        "audio_text": null,
+        "tokens": 1395,
+        "values": {
+          "go_upstairs": 0,
+          "flee": 20
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Hai gi\u00e0 preso la lanterna e l'hai accesa, Enrico! Ora tieni stretta la calda luce dorata tra le mani. Davanti a te c'\u00e8 il pesante portale che conduce finalmente fuori dalla villa, verso la libert\u00e0. Cosa vuoi fare?",
+        "timestamp": "2026-09-13T23:20:11.722500+00:00",
+        "audio_text": null,
+        "tokens": 113
+      },
+      {
+        "role": "user",
+        "text": "vai al portale",
+        "timestamp": "2026-09-13T23:20:31.576196+00:00",
+        "audio_text": null,
+        "tokens": 1378,
+        "values": {
+          "go_upstairs": 0,
+          "flee": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Ti dirigi deciso verso il pesante portale che conduce all'esterno, Enrico, stringendo la tua lanterna accesa. Con uno sforzo, spingi i battenti che si aprono lentamente, lasciando filtrare l'aria fresca della notte e la tanto agognata libert\u00e0. Sei finalmente fuori dalla villa, al sicuro!",
+        "timestamp": "2026-09-13T23:20:32.845113+00:00",
+        "audio_text": null,
+        "tokens": 125
+      },
+      {
+        "role": "user",
+        "text": "esci",
+        "timestamp": "2026-09-13T23:20:54.084621+00:00",
+        "audio_text": null,
+        "tokens": 2568,
+        "values": {
+          "go_upstairs": 0,
+          "flee": 100
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "lantern",
+        "action": "go_backdoor",
+        "new_state": "backdoor",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Oltrepassi la soglia del pesante portale e lasci alle tue spalle l'oscurit\u00e0 e i misteri della villa, Enrico. L'aria fresca della notte ti accoglie, mentre assapori il dolce sapore della libert\u00e0. Hai completato la tua avventura e sei finalmente salvo!",
+        "timestamp": "2026-09-13T23:20:56.587109+00:00",
+        "audio_text": "Sei fuggito dalla casa! Ottimo lavoro, Enrico.",
+        "tokens": 106
+      },
+      {
+        "role": "user",
+        "text": "apri la porta",
+        "timestamp": "2026-09-13T23:21:18.189879+00:00",
+        "audio_text": null,
+        "tokens": 2549,
+        "values": {
+          "open": 100,
+          "flee": 50
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "backdoor",
+        "action": "try_door_fail",
+        "new_state": "backdoor_fail",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Sei gi\u00e0 uscito dalla villa, Enrico! Il portale \u00e8 ormai alle tue spalle e ti godi la fresca aria della notte. La tua avventura \u00e8 giunta a una splendida conclusione.",
+        "timestamp": "2026-09-13T23:21:20.208797+00:00",
+        "audio_text": "Sei gia fuori dalla villa, Enrico. La tua avventura e completata.",
+        "tokens": 86
+      },
+      {
+        "role": "user",
+        "text": "sali le scale",
+        "timestamp": "2026-09-13T23:21:36.086406+00:00",
+        "audio_text": null,
+        "tokens": 1088,
+        "values": {},
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": "backdoor_fail",
+        "action": "check_hp_ok_fail",
+        "new_state": "backdoor",
+        "origin": "trigger"
+      },
+      {
+        "role": "assistant",
+        "text": "Hai gia completato la tua avventura e sei uscito dalla villa, Enrico. Tornare indietro non ha piu senso, goditi la tua liberta all'aria aperta!",
+        "timestamp": "2026-09-13T23:21:37.244729+00:00",
+        "audio_text": "Sei gia uscito, Enrico. Goditi la liberta.",
+        "tokens": 71
+      },
+      {
+        "role": "user",
+        "text": "sali",
+        "timestamp": "2026-09-13T23:21:48.125321+00:00",
+        "audio_text": null,
+        "tokens": 1324,
+        "values": {
+          "open": 0,
+          "flee": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Sei gia fuori dalla villa, Enrico. Non c'e alcun motivo per tornare dentro dopo tanta fatica. La tua fuga e completa!",
+        "timestamp": "2026-09-13T23:21:49.169507+00:00",
+        "audio_text": null,
+        "tokens": 75
+      },
+      {
+        "role": "user",
+        "text": "torna alla hall",
+        "timestamp": "2026-09-13T23:21:54.274616+00:00",
+        "audio_text": null,
+        "tokens": 1240,
+        "values": {
+          "open": 10,
+          "flee": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null,
+        "origin": null
+      },
+      {
+        "role": "assistant",
+        "text": "Sei gia fuggito dalla villa, Enrico. La porta e chiusa alle tue spalle e non puoi piu tornare indietro. La tua avventura e terminata con successo!",
+        "timestamp": "2026-09-13T23:21:55.210615+00:00",
+        "audio_text": null,
+        "tokens": 83
+      }
+    ]
+  }
+]
