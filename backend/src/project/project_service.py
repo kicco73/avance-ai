@@ -239,9 +239,6 @@ class ProjectService(object):
     async def modernize_index_yml(self, project_id: str) -> dict:
         return await self.editor.modernize_index_yml(project_id)
 
-    async def migrate_legacy_media_assets(self, project_id: str) -> dict:
-        return await self.editor.migrate_legacy_media_assets(project_id)
-
     async def set_service_level(
         self, project_id: str, service: str, level: str
     ) -> ProjectPayload:

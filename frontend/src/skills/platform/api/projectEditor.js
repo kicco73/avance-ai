@@ -44,14 +44,6 @@ export function postModernizeIndexYml(projectId) {
   )
 }
 
-export function postMigrateLegacyMediaAssets(projectId) {
-  return projectFetch(
-    projectId,
-    `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/media/migrate`,
-    { method: 'POST' }
-  )
-}
-
 export function putServiceLevel(projectId, service, level) {
   return projectFetch(
     projectId,

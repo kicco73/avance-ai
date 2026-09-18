@@ -27,7 +27,7 @@ import { useIndexYmlEditing } from '../../../useIndexYmlEditing.js'
 import { useProjectCatalog } from '../../../useProjectCatalog.js'
 import { useLiveRunTimeline } from '../../../useLiveRunTimeline.js'
 import { useStateTabTokens } from '../../../../../composables/useStateTabTokens.js'
-import { putSessionTitle, putSessionComment, postModernizeIndexYml, postMigrateLegacyMediaAssets } from '../../../api.js'
+import { putSessionTitle, putSessionComment, postModernizeIndexYml } from '../../../api.js'
 import { onProjectChanged } from '../../../../../projectChangeEvents.js'
 import { projectModes } from '../../../../registry.js'
 import { setApiWarning } from '../../../../../errorStore.js'
@@ -413,13 +413,8 @@ function modernizeIndexYml() {
     .catch(() => [])
 }
 
-function migrateLegacyMediaAssets() {
-  return postMigrateLegacyMediaAssets(props.projectId).catch(() => ({ moved: [] }))
-}
-
 onMounted(async () => {
   const fixed = await modernizeIndexYml()
-  await migrateLegacyMediaAssets()
   loadFiles()
   loadSources()
   loadTestChatModels()

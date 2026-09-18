@@ -337,17 +337,6 @@ class EditProjectController(BaseController):
         stored."""
         return await self.project_service.modernize_index_yml(project_id)
 
-    @post("/api/skills/platform/projects/{project_id}/media/migrate", role="admin")
-    async def post_migrate_legacy_media_assets(self, project_id: str):
-        """The other thing "Edit project" does on open, alongside
-        index-yml/modernize above: moves any image/audio archive a
-        project saved before Media existed (see automaton.file_types) —
-        still sitting under `aspect/` — to `media/`, keeping its content
-        and undo/redo history. Answers {moved: [...]}. A project with
-        nothing left under `aspect/` (every project going forward) does
-        nothing."""
-        return await self.project_service.migrate_legacy_media_assets(project_id)
-
     @put("/api/skills/platform/projects/{project_id}/services/{service}", role="admin")
     async def put_service_level(self, project_id: str, service: str, req: SetServiceLevelRequest):
         self.project_service.ensure_project_not_broken(project_id)

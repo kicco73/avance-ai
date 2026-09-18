@@ -24,7 +24,7 @@ from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .archive.css_validator import CssValidator
 from .archive.layout import (
-    ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, MEDIA_DIR,
+    BEHAVIOUR_DIR, ArchiveLayout, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, MEDIA_DIR,
     ROOT_FILE_NAMES, SOURCES_DIR,
 )
 
@@ -450,56 +450,6 @@ class ProjectEditor:
         )
         await index_yml.save_through(self, project_id)
         return {"fixed": list(index_yml.fixes)}
-
-    async def migrate_legacy_media_assets(self, project_id: str) -> dict:
-        """One-time fix-up for a project saved before images/audio moved
-        from `aspect/` to `media/` (see automaton.file_types) — moves any
-        surviving `aspect/<name>` archive whose extension now belongs
-        under MEDIA_DIR to `media/<name>`, keeping its content and
-        undo/redo history exactly as an ordinary rename does (Db.
-        rename_project_file) — deliberately not through this class's own
-        rename_project_file above, whose same-category rule exists to
-        stop a *user* from smuggling a file across folders, not to stop
-        this migration from doing it on purpose. Never rewrites
-        index.css: a url(...) reference is resolved by basename only
-        (CssValidator), and the basename itself never changes here, only
-        the folder. Idempotent: a project with nothing left under
-        `aspect/` — every project going forward — does nothing. Applies
-        to the current draft only; a project published before migrating
-        needs a fresh publish for its published revision to carry the
-        move too."""
-        if project_id not in self._db.list_projects():
-            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
-        archives = self._db.get_archives(project_id)
-        renames: list[tuple[str, str]] = []
-        for name in sorted(archives):
-            if not name.startswith(f"{ASPECT_DIR}/"):
-                continue
-            basename = Path(name).name
-            if ProjectFileTypes.of(basename).folder != MEDIA_DIR:
-                continue
-            target = f"{MEDIA_DIR}/{basename}"
-            if target in archives:
-                logger.warning(
-                    "migrate_legacy_media_assets('%s'): left '%s' in place — '%s' already exists.",
-                    project_id, name, target,
-                )
-                continue
-            renames.append((name, target))
-        if not renames:
-            return {"moved": []}
-        for old_name, new_name in renames:
-            archives[new_name] = archives.pop(old_name)
-        try:
-            new_automaton = AutomatonBuilder().build(archives)
-        except AutomatonBuildError:
-            raise
-        except Exception as exc:
-            raise ValueError(f"Invalid project update: {exc}") from exc
-        for old_name, new_name in renames:
-            self._db.rename_project_file(WebSession().user, project_id, old_name, new_name)
-        await self._manager.finalize_update(project_id, new_automaton)
-        return {"moved": [new_name for _old_name, new_name in renames]}
 
     async def _edit_index_yml_returning_project_id(self, project_id: str, operation):
         current = self.get_project_file(project_id, "index.yml")["content"]

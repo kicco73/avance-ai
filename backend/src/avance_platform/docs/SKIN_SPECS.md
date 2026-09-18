@@ -55,14 +55,11 @@ fresh one. An asset lives one level down, in the **"Media"** node instead
 same as any other `media/` file.
 
 **Migration note.** Before Media existed, an asset lived under `aspect/`
-instead. `POST /api/skills/platform/projects/{project_name}/media/migrate`
-(`ProjectEditor.migrate_legacy_media_assets`) moves a project's own
-surviving `aspect/<name>` files to `media/<name>` the first time it's
-opened in the editor from here on — `index.css`'s own `url(...)` rules
-need no rewrite either way, since a reference always resolves by
-basename, never by directory (see §2). One-time and idempotent; applies
-to the current draft only, so a project published before migrating needs
-a fresh publish for its published revision to carry the move too.
+instead. `project.archive.media_migration.migrate_aspect_archives` renames
+any surviving `aspect/<name>` archive row to `media/<name>` for every
+project and every stored revision, at boot — `index.css`'s own `url(...)`
+rules need no rewrite either way, since a reference always resolves by
+basename, never by directory (see §2).
 
 ## 2. Validation — what makes a save succeed or fail
 

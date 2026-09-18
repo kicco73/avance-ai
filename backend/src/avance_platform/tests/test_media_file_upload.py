@@ -3,9 +3,8 @@ live under `media/<basename>`, uploaded and read through the same
 generic file endpoints every other archive uses (edit_project_controller.py)
 — nothing Media-specific exists there. Image/audio/PDF extensions
 canonicalize into `media/` on their own now (see automaton.file_types —
-an aspect asset moved there too, see test_media_file_upload's own
-migration coverage in test_automaton_builder_media.py's sibling,
-test_migrate_legacy_media_assets.py). `.md` is the one extension still
+a surviving `aspect/` asset is renamed for every project at boot by
+project.archive.media_migration.migrate_aspect_archives). `.md` is the one extension still
 shared with `behaviour/` (a behaviour attachment), which is what
 ArchiveLayout.canonicalize_name's own two-segment "media/<name>" special
 case (layout.py) exists for — the same way "sources/<name>.csv" already
