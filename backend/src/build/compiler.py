@@ -69,6 +69,7 @@ from pathlib import Path
 from typing import Any
 
 from automaton.automaton_builder import AutomatonBuilder
+from automaton.core import TASK_FUNCTION_NAMES, TRIGGER_FUNCTION_NAMES
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.model import Action, EnvKey, Reaction, Signal, Source, State
@@ -167,6 +168,7 @@ class Compiler(object):
 from pathlib import Path
 
 from automaton.automaton import CompiledAutomaton, PayloadsMixin, IntrospectionMixin
+from simpleeval import DEFAULT_FUNCTIONS
 from system.logging_factory import LoggerFactory
 from automaton.model import Action, EnvKey, Reaction, Signal, Source, State
 
@@ -175,6 +177,9 @@ from . import prompt
 _logger = LoggerFactory.get_logger(__name__)
 
 _DATA_DIR = Path(__file__).resolve().parent / "data"
+
+rand = DEFAULT_FUNCTIONS["rand"]
+randint = DEFAULT_FUNCTIONS["randint"]
 '''
 
     _AUTOMATON_CLASS = '''
@@ -431,14 +436,14 @@ def _compiled(table, text, kind):
                 literal_table.append(f"    {source!r}: {literal!r},")
             else:
                 function_name = f"_expr_{index}"
-                functions.append(self._compiled_function(function_name, source))
+                functions.append(self._compiled_function(function_name, source, TRIGGER_FUNCTION_NAMES))
                 expression_table.append(f"    {source!r}: {function_name},")
             signal_refs.append(
                 f"    {source!r}: frozenset({sorted(TriggerExpressionAnalyzer.signal_names(source))!r}),"
             )
         for index, source in enumerate(statements):
             function_name = f"_stmt_{index}"
-            functions.append(self._compiled_function(function_name, source))
+            functions.append(self._compiled_function(function_name, source, TASK_FUNCTION_NAMES))
             statement_table.append(f"    {source!r}: {function_name},")
 
         blocks.append("\n\n".join(functions))
@@ -516,10 +521,20 @@ def _compiled(table, text, kind):
         return "\n".join(lines)
 
     @classmethod
-    def _compiled_function(cls, name: str, source: str) -> str:
+    def _compiled_function(cls, name: str, source: str, known_builtins: frozenset[str]) -> str:
         """`source` as a real function of the scope: one binding line per name
         it actually reads, then the text verbatim — which is the whole point
         of compiling it.
+
+        `known_builtins` is the simpleeval function set the interpreted path
+        would resolve `source` against (TRIGGER_FUNCTION_NAMES for a
+        trigger/env expression, TASK_FUNCTION_NAMES for a task/on-exit
+        statement — see automaton/core.py). A name in that set is never a
+        scope root: `zip`, `len`, `range`, `int`... are real Python builtins
+        already, and `rand`/`randint` are module-level names this file's own
+        preamble defines to match simpleeval's. Binding one from `_scope`
+        instead — the bug this excludes — raises KeyError, because the
+        scope dict has no 'zip' key to find.
 
         Everything that reaches either primitive is an expression, never a
         statement: simpleeval only ever evaluates expressions, and the two
@@ -534,7 +549,7 @@ def _compiled(table, text, kind):
         bindings = "\n".join(
             f"    {root} = {cls._ADAPTERS[root]}(_scope[{root!r}])" if root in cls._ADAPTERS
             else f"    {root} = _scope[{root!r}]"
-            for root in sorted(cls._roots(source, "eval"))
+            for root in sorted(cls._roots(source, "eval") - known_builtins)
         )
         indented = "\n".join(f"        {line}" for line in source.splitlines())
         return f"def {name}(_scope):\n" + (f"{bindings}\n" if bindings else "") + f"    return (\n{indented}\n    )\n"

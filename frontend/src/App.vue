@@ -10,7 +10,6 @@ import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import HumanTakeoverToasts from './components/HumanTakeoverToasts.vue'
 import DialogHost from './components/DialogHost.vue'
-import BackgroundAudioPlayer from './components/BackgroundAudioPlayer.vue'
 import { requestedOperatorSession, clearRequestedOperatorSession } from './humanTakeoverStore.js'
 import { busChannel } from './busChannel.js'
 import { needsLogin } from './authStore.js'
@@ -164,7 +163,6 @@ onBeforeUnmount(() => {
   <ToastContainer />
   <HumanTakeoverToasts />
   <DialogHost />
-  <BackgroundAudioPlayer />
 
   <LoginView v-if="needsLogin" @logged-in="handleLoggedIn" />
 

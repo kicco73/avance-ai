@@ -45,6 +45,11 @@ def test_every_key_is_evaluated_independently_against_the_current_scope_and_no_e
     assert automaton.eval_action_env(_action({"mood": "'happy'", "score": "score * 2"}), {"score": 5}) == ({"mood": "happy", "score": 10}, ())
 
 
+def test_len_is_available_to_an_env_expression():
+    automaton = _automaton()
+    assert automaton.eval_action_env(_action({"count": "len(names)"}), {"names": ["a", "b", "c"]}) == ({"count": 3}, ())
+
+
 @pytest.mark.parametrize(("env", "scope"), [
     ({"total": "count + 1"}, {"count": None}),
     ({"A": "A + 1"}, {}),

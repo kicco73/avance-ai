@@ -33,11 +33,13 @@ import { renderMarkdown } from '../markdown.js'
 
 .toast-card {
   pointer-events: auto;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-left: 4px solid #6366f1;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18), 0 2px 8px rgba(15, 23, 42, 0.08);
   overflow: hidden;
+  backdrop-filter: blur(6px);
 }
 
 .toast-header {
@@ -45,15 +47,13 @@ import { renderMarkdown } from '../markdown.js'
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.5rem 0.6rem;
-  background: #f5f5f7;
-  border-bottom: 1px solid #eee;
+  padding: 0.65rem 0.5rem 0.65rem 0.8rem;
 }
 
 .toast-title {
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #333;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #111827;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -61,26 +61,31 @@ import { renderMarkdown } from '../markdown.js'
 
 .toast-close {
   flex-shrink: 0;
-  width: 1.4rem;
-  height: 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
   line-height: 1;
   border: none;
-  border-radius: 6px;
-  background: none;
-  color: #666;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.06);
+  color: #6b7280;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.05rem;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .toast-close:hover {
-  background: #e5e5e5;
+  background: rgba(15, 23, 42, 0.12);
+  color: #111827;
 }
 
 .toast-body {
-  padding: 0.5rem 0.6rem;
-  font-size: 0.82rem;
-  line-height: 1.4;
-  color: #444;
+  padding: 0 0.9rem 0.8rem 0.8rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #4b5563;
 }
 
 .toast-body :deep(p) {

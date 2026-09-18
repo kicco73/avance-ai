@@ -6,7 +6,7 @@ from automaton.builder.archive_resolver import ProjectArchives
 from automaton.automaton import EnvKey, Source, State
 from automaton.builder.build_cursor import BuildCursor
 from automaton.choice_namespace import choice_key_names
-from automaton.core import TASK_FUNCTION_NAMES
+from automaton.core import TASK_FUNCTION_NAMES, TRIGGER_FUNCTION_NAMES
 from automaton.env_types import STORED_ENV_TYPES
 from automaton.file_types import media_doc_id_for
 from automaton.identifier_registry import IdentifierRegistry
@@ -370,7 +370,7 @@ class AutomatonValidator:
             if action.trigger:
                 self.validate_namespaced_expression(
                     action.trigger, f"{action_context}: trigger", registry_for_triggers, sources,
-                    namespaces=namespaces.names,
+                    namespaces=namespaces.names, known_builtins=TRIGGER_FUNCTION_NAMES,
                 )
             if action.env:
                 for env_key, expression in action.env.items():
@@ -382,6 +382,7 @@ class AutomatonValidator:
                     self.validate_namespaced_expression(
                         expression, f"{action_context}: env expression for '{env_key}'",
                         registry_for_triggers, sources, namespaces=namespaces.names,
+                        known_builtins=TRIGGER_FUNCTION_NAMES,
                     )
                     self.validate_env_key_type(env_keys[env_key], expression, action_context)
             if action.task:

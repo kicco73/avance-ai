@@ -76,9 +76,11 @@ class DeferredExpression(object):
 
 
 _TASK_EXTRA_FUNCTIONS: dict[str, Any] = {"zip": zip, "len": len, "range": range}
+_TRIGGER_EXTRA_FUNCTIONS: dict[str, Any] = {"len": len}
 
 BASE_FUNCTION_NAMES = frozenset(simpleeval.EvalWithCompoundTypes().functions)
 TASK_FUNCTION_NAMES = BASE_FUNCTION_NAMES | frozenset(_TASK_EXTRA_FUNCTIONS)
+TRIGGER_FUNCTION_NAMES = BASE_FUNCTION_NAMES | frozenset(_TRIGGER_EXTRA_FUNCTIONS)
 
 
 class _TaskEval(simpleeval.EvalWithCompoundTypes):
@@ -391,7 +393,9 @@ class CoreAutomaton(object):
         """One `trigger`/`env:`/on-exit-assignment expression, evaluated
         against `scope`. Raises whatever evaluation raises; every caller
         above decides for itself what a failure means."""
-        return simpleeval.EvalWithCompoundTypes(names=scope).eval(expression)
+        evaluator = simpleeval.EvalWithCompoundTypes(names=scope)
+        evaluator.functions.update(_TRIGGER_EXTRA_FUNCTIONS)
+        return evaluator.eval(expression)
 
     @classmethod
     def _evaluate_statement(cls, statement: str, scope: EvaluationScope) -> Any:

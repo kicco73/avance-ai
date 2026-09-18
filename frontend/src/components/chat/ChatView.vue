@@ -9,6 +9,7 @@ import ChatWaitingPanel from './ChatWaitingPanel.vue'
 import ChartDialog from './ChartDialog.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
+import MusicToggleButton from '../MusicToggleButton.vue'
 import AppHeader from '../AppHeader.vue'
 import SplashScreen from '../SplashScreen.vue'
 import ErrorBanner from '../ErrorBanner.vue'
@@ -20,6 +21,7 @@ import {
 } from '../../chatStoreFactory.js'
 import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
 import { customDialog } from '../../dialogStore.js'
+import { backgroundAudioUrl } from '../../backgroundAudioStore.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
@@ -183,7 +185,7 @@ watch(
   >
     <div class="chat-window">
     <AppHeader
-      v-if="!hideSessionsPanel"
+      v-if="!hideSessionsPanel || backgroundAudioUrl"
       variant="overlay"
     >
       <template #left>
@@ -196,16 +198,19 @@ watch(
         >«</button>
       </template>
       <template #right>
-        <ProjectsMenu
-          session-actions
-          subscribed-only
-          :close-session-disabled="!selectedSessionActive"
-          @select="(name) => emit('project-select', name)"
-          @download="(name) => emit('project-download', name)"
-          @new-session="handleNewSession"
-          @close-session="handleCloseSession"
-        />
-        <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
+        <MusicToggleButton />
+        <template v-if="!hideSessionsPanel">
+          <ProjectsMenu
+            session-actions
+            subscribed-only
+            :close-session-disabled="!selectedSessionActive"
+            @select="(name) => emit('project-select', name)"
+            @download="(name) => emit('project-download', name)"
+            @new-session="handleNewSession"
+            @close-session="handleCloseSession"
+          />
+          <ProfileMenu :profile="profile" @home="emit('home')" @profile="emit('profile')" @logout="emit('logout')" />
+        </template>
       </template>
     </AppHeader>
 

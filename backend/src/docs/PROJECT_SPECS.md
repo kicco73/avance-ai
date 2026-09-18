@@ -415,8 +415,9 @@ depend on interpreting the conversation.
 
 **5.2 Trigger expressions.** A boolean-ish expression evaluated with
 [`simpleeval`](https://pypi.org/project/simpleeval/) — comparisons,
-boolean logic, arithmetic, plus attribute access/calls **only** on the
-namespaces below (never arbitrary Python — no imports, no other calls):
+boolean logic, arithmetic, `len(...)`, plus attribute access/calls
+**only** on the namespaces below (never arbitrary Python — no imports,
+no other bare calls):
 
 ```text
 signal.mood >= 70
@@ -424,6 +425,7 @@ engagement >= 20 and retention >= 1
 (signal.mood >= 40 and engagement >= 10) or signal_stability < 20
 session.number_of_user_sessions() >= 3 and session.state_duration_in_minutes() > 30
 user.role == "admin"
+len(env.notes) > 0
 ```
 
 | Namespace | Resolves to | Access |
