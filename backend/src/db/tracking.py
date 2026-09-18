@@ -26,7 +26,7 @@ class TrackingMixin:
         return row.id
 
     def get_latest_signal_snapshot(self, project_id: str) -> dict | None:
-        row = Tracking.select().join(CoreSession, on=Tracking.session == CoreSession.id).where((CoreSession.project == project_id) & Tracking.values.is_null(False)).order_by(Tracking.timestamp.desc()).first()
+        row = Tracking.select().join(CoreSession, on=Tracking.session == CoreSession.id).where((CoreSession.project == project_id) & Tracking.values.is_null(False)).order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         if row is None:
             return None
         return json.loads(row.values)
@@ -203,7 +203,7 @@ class TrackingMixin:
             query = query.where(Tracking.old_state != Tracking.new_state)
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
-        return query.order_by(Tracking.timestamp.desc()).first()
+        return query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
 
     def get_current_state(self, project_id: str, *, type: str | None=None) -> str | None:
         transition = self._latest_transition(project_id, type=type)
@@ -217,7 +217,7 @@ class TrackingMixin:
         transition = (
             Tracking.select()
             .where((Tracking.session == session_id) & Tracking.new_state.is_null(False))
-            .order_by(Tracking.timestamp.desc())
+            .order_by(Tracking.timestamp.desc(), Tracking.id.desc())
             .first()
         )
         if transition is not None:
@@ -235,7 +235,7 @@ class TrackingMixin:
         )
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
-        transition = query.order_by(Tracking.timestamp.desc()).first()
+        transition = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return transition.timestamp if transition else None
 
     def get_last_entry_timestamp_for_session(self, session_id: int, state_key: str) -> datetime | None:
@@ -251,7 +251,7 @@ class TrackingMixin:
         transition = (
             Tracking.select()
             .where((Tracking.session == session_id) & (Tracking.new_state == state_key))
-            .order_by(Tracking.timestamp.desc())
+            .order_by(Tracking.timestamp.desc(), Tracking.id.desc())
             .first()
         )
         return transition.timestamp if transition else None
@@ -265,7 +265,7 @@ class TrackingMixin:
         query = Tracking.select(Tracking.env).join(CoreSession, on=Tracking.session == CoreSession.id).where((CoreSession.project == project_id) & (CoreSession.username == user) & Tracking.env.is_null(False))
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
-        row = query.order_by(Tracking.timestamp.desc()).first()
+        row = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.env) if row is not None else {}
 
     def set_env(self, session_id: int, env: dict, message_id: int | None=None) -> None:
@@ -275,7 +275,7 @@ class TrackingMixin:
         query = Tracking.select(Tracking.action_env).join(CoreSession, on=Tracking.session == CoreSession.id).where((CoreSession.project == project_id) & (CoreSession.username == user) & Tracking.action_env.is_null(False))
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
-        row = query.order_by(Tracking.timestamp.desc()).first()
+        row = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.action_env) if row is not None else {}
 
     def set_action_env(self, session_id: int, action_env: dict, origin: str | None = None) -> int:
@@ -294,7 +294,7 @@ class TrackingMixin:
         )
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
-        row = query.order_by(Tracking.timestamp.desc()).first()
+        row = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.local_memory) if row is not None else {}
 
     def set_local_memory(self, session_id: int, values: dict) -> None:

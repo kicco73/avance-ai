@@ -317,12 +317,6 @@ class CoreAutomaton(object):
                 continue
             if isinstance(value, JsSnippet):
                 snippets.append(value)
-            else:
-                logger.warning(
-                    "on-exit statement ignored for action '%s': '%s' is neither an 'env.<key> = expr' "
-                    "assignment nor a 'chat.<method>(...)' call.",
-                    action.name, statement,
-                )
         return result, ("\n".join(snippets) if snippets else None), tuple(failures)
 
     @classmethod

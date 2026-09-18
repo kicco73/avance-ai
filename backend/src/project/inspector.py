@@ -357,9 +357,9 @@ class ProjectInspector:
     def _modified_archive_names(self, project_id: str, revision: int, published_revision: int | None) -> list[str]:
         if published_revision is None or revision == published_revision:
             return []
-        current = self._db.get_archives(project_id, revision=revision)
-        published = self._db.get_archives(project_id, revision=published_revision)
+        current = self._db.get_archive_hashes(project_id, revision=revision)
+        published = self._db.get_archive_hashes(project_id, revision=published_revision)
         return [
-            name for name, content in current.items()
-            if not name.startswith(f"{CACHE_DIR}/") and published.get(name) != content
+            name for name, file_hash in current.items()
+            if not name.startswith(f"{CACHE_DIR}/") and published.get(name) != file_hash
         ]

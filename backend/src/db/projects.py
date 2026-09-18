@@ -144,6 +144,19 @@ class ProjectMixin:
             )
         }
 
+    def get_archive_hashes(self, project_id: str, revision: int | None = None) -> dict:
+        """Same keys as get_archives, but the content-addressed File hash
+        in place of the content itself — for callers that only need to
+        tell whether a file changed, not read it."""
+        if revision is None:
+            revision = self.get_project_revision(project_id)
+        return {
+            row.archive_name: row.hash_id
+            for row in Archive.select(Archive.archive_name, Archive.hash).where(
+                (Archive.project == project_id) & (Archive.revision == revision)
+            )
+        }
+
     def _upsert_archive(
         self, project_id: str, archive_name: str, revision: int, content: bytes, content_type: str,
     ) -> None:
