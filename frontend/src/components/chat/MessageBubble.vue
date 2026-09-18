@@ -304,6 +304,8 @@ const {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .bubble-bulging {
