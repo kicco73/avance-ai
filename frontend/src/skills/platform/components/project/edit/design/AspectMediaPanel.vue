@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import VuePdfEmbed from 'vue-pdf-embed'
 import { projectFileTypes } from '../../../../../../projectFileTypes.js'
 
 const props = defineProps({
@@ -17,6 +18,9 @@ const fileType = computed(() => projectFileTypes.value.of(props.fileName))
       <audio :key="contentUrl" controls preload="metadata" :src="contentUrl"></audio>
       <span class="aspect-media-type">{{ fileType.label }}</span>
     </div>
+    <div v-else-if="fileType.isPdf" class="aspect-media-content aspect-media-pdf">
+      <VuePdfEmbed :key="contentUrl" :source="contentUrl" />
+    </div>
     <div v-else class="aspect-media-content aspect-media-image">
       <img :key="contentUrl" :src="contentUrl" :alt="fileName" />
     </div>
@@ -32,4 +36,7 @@ const fileType = computed(() => projectFileTypes.value.of(props.fileName))
 .aspect-media-audio audio { width: min(100%, 30rem); }
 .aspect-media-filename { max-width: 100%; font-size: 0.9rem; font-weight: 600; color: #333; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aspect-media-type { font-size: 0.8rem; color: #777; }
+.aspect-media-pdf { justify-content: center; overflow: auto; background: #666; padding: 1rem 0; }
+.aspect-media-pdf :deep(.vue-pdf-embed) { max-width: 100%; }
+.aspect-media-pdf :deep(.vue-pdf-embed__page) { margin: 0 auto 0.75rem; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 </style>

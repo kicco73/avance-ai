@@ -144,50 +144,50 @@ class BenchmarkObservationBuilder(object):
         with the message whose post-message evaluation produced the signal row.
         """
         points: dict[tuple[int, int], dict[str, Any]] = {}
-        for row in messages.itertuples(index=False):
-            if pd.notna(row.expected_state) and row.expected_state:
-                points[(int(row.session_id), int(row.id))] = {
-                    "session_id": int(row.session_id),
-                    "message_id": int(row.id),
-                    "timestamp": pd.Timestamp(row.timestamp),
-                    "expected_state": str(row.expected_state),
+        for row in messages.to_dict("records"):
+            if pd.notna(row["expected_state"]) and row["expected_state"]:
+                points[(int(row["session_id"]), int(row["id"]))] = {
+                    "session_id": int(row["session_id"]),
+                    "message_id": int(row["id"]),
+                    "timestamp": pd.Timestamp(row["timestamp"]),
+                    "expected_state": str(row["expected_state"]),
                     "expected_values": None,
                     "actual_values": None,
                 }
 
         if not signals.empty:
-            for row in signals.itertuples(index=False):
-                expected_values = row.expected_values
+            for row in signals.to_dict("records"):
+                expected_values = row["expected_values"]
                 if pd.isna(expected_values) or not expected_values:
                     continue
-                if pd.isna(row.message_id):
+                if pd.isna(row["message_id"]):
                     raise ValueError(
-                        f"Tracking row {row.id!r} in session {row.session_id!r} has expected_values "
+                        f"Tracking row {row['id']!r} in session {row['session_id']!r} has expected_values "
                         "but no message_id."
                     )
-                message_rows = messages.loc[messages["id"].eq(int(row.message_id))]
+                message_rows = messages.loc[messages["id"].eq(int(row["message_id"]))]
                 if message_rows.empty:
                     raise ValueError(
-                        f"Tracking row {row.id!r} in session {row.session_id!r} references unknown "
-                        f"message_id {int(row.message_id)!r}."
+                        f"Tracking row {row['id']!r} in session {row['session_id']!r} references unknown "
+                        f"message_id {int(row['message_id'])!r}."
                     )
                 message = message_rows.iloc[0]
-                key = (int(row.session_id), int(message["id"]))
+                key = (int(row["session_id"]), int(message["id"]))
                 message_expected_state = message.get("expected_state")
                 point = points.setdefault(
                     key,
                     {
-                        "session_id": int(row.session_id),
+                        "session_id": int(row["session_id"]),
                         "message_id": int(message["id"]),
-                        "timestamp": pd.Timestamp(row.timestamp),
+                        "timestamp": pd.Timestamp(row["timestamp"]),
                         "expected_state": message_expected_state if pd.notna(message_expected_state) else None,
                         "expected_values": None,
                         "actual_values": None,
                     },
                 )
                 point["expected_values"] = expected_values
-                point["actual_values"] = row.values
-                point["timestamp"] = pd.Timestamp(row.timestamp)
+                point["actual_values"] = row["values"]
+                point["timestamp"] = pd.Timestamp(row["timestamp"])
 
         return sorted(points.values(), key=lambda point: (point["session_id"], point["message_id"]))
 
@@ -211,10 +211,10 @@ class BenchmarkObservationBuilder(object):
 
     @staticmethod
     def _message_position(messages: pd.DataFrame, message_id: int) -> int | None:
-        rows = messages.index[messages["id"].eq(message_id)]
-        if len(rows) == 0:
+        rows = messages.index[messages["id"].eq(message_id)].tolist()
+        if not rows:
             return None
-        return int(rows[0]) - int(messages.index[0])
+        return int(rows[0]) - int(messages.index.tolist()[0])
 
     @staticmethod
     def _transition_for_expected_point(

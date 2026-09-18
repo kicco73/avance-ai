@@ -73,6 +73,9 @@ class ProjectService(object):
     def get_automaton(self, project_id: str, revision: int) -> Automaton:
         return self.inspector.get_automaton(project_id, revision)
 
+    def get_draft_automaton(self, project_id: str) -> Automaton:
+        return self.inspector.get_draft_automaton(project_id)
+
     def list_drive_files(self, project_id: str, user_id: str, prefix: str = "") -> list[dict]:
         return self.db.list_drive_files(project_id, user_id, prefix)
 
@@ -235,6 +238,9 @@ class ProjectService(object):
 
     async def modernize_index_yml(self, project_id: str) -> dict:
         return await self.editor.modernize_index_yml(project_id)
+
+    async def migrate_legacy_media_assets(self, project_id: str) -> dict:
+        return await self.editor.migrate_legacy_media_assets(project_id)
 
     async def set_service_level(
         self, project_id: str, service: str, level: str

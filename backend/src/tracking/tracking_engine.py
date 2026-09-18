@@ -236,7 +236,12 @@ class TrackingEngine:
         signal_values). Returns the keys it actually wrote, so whoever
         ran the turn can say so on the way out (see turn/outbound.py);
         on-exit's own value for a key wins over env:'s should an action
-        somehow declare both. Then hands `action.task` (§6.5's
+        somehow declare both. A key whose expression raised is never in
+        that return value, and is not a value silently lost either: it
+        is pushed to the interface as a `chat.notify(...)` toast, the
+        same "notification" frame chat.* calls already use — a failed
+        write is not something a log line alone should hide. Then hands
+        `action.task` (§6.5's
         task.* calls) to the scope's own task namespace, which runs it
         as an ActionTask due now — never inline here: task.prompt
         is a model call, send_mail a network call, and the browser gets
@@ -259,12 +264,19 @@ class TrackingEngine:
             automaton, state_key, signal_values, selection, session_id=session_id, output_values=output_values,
         )
         updates: dict = {}
+        failures: list[tuple[str, Exception]] = []
         if action.env:
-            updates.update(automaton.eval_action_env(action, scope))
+            env_updates, env_failures = automaton.eval_action_env(action, scope)
+            updates.update(env_updates)
+            failures.extend(env_failures)
         chat_snippets: str | None = None
         if action.on_exit:
-            on_exit_updates, chat_snippets = automaton.eval_action_on_exit(action, scope)
+            on_exit_updates, chat_snippets, on_exit_failures = automaton.eval_action_on_exit(action, scope)
             updates.update(on_exit_updates)
+            failures.extend(on_exit_failures)
+        if failures:
+            failure_snippet = scope["chat"].notify("Automation error", self._failure_body(action, failures))
+            chat_snippets = "\n".join(snippet for snippet in (chat_snippets, failure_snippet) if snippet)
         if updates:
             self._env.update_action_set(updates)
         if action.task:
@@ -272,6 +284,11 @@ class TrackingEngine:
         if chat_snippets:
             scope["chat"].push_notification(chat_snippets)
         return updates
+
+    @staticmethod
+    def _failure_body(action: Action, failures: list[tuple[str, Exception]]) -> str:
+        lines = [f"- `{label}` — {type(exc).__name__}: {exc}" for label, exc in failures]
+        return f"Action '{action.name}' did not write everything it should have:\n" + "\n".join(lines)
 
     def schedule_task(
         self, automaton: Automaton, action: Action, state_key: str, selection: ChoiceSelection,

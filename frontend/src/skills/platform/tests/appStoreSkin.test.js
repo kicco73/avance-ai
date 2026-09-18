@@ -144,7 +144,7 @@ describe('AppSkinSource reads the app store, at the published revision', () => {
   afterEach(() => vi.clearAllMocks())
 
   it('asks the app-store endpoint for index.css and resolves its asset urls against the app', async () => {
-    fetchMock.mockResolvedValue({ ok: true, text: async () => '.chat-body { background-image: url("aspect/fondo.jpeg"); }' })
+    fetchMock.mockResolvedValue({ ok: true, text: async () => '.chat-body { background-image: url("fondo.jpeg"); }' })
 
     const css = await new AppSkinSource({ value: 'aprendre_catala' }).css()
 
@@ -152,7 +152,7 @@ describe('AppSkinSource reads the app store, at the published revision', () => {
       expect.stringContaining('/app-store/apps/aprendre_catala/files/index.css/content'),
       expect.objectContaining({ credentials: 'include', cache: 'no-store' })
     )
-    expect(css).toContain('/projects/aprendre_catala/files/aspect/fondo.jpeg/content')
+    expect(css).toContain('/projects/aprendre_catala/files/media/fondo.jpeg/content')
   })
 
   it('an app with no index.css leaves nothing to show', async () => {

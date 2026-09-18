@@ -97,6 +97,11 @@ const isAwaitingText = computed(() => isAwaitingReply.value || props.message.tra
 
 const isPending = computed(() => props.message.role === 'assistant' && props.message.pending === true)
 
+const showProgress = computed(() => {
+  const percentage = props.message.progressPercentage
+  return props.message.role === 'assistant' && percentage != null && percentage < 100
+})
+
 function getMessageText(msg) {
   if (props.spokenTextEnabled && msg.role === 'assistant' && msg.audioText) {
     return msg.audioText
@@ -157,7 +162,13 @@ const {
         @click.capture="onBubbleClickCapture"
       >
         <Transition name="tool-status-fade" mode="out-in">
-          <span v-if="isAwaitingReply && message.statusText" key="status" class="tool-status-text" aria-live="polite">
+          <div v-if="showProgress" key="progress" class="progress" role="progressbar" :aria-valuenow="message.progressPercentage" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-title">{{ message.progressTitle }}</div>
+            <div class="progress-track">
+              <div class="progress-fill" :style="{ width: Math.max(0, Math.min(100, message.progressPercentage)) + '%' }"></div>
+            </div>
+          </div>
+          <span v-else-if="isAwaitingReply && message.statusText" key="status" class="tool-status-text" aria-live="polite">
             {{ message.statusText }}
           </span>
           <span
@@ -417,6 +428,54 @@ const {
 .tool-status-fade-enter-active,
 .tool-status-fade-leave-active {
   transition: opacity 0.25s ease;
+}
+
+.progress {
+  min-width: 12rem;
+  padding: 0.1rem 0;
+}
+
+.progress-title {
+  font-size: 0.85rem;
+  margin-bottom: 0.4rem;
+  opacity: 0.85;
+}
+
+.progress-track {
+  position: relative;
+  width: 100%;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.bubble-user .progress-track {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  transition: width 0.4s ease;
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.35) 25%, transparent 25%,
+    transparent 50%, rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0.35) 75%, transparent 75%, transparent
+  );
+  background-size: 1rem 1rem;
+  animation: progress-fill-stripes 1s linear infinite;
+}
+
+@keyframes progress-fill-stripes {
+  from {
+    background-position: 1rem 0;
+  }
+  to {
+    background-position: 0 0;
+  }
 }
 
 .bubble-arriving {

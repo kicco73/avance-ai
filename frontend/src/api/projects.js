@@ -51,6 +51,10 @@ export function getProjects() {
   return apiFetch(`${API_URL}/core/projects`)
 }
 
+export function getSubscribedProjects() {
+  return apiFetch(`${API_URL}/core/projects/subscribed`)
+}
+
 export function getUsers() {
   return apiFetch(`${API_URL}/core/users`)
 }

@@ -140,11 +140,12 @@ def test_eval_action_on_exit_keeps_a_local_for_the_script_and_drops_it_afterward
     )
     scope = EvaluationScope({"env": {"counter": 5}, "chat": FakeChatNamespace(project_id="p")}, automaton=None, state_key="a")
 
-    updates, chat_snippets = _build(_go()).eval_action_on_exit(action, scope)
+    updates, chat_snippets, failures = _build(_go()).eval_action_on_exit(action, scope)
 
     assert updates == {"flight": "Manuel"}
     assert chat_snippets == 'notify("Caso", "1")'
     assert "row" not in scope
+    assert failures == ()
 
 
 def test_build_rejects_a_task_call_from_on_exit():
@@ -185,8 +186,9 @@ def test_declared_env_key_names_and_tracked_signal_names_include_on_exit_writes(
 
 def test_eval_action_on_exit_evaluates_assignments_against_scope_and_skips_bad_ones():
     """Runtime robustness — a bad expression (a stale env reference no
-    longer valid at the revision this scope was built from) is logged
-    and skipped, same eval_action_env contract, never raised."""
+    longer valid at the revision this scope was built from) is logged,
+    reported back in `failures` and skipped, same eval_action_env
+    contract, never raised."""
     from automaton.automaton import Action
 
     action = Action(
@@ -196,9 +198,27 @@ def test_eval_action_on_exit_evaluates_assignments_against_scope_and_skips_bad_o
     from automaton.scope import EvaluationScope
 
     scope = EvaluationScope({"env": {"counter": 5}}, automaton=None, state_key="a")
-    updates, chat_snippets = _build(_go()).eval_action_on_exit(action, scope)
+    updates, chat_snippets, failures = _build(_go()).eval_action_on_exit(action, scope)
     assert updates == {"counter": 6}
     assert chat_snippets is None
+    assert len(failures) == 1 and failures[0][0].startswith("flight:")
+
+
+def test_eval_action_on_exit_env_write_lands_in_place_for_a_later_line():
+    """on-exit is an ordered script, not an unordered `env:` mapping: a
+    later line's own `env.<key>` read sees what an earlier line in this
+    same script just wrote, not the value from before the action fired."""
+    from automaton.automaton import Action
+    from automaton.scope import EvaluationScope
+
+    action = Action(
+        name="go", ui_label="go", ui_button="go", target="b",
+        on_exit="env.counter = env.counter + 1\nstep = env.counter\nenv.flight = str(step)",
+    )
+    scope = EvaluationScope({"env": {"counter": 0}}, automaton=None, state_key="a")
+    updates, _chat_snippets, failures = _build(_go()).eval_action_on_exit(action, scope)
+    assert updates == {"counter": 1, "flight": "1"}
+    assert failures == ()
 
 
 def test_eval_action_on_exit_discards_an_assignment_whose_value_is_not_of_the_keys_declared_type(caplog):
@@ -212,10 +232,11 @@ def test_eval_action_on_exit_discards_an_assignment_whose_value_is_not_of_the_ke
     )
     scope = EvaluationScope({"env": {"counter": 5}}, automaton=None, state_key="a")
     with caplog.at_level(logging.WARNING):
-        updates, _ = _build(_go()).eval_action_on_exit(action, scope)
+        updates, _, failures = _build(_go()).eval_action_on_exit(action, scope)
 
     assert updates == {"flight": "VY3003"}
     assert [record.message for record in caplog.records if "counter" in record.message and "number" in record.message]
+    assert failures == ()
 
 
 def test_eval_action_on_exit_collects_chat_snippets_alongside_env_updates():
@@ -231,6 +252,7 @@ def test_eval_action_on_exit_collects_chat_snippets_alongside_env_updates():
         on_exit="env.counter = env.counter + 1\nchat.celebrate()\nchat.notify('Nice!', 'Done.')",
     )
     scope = EvaluationScope({"env": {"counter": 5}, "chat": FakeChatNamespace(project_id="p")}, automaton=None, state_key="a")
-    updates, chat_snippets = _build(_go()).eval_action_on_exit(action, scope)
+    updates, chat_snippets, failures = _build(_go()).eval_action_on_exit(action, scope)
     assert updates == {"counter": 6}
     assert chat_snippets == 'celebrate()\nnotify("Nice!", "Done.")'
+    assert failures == ()

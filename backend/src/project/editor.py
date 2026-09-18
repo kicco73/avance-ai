@@ -24,8 +24,8 @@ from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .archive.css_validator import CssValidator
 from .archive.layout import (
-    ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, ROOT_FILE_NAMES,
-    SOURCES_DIR,
+    ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, MEDIA_DIR,
+    ROOT_FILE_NAMES, SOURCES_DIR,
 )
 
 if TYPE_CHECKING:
@@ -85,7 +85,7 @@ invalid file is rejected outright.
 %%SPEC%%
 
 You will be given this project's current `index.css`, the basenames of \
-image assets already uploaded under `aspect/` (if any), and a description \
+image assets already uploaded under `media/` (if any), and a description \
 of a problem to solve or change to make. Reply with the complete new \
 `index.css` content that addresses it — the whole file, not a diff or an \
 excerpt, keeping everything unrelated to the request unchanged.
@@ -222,11 +222,11 @@ class ProjectEditor:
         (IndexCssEditorPanel.vue) — same shape as generate_index_yml_ai_edit
         above, built from the skin format spec, this
         project's current index.css, the basenames of its own already-
-        uploaded `aspect/` assets (so the model never invents a `url(...)`
+        uploaded `media/` assets (so the model never invents a `url(...)`
         reference to a file that doesn't exist), and `instruction`. A pure
         preview, nothing persisted here — see generate_index_yml_ai_edit."""
         return await self._generate_file_ai_edit(
-            project_id, instruction, "index.css", ASPECT_DIR, "css",
+            project_id, instruction, "index.css", MEDIA_DIR, "css",
             "skin-specs", "Assets", INDEX_CSS_AI_EDIT_SYSTEM_PROMPT,
         )
 
@@ -283,7 +283,7 @@ class ProjectEditor:
                     raise ValueError(
                         f"index.css has invalid syntax: {'; '.join(syntax_errors)}."
                     )
-                known_names = {Path(name).name for name in existing_names if name.startswith(f"{ASPECT_DIR}/")}
+                known_names = {Path(name).name for name in existing_names if name.startswith(f"{MEDIA_DIR}/")}
                 missing = CssValidator.missing_references(text_content, known_names)
                 if missing:
                     raise ValueError(
@@ -319,7 +319,7 @@ class ProjectEditor:
 
     async def rename_project_file(self, project_id: str, old_name: str, new_name: str) -> dict:
         """Renames one file within the current draft revision, keeping its
-        content and its own category (aspect/behaviour) unchanged — only
+        content and its own category (media/behaviour) unchanged — only
         the basename is user-editable, same as an upload's target name is
         derived from its extension, never a free path. Auto-rewrites any
         literal occurrence of the old basename in index.yml (attachments:,
@@ -342,11 +342,13 @@ class ProjectEditor:
         new_basename = new_name.strip()
         if not new_basename or "/" in new_basename or "\\" in new_basename or new_basename in (".", ".."):
             raise ValueError(f"Invalid file name: '{new_name}' — expected a plain file name, not a path.")
+        old_dir = Path(old_name).parent
+        candidate_name = new_basename if str(old_dir) in (".", "") else f"{old_dir}/{new_basename}"
         try:
-            canonical_new_name = ArchiveLayout.canonicalize_name(new_basename)
+            canonical_new_name = ArchiveLayout.canonicalize_name(candidate_name)
         except ValueError as exc:
             raise ValueError(f"Invalid file name: '{new_basename}' — {exc}") from exc
-        if Path(canonical_new_name).parent != Path(old_name).parent:
+        if canonical_new_name != candidate_name:
             raise ValueError(f"'{new_basename}' would change '{old_name}''s file type — rename within the same type instead.")
         new_name = canonical_new_name
         if new_name == old_name:
@@ -372,7 +374,7 @@ class ProjectEditor:
             content_types[reference_file] = ProjectFileTypes.of(reference_file).content_type
 
         if "index.css" in updated_files:
-            known_names = {Path(name).name for name in archives if name.startswith(f"{ASPECT_DIR}/")}
+            known_names = {Path(name).name for name in archives if name.startswith(f"{MEDIA_DIR}/")}
             missing = CssValidator.missing_references(archives["index.css"].decode("utf-8"), known_names)
             if missing:
                 raise ValueError(f"index.css references missing file(s): {', '.join(sorted(missing))}.")
@@ -448,6 +450,56 @@ class ProjectEditor:
         )
         await index_yml.save_through(self, project_id)
         return {"fixed": list(index_yml.fixes)}
+
+    async def migrate_legacy_media_assets(self, project_id: str) -> dict:
+        """One-time fix-up for a project saved before images/audio moved
+        from `aspect/` to `media/` (see automaton.file_types) — moves any
+        surviving `aspect/<name>` archive whose extension now belongs
+        under MEDIA_DIR to `media/<name>`, keeping its content and
+        undo/redo history exactly as an ordinary rename does (Db.
+        rename_project_file) — deliberately not through this class's own
+        rename_project_file above, whose same-category rule exists to
+        stop a *user* from smuggling a file across folders, not to stop
+        this migration from doing it on purpose. Never rewrites
+        index.css: a url(...) reference is resolved by basename only
+        (CssValidator), and the basename itself never changes here, only
+        the folder. Idempotent: a project with nothing left under
+        `aspect/` — every project going forward — does nothing. Applies
+        to the current draft only; a project published before migrating
+        needs a fresh publish for its published revision to carry the
+        move too."""
+        if project_id not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_id}' does not exist.")
+        archives = self._db.get_archives(project_id)
+        renames: list[tuple[str, str]] = []
+        for name in sorted(archives):
+            if not name.startswith(f"{ASPECT_DIR}/"):
+                continue
+            basename = Path(name).name
+            if ProjectFileTypes.of(basename).folder != MEDIA_DIR:
+                continue
+            target = f"{MEDIA_DIR}/{basename}"
+            if target in archives:
+                logger.warning(
+                    "migrate_legacy_media_assets('%s'): left '%s' in place — '%s' already exists.",
+                    project_id, name, target,
+                )
+                continue
+            renames.append((name, target))
+        if not renames:
+            return {"moved": []}
+        for old_name, new_name in renames:
+            archives[new_name] = archives.pop(old_name)
+        try:
+            new_automaton = AutomatonBuilder().build(archives)
+        except AutomatonBuildError:
+            raise
+        except Exception as exc:
+            raise ValueError(f"Invalid project update: {exc}") from exc
+        for old_name, new_name in renames:
+            self._db.rename_project_file(WebSession().user, project_id, old_name, new_name)
+        await self._manager.finalize_update(project_id, new_automaton)
+        return {"moved": [new_name for _old_name, new_name in renames]}
 
     async def _edit_index_yml_returning_project_id(self, project_id: str, operation):
         current = self.get_project_file(project_id, "index.yml")["content"]
@@ -687,14 +739,18 @@ class ProjectEditor:
     async def delete_project_file(
         self, project_id: str, file_name: str
     ) -> None:
-        """Deleting index.css cascades to every image asset it could have
-        referenced — the file explorer's own "Theme" branch never offers
-        deleting one of those individually while index.css still exists, so
-        an orphaned asset would otherwise just be dead weight. Deleting an
-        asset index.css still references is rejected outright instead:
-        editing index.css's own text to drop the reference is exactly what
-        the CSS editor is for, and rewriting it here on the asset's behalf
-        risks mangling a rule irrecoverably for a small convenience."""
+        """Deleting index.css cascades to every media/ asset it still
+        referenced — never the whole media/ folder, which is shared with
+        every other Media document a project carries: a PDF or standalone
+        image with no url(...) of its own pointing at it is none of
+        index.css's business. The file explorer's own "Aspect" leaf never
+        offers deleting one of those individually while index.css still
+        exists, so an orphaned reference would otherwise just be dead
+        weight. Deleting a media/ asset index.css still references is
+        rejected outright instead: editing index.css's own text to drop
+        the reference is exactly what the CSS editor is for, and
+        rewriting it here on the asset's behalf risks mangling a rule
+        irrecoverably for a small convenience."""
 
         if project_id not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_id}' does not exist.")
@@ -704,7 +760,7 @@ class ProjectEditor:
             matches = [name for name in archives if Path(name).name == file_name]
             if len(matches) == 1:
                 file_name = matches[0]
-        if file_name.startswith(f"{ASPECT_DIR}/"):
+        if file_name.startswith(f"{MEDIA_DIR}/"):
             index_css = archives.get("index.css")
             if index_css is not None and Path(file_name).name in CssValidator.referenced_basenames(index_css.decode("utf-8")):
                 raise ValueError(
@@ -712,12 +768,16 @@ class ProjectEditor:
                     f"there first (or delete index.css itself, which takes its assets with it)."
                 )
 
+        cascade_names = []
+        if file_name == "index.css":
+            referenced = CssValidator.referenced_basenames(archives["index.css"].decode("utf-8"))
+            cascade_names = [
+                name for name in archives
+                if name.startswith(f"{MEDIA_DIR}/") and Path(name).name in referenced
+            ]
+
         try:
             del archives[file_name]
-            cascade_names = (
-                [name for name in archives if name.startswith(f"{ASPECT_DIR}/")]
-                if file_name == "index.css" else []
-            )
             for name in cascade_names:
                 del archives[name]
             new_automaton = AutomatonBuilder().build(archives)

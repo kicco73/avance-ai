@@ -203,3 +203,61 @@ def test_a_compiled_state_keeps_its_signal_tracking_strategy_and_tracks_the_same
     assert compiled.states["start"].signal_tracking_strategy == "all"
     assert compiled.tracked_signal_names("start") == interpreted.tracked_signal_names("start") == {"mood", "pace"}
     assert compiled.tracked_signal_names("end") == interpreted.tracked_signal_names("end") == set()
+
+
+def test_the_draft_is_never_served_compiled_even_right_after_a_publish_leaves_the_two_revisions_equal(db, tmp_path):
+    """The Test chat panel must always run the dynamic draft, never a
+    build — a compiled package exists only for a *published* revision,
+    and right after a publish the draft's own revision number is that
+    same number, which `load_at_revision` alone cannot tell apart from
+    "give me this exact package". `ProjectInspector.get_draft_automaton`
+    (what a 'test' session's own automaton lookup goes through, see
+    ProjectInspector.get_automaton_for_session/get_automaton_and_state)
+    is the seam that keeps that promise."""
+    from project.inspector import ProjectInspector
+
+    revision = _publish(db)
+    _compile_into(tmp_path, revision)
+    loader = _loader(db, tmp_path)
+    live_serves = loader.load_at_revision(PROJECT_ID, revision)
+    assert isinstance(live_serves, CompiledAutomaton), (
+        "sanity check: a package really is being served for this revision"
+    )
+
+    automaton = ProjectInspector(db, loader).get_draft_automaton(PROJECT_ID)
+
+    assert type(automaton).__name__ == "Automaton"
+    assert loader.load_at_revision(PROJECT_ID, revision) is live_serves, (
+        "the draft lookup must never touch the compiled/live cache — "
+        "a live request's own cached instance survives it untouched"
+    )
+
+
+def test_the_draft_is_never_stale_even_though_it_is_never_cached(db, tmp_path):
+    """A project's *own* revision row is rewritten in place by every edit
+    but the first after a publish (see db/projects.py's
+    _ensure_draft_revision: only that first edit forks to revision + 1;
+    every edit after that keeps the same number). A second edit landing
+    on that same, already-forked revision must show up on the very next
+    draft read — there is no cache anywhere on this path for it to be
+    stale in."""
+    from project.inspector import ProjectInspector
+
+    published = _publish(db)
+    loader = _loader(db, tmp_path)
+
+    db.save_project_files(
+        PROJECT_ID, {"index.yml": INDEX.replace("hello", "first edit").encode()}, {"index.yml": "text/yaml"},
+    )
+    forked = db.get_project_revision(PROJECT_ID)
+    assert forked != published, "the first edit after a publish forks a new revision"
+    first = ProjectInspector(db, loader).get_draft_automaton(PROJECT_ID)
+    assert first.general_prompt == "first edit"
+
+    db.save_project_files(
+        PROJECT_ID, {"index.yml": INDEX.replace("hello", "second edit").encode()}, {"index.yml": "text/yaml"},
+    )
+    assert db.get_project_revision(PROJECT_ID) == forked, "a further edit rewrites the same revision in place"
+
+    second = ProjectInspector(db, loader).get_draft_automaton(PROJECT_ID)
+    assert second.general_prompt == "second edit"

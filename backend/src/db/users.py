@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from peewee import SQL, IntegrityError
 
@@ -16,6 +16,9 @@ def _initial_role(email: str | None) -> str:
 
 
 class UserMixin:
+
+    if TYPE_CHECKING:
+        def reassign_drive_files(self, absorbed_id: str, target_id: str) -> None: ...
 
     def is_pre_wired_admin(self, email: str) -> bool:
         return email in _ADMIN_EMAILS
@@ -194,7 +197,7 @@ class UserMixin:
         verify_token), routing straight back through TermsView.vue."""
         User.delete().where(User.id == email).execute()
 
-    def update_last_login(self, user_id: str, name: str, picture_url: str | None) -> None:
+    def update_last_login(self, user_id: str, name: str | None, picture_url: str | None) -> None:
         """Called on every login (see AuthService.login/complete_registration)
         with the identity the provider just verified — refreshes
         name/picture_url alongside the timestamp, so profile data set at

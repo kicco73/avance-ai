@@ -7,19 +7,21 @@ from __future__ import annotations
 from automaton.automaton import Automaton, SignalPayload
 from db import Db
 from system.logging_factory import LoggerFactory
-from project.project_service import ProjectService
 from system.web_session import WebSession
+from tracking.fixed_project_context import ProjectContext
 
 logger = LoggerFactory.get_logger(__name__)
 
 class Signals(object):
-    def __init__(self, project_service: ProjectService, db: Db) -> None:
+    def __init__(self, project_service: ProjectContext, db: Db) -> None:
         self._project_service = project_service
         self._db = db
 
     @property
     def automaton(self) -> Automaton:
-        return self._project_service.get_active_automaton()
+        automaton = self._project_service.get_active_automaton()
+        assert automaton is not None
+        return automaton
 
     def _active_project_id(self) -> str:
         project_id = self._db.get_active_project_id(WebSession().user)

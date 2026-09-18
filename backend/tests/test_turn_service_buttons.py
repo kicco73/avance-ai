@@ -37,6 +37,9 @@ class _FakeProjectService:
     def get_automaton(self, project_id: str, revision: int) -> Automaton:
         return self._automaton
 
+    def get_draft_automaton(self, project_id: str) -> Automaton:
+        return self._automaton
+
     def get_automaton_and_state_for_session(self, session_id: int):
         return self._automaton, self._automaton.states["a"]
 

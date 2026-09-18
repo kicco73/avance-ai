@@ -46,7 +46,7 @@ class FakeEnv:
 
 class FakeScopeBuilder:
     def build(self, automaton, state_key, signal_values, selection, session_id=None, output_values=None):
-        return EvaluationScope({}, automaton=automaton, state_key=state_key)
+        return EvaluationScope({"env": {}}, automaton=automaton, state_key=state_key)
 
 
 class FakeChatNamespaceRecorder(FakeChatNamespace):
@@ -73,7 +73,7 @@ class FakeScopeBuilderWithChat:
         self._chat = chat
 
     def build(self, automaton, state_key, signal_values, selection, session_id=None, output_values=None):
-        return EvaluationScope({"chat": self._chat}, automaton=automaton, state_key=state_key)
+        return EvaluationScope({"env": {}, "chat": self._chat}, automaton=automaton, state_key=state_key)
 
 
 def _automaton(
@@ -200,3 +200,33 @@ def test_apply_action_env_never_touches_chat_when_on_exit_writes_env_only():
     engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
 
     assert env.updates == [{"counter": 1}]
+
+
+def test_apply_action_env_pushes_a_chat_notification_when_an_env_write_fails():
+    """A key whose expression raises does not just vanish behind a log
+    line — it is reported to whoever is watching the conversation as a
+    chat.notify(...) toast, the same frame chat.* calls already use."""
+    automaton, state, action = _automaton(action_target="a", action_env={"counter": "1", "broken": "1 +"})
+    chat = FakeChatNamespaceRecorder()
+    engine = TrackingEngine(FakeSink(), FakeEnv(), FakeScopeBuilderWithChat(chat))
+
+    written = engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
+
+    assert written == {"counter": 1}
+    assert len(chat.pushed) == 1
+    assert chat.pushed[0].startswith("notify(")
+    assert "broken" in chat.pushed[0] and "go" in chat.pushed[0]
+
+
+def test_apply_action_env_pushes_a_chat_notification_when_an_on_exit_expression_fails():
+    automaton, state, action = _automaton(
+        action_target="a", action_on_exit="env.counter = 1\nenv.flight = env.does_not_exist",
+    )
+    chat = FakeChatNamespaceRecorder()
+    engine = TrackingEngine(FakeSink(), FakeEnv(), FakeScopeBuilderWithChat(chat))
+
+    written = engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
+
+    assert written == {"counter": 1}
+    assert len(chat.pushed) == 1
+    assert "flight" in chat.pushed[0]

@@ -1,7 +1,10 @@
 """Automaton.eval_action_env — an action's own `env` field, evaluated like
 a trigger but returning a value of any type instead of a forced boolean
 cast. Unlike a trigger, a failing key here is logged, not swallowed; so
-is a value that is not of the key's declared type.
+is a value that is not of the key's declared type. A key that fails to
+evaluate is also returned in the second element, (label, exception)
+pairs — TaskOutcome.failures' own shape — so a caller can surface it
+rather than let the log line be the only trace of it.
 """
 from __future__ import annotations
 
@@ -36,10 +39,10 @@ def _automaton(env_keys: list[EnvKey] | None = None) -> Automaton:
 
 def test_every_key_is_evaluated_independently_against_the_current_scope_and_no_env_field_yields_nothing():
     automaton = _automaton()
-    assert automaton.eval_action_env(_action(), {}) == {}
-    assert automaton.eval_action_env(_action({"reset_counter": "True"}), {}) == {"reset_counter": True}
-    assert automaton.eval_action_env(_action({"number_of_steps": "number_of_steps + 1"}), {"number_of_steps": 3}) == {"number_of_steps": 4}
-    assert automaton.eval_action_env(_action({"mood": "'happy'", "score": "score * 2"}), {"score": 5}) == {"mood": "happy", "score": 10}
+    assert automaton.eval_action_env(_action(), {}) == ({}, ())
+    assert automaton.eval_action_env(_action({"reset_counter": "True"}), {}) == ({"reset_counter": True}, ())
+    assert automaton.eval_action_env(_action({"number_of_steps": "number_of_steps + 1"}), {"number_of_steps": 3}) == ({"number_of_steps": 4}, ())
+    assert automaton.eval_action_env(_action({"mood": "'happy'", "score": "score * 2"}), {"score": 5}) == ({"mood": "happy", "score": 10}, ())
 
 
 @pytest.mark.parametrize(("env", "scope"), [
@@ -49,17 +52,24 @@ def test_every_key_is_evaluated_independently_against_the_current_scope_and_no_e
 ], ids=["name-still-none", "name-missing-entirely", "malformed-expression"])
 def test_a_key_that_cannot_be_evaluated_is_skipped_and_logged_rather_than_silently_no_op_d(caplog, env, scope):
     """A missing name (e.g. a typo) must be visible — unlike
-    _eval_trigger's silent treatment of the same case."""
+    _eval_trigger's silent treatment of the same case — and reported
+    back to the caller, not just logged."""
     with caplog.at_level(logging.WARNING):
-        result = _automaton().eval_action_env(_action(env), scope)
+        result, failures = _automaton().eval_action_env(_action(env), scope)
 
     assert result == {}
     assert len(caplog.records) == 1
+    assert caplog.records[0].levelno == logging.ERROR
     assert "advance" in caplog.records[0].message
+    assert len(failures) == 1
+    key = next(iter(env))
+    assert failures[0][0].startswith(f"{key}:")
 
 
 def test_one_broken_key_does_not_prevent_others_from_evaluating():
-    assert _automaton().eval_action_env(_action({"broken": "1 +", "fine": "1 + 1"}), {}) == {"fine": 2}
+    result, failures = _automaton().eval_action_env(_action({"broken": "1 +", "fine": "1 + 1"}), {})
+    assert result == {"fine": 2}
+    assert len(failures) == 1 and failures[0][0].startswith("broken:")
 
 
 TYPED_KEYS = [
@@ -74,7 +84,7 @@ TYPED_KEYS = [
     ({"slot": "[]"}, {"slot": []}),
 ], ids=["every-type", "float-is-a-number", "empty-choice"])
 def test_a_value_of_the_declared_type_is_written(env, expected):
-    assert _automaton(TYPED_KEYS).eval_action_env(_action(env), {}) == expected
+    assert _automaton(TYPED_KEYS).eval_action_env(_action(env), {}) == (expected, ())
 
 
 @pytest.mark.parametrize(("env", "expected", "logged"), [
@@ -93,9 +103,10 @@ def test_a_value_outside_the_declared_type_is_discarded_and_logged_while_the_oth
     caplog, env, expected, logged
 ):
     with caplog.at_level(logging.WARNING):
-        result = _automaton(TYPED_KEYS).eval_action_env(_action(env), {})
+        result, failures = _automaton(TYPED_KEYS).eval_action_env(_action(env), {})
 
     assert result == expected
+    assert failures == ()
     assert len(caplog.records) == 1
     message = caplog.records[0].message
     assert "advance" in message and f"'{logged}'" in message

@@ -19,7 +19,8 @@ from db import Db
 from metrics.metric_service import MetricService
 from system.web_session import WebSession
 from tracking.actuators import (
-    AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, TaskNamespace, drive_namespace_for,
+    AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, MediaNamespace, TaskNamespace,
+    drive_namespace_for,
 )
 from tracking.env import Env
 from tracking.project_files import project_files_for
@@ -65,9 +66,10 @@ class EvaluationScopeBuilder(object):
         `output` names and merged onto the `env` namespace, so a trigger
         evaluated the same turn a state produces output already sees the
         new value, ahead of TrackingProcessor.process's own persisted
-        copy-back. env/session/user/source/attachment/metric are cheap,
-        lazy proxies included unconditionally; only the bare core-metric names are gated, since
-        building them is eager. `source`/`attachment` are rebuilt fresh every call
+        copy-back. env/session/user/source/attachment/media/metric are
+        cheap, lazy proxies included unconditionally; only the bare
+        core-metric names are gated, since
+        building them is eager. `source`/`attachment`/`media` are rebuilt fresh every call
         (unlike env/session/user, never threaded through __init__) since
         they need `automaton` itself — a `build()` parameter, not a
         constructor dependency any caller has to wire up separately — to
@@ -90,6 +92,7 @@ class EvaluationScopeBuilder(object):
             "user": self._user.as_dict(),
             "source": source_namespace,
             "attachment": AttachmentNamespace(project_files, automaton),
+            "media": MediaNamespace(project_files, automaton),
             "drive": drive_namespace_for(self._db, automaton, WebSession().user, session_id),
             "metric": self._metrics.for_turn(),
             # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its

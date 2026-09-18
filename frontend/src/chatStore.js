@@ -29,6 +29,7 @@ export const {
   state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
   sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading,
+  chart, dismissChart,
   draft, turnCount,
   setProject,
   handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,

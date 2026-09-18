@@ -1,42 +1,32 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { projectFileTypes } from '../../../../../../projectFileTypes.js'
 
 const props = defineProps({
   files: { type: Array, default: () => [] },
   filesLoading: { type: Boolean, default: true },
   currentFileName: { type: String, default: null },
-  uploading: { type: Boolean, default: false },
   creatingFile: { type: Boolean, default: false },
   explorerWidth: { type: Number, required: true },
   sources: { type: Array, default: () => [] },
   sourcesLoading: { type: Boolean, default: true },
   currentSourceName: { type: String, default: null },
   sourcesRootSelected: { type: Boolean, default: false },
-  modifiedFiles: { type: Array, default: () => [] }
+  modifiedFiles: { type: Array, default: () => [] },
+  mediaRootSelected: { type: Boolean, default: false },
+  attachmentsRootSelected: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
-  'new-attachment', 'new-aspect', 'new-legal', 'new-source', 'new-websearch-source',
-  'select-file', 'select-source', 'select-sources-root', 'upload-file',
+  'new-aspect', 'new-legal',
+  'select-file', 'select-source', 'select-sources-root', 'select-attachments-root',
+  'select-media-root',
 ])
-
-const fileInputRef = ref(null)
-
-function triggerUpload() {
-  fileInputRef.value?.click()
-}
 
 const newFileMenuOpen = ref(false)
 const newFileMenuRootEl = ref(null)
 
 function toggleNewFileMenu() {
   newFileMenuOpen.value = !newFileMenuOpen.value
-}
-
-function selectNewAttachment() {
-  newFileMenuOpen.value = false
-  emit('new-attachment')
 }
 
 function selectNewAspect() {
@@ -47,16 +37,6 @@ function selectNewAspect() {
 function selectNewLegal() {
   newFileMenuOpen.value = false
   emit('new-legal')
-}
-
-function selectAddSource() {
-  newFileMenuOpen.value = false
-  emit('new-source')
-}
-
-function selectAddWebSearch() {
-  newFileMenuOpen.value = false
-  emit('new-websearch-source')
 }
 
 function handleClickOutsideNewFileMenu(event) {
@@ -71,8 +51,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutsideNewFileMenu, true)
 })
 
-const ASPECT_PREFIX = 'aspect/'
 const BEHAVIOUR_PREFIX = 'behaviour/'
+const MEDIA_PREFIX = 'media/'
 const LEGAL_TERMS_FILE_NAME = 'legal/terms.md'
 
 function basename(name) {
@@ -80,13 +60,16 @@ function basename(name) {
   return idx === -1 ? name : name.slice(idx + 1)
 }
 
-const themeAssets = computed(() => props.files.filter((name) => name.startsWith(ASPECT_PREFIX)))
 const behaviorAttachments = computed(() => props.files.filter((name) => name.startsWith(BEHAVIOUR_PREFIX)))
+const mediaAssets = computed(() => props.files.filter((name) => name.startsWith(MEDIA_PREFIX)))
 const hasIndexCss = computed(() => props.files.includes('index.css'))
-const showThemeBranch = computed(() => hasIndexCss.value || themeAssets.value.length > 0)
 const hasLegalTerms = computed(() => props.files.includes(LEGAL_TERMS_FILE_NAME))
 const declaredSources = computed(() => props.sources.map((entry) => entry.source))
-const showSourcesBranch = computed(() => declaredSources.value.length > 0)
+
+function selectMediaRoot() {
+  expanded.value.media = true
+  emit('select-media-root')
+}
 
 const modifiedSet = computed(() => new Set(props.modifiedFiles))
 function isModified(archiveName) {
@@ -96,7 +79,7 @@ function sourceArchiveName(name) {
   return `sources/${name}.csv`
 }
 
-const expanded = ref({ behavior: false, theme: false, sources: false })
+const expanded = ref({ behavior: false, sources: false, attachments: false, media: false })
 function toggleBranch(key) {
   expanded.value[key] = !expanded.value[key]
 }
@@ -107,17 +90,34 @@ function selectSourcesRoot() {
   emit('select-sources-root')
 }
 
+function selectAttachmentsRoot() {
+  expanded.value.behavior = true
+  expanded.value.attachments = true
+  emit('select-attachments-root')
+}
+
 watch(
   () => props.currentFileName,
   (name) => {
-    if (name === 'index.css' || themeAssets.value.includes(name)) expanded.value.theme = true
-    else if (name === 'index.yml' || behaviorAttachments.value.includes(name)) expanded.value.behavior = true
+    if (name === 'index.yml') expanded.value.behavior = true
+    else if (behaviorAttachments.value.includes(name)) { expanded.value.behavior = true; expanded.value.attachments = true }
+    else if (mediaAssets.value.includes(name)) expanded.value.media = true
   }
+)
+
+watch(
+  () => props.mediaRootSelected,
+  (selected) => { if (selected) expanded.value.media = true }
 )
 
 watch(
   () => props.currentSourceName,
   (name) => { if (name != null) { expanded.value.behavior = true; expanded.value.sources = true } }
+)
+
+watch(
+  () => props.attachmentsRootSelected,
+  (selected) => { if (selected) { expanded.value.behavior = true; expanded.value.attachments = true } }
 )
 </script>
 
@@ -126,30 +126,14 @@ watch(
     <div class="file-explorer-header">
       <span class="file-explorer-title">Explorer</span>
       <div class="file-explorer-header-actions">
-        <button class="file-explorer-icon-btn" :disabled="uploading" title="Upload files" @click="triggerUpload">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
-          </svg>
-        </button>
         <div class="file-explorer-new-menu" ref="newFileMenuRootEl">
           <button class="file-explorer-icon-btn" :disabled="creatingFile" title="New file" @click="toggleNewFileMenu">+</button>
           <ul v-if="newFileMenuOpen" class="file-explorer-new-menu-list">
-            <li><button class="file-explorer-new-menu-item" @click="selectNewAttachment">New attachment</button></li>
             <li><button class="file-explorer-new-menu-item" :disabled="hasIndexCss" :title="hasIndexCss ? 'index.css already exists' : ''" @click="selectNewAspect">New aspect</button></li>
             <li><button class="file-explorer-new-menu-item" :disabled="hasLegalTerms" :title="hasLegalTerms ? 'legal/terms.md already exists' : ''" @click="selectNewLegal">New legal</button></li>
-            <li><button class="file-explorer-new-menu-item" @click="selectAddSource">Add source</button></li>
-            <li><button class="file-explorer-new-menu-item" @click="selectAddWebSearch">Add web search</button></li>
           </ul>
         </div>
       </div>
-      <input
-        ref="fileInputRef"
-        type="file"
-        multiple
-        :accept="projectFileTypes.uploadAccept"
-        class="file-explorer-upload-input"
-        @change="emit('upload-file', $event)"
-      />
     </div>
     <p v-if="filesLoading" class="file-explorer-status">Loading…</p>
     <ul v-else class="file-explorer-tree">
@@ -168,22 +152,39 @@ watch(
         </div>
         <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.behavior }">
           <ul class="file-explorer-children">
-            <li v-if="behaviorAttachments.length === 0 && !showSourcesBranch" class="file-explorer-empty">No attachments</li>
-            <li v-for="name in behaviorAttachments" :key="name" class="file-explorer-row">
-              <span class="file-explorer-ai-icon" title="Read by the AI">
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
-              </span>
-              <button
-                class="file-explorer-item file-explorer-item-child"
-                :class="{ 'file-explorer-item-active': name === currentFileName }"
-                :title="basename(name)"
-                @click="emit('select-file', name)"
-              >
-                {{ basename(name) }}
-              </button>
-              <span v-if="isModified(name)" class="file-explorer-modified-dot" title="Modified in this revision"></span>
+            <li class="file-explorer-branch file-explorer-branch-nested">
+              <div class="file-explorer-node-row">
+                <button class="file-explorer-caret" :class="{ 'file-explorer-caret-open': expanded.attachments }" title="Toggle" @click="toggleBranch('attachments')">▸</button>
+                <span class="file-explorer-ai-icon" title="Attachments">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+                </span>
+                <button
+                  class="file-explorer-item"
+                  :class="{ 'file-explorer-item-active': attachmentsRootSelected }"
+                  title="Attachments"
+                  @click="selectAttachmentsRoot"
+                >
+                  Attachments
+                </button>
+              </div>
+              <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.attachments }">
+                <ul class="file-explorer-children">
+                  <li v-if="behaviorAttachments.length === 0" class="file-explorer-empty">No attachments</li>
+                  <li v-for="name in behaviorAttachments" :key="name" class="file-explorer-row">
+                    <button
+                      class="file-explorer-item file-explorer-item-child"
+                      :class="{ 'file-explorer-item-active': name === currentFileName }"
+                      :title="basename(name)"
+                      @click="emit('select-file', name)"
+                    >
+                      {{ basename(name) }}
+                    </button>
+                    <span v-if="isModified(name)" class="file-explorer-modified-dot" title="Modified in this revision"></span>
+                  </li>
+                </ul>
+              </div>
             </li>
-            <li v-if="showSourcesBranch" class="file-explorer-branch file-explorer-branch-nested">
+            <li class="file-explorer-branch file-explorer-branch-nested">
               <div class="file-explorer-node-row">
                 <button class="file-explorer-caret" :class="{ 'file-explorer-caret-open': expanded.sources }" title="Toggle" @click="toggleBranch('sources')">▸</button>
                 <span class="file-explorer-source-icon" title="Sources">
@@ -200,6 +201,7 @@ watch(
               </div>
               <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.sources }">
                 <ul class="file-explorer-children">
+                  <li v-if="declaredSources.length === 0" class="file-explorer-empty">No sources</li>
                   <li v-for="source in declaredSources" :key="source.name" class="file-explorer-row">
                     <button
                       class="file-explorer-item file-explorer-item-child"
@@ -218,9 +220,9 @@ watch(
         </div>
       </li>
 
-      <li v-if="showThemeBranch" class="file-explorer-branch">
+      <li v-if="hasIndexCss" class="file-explorer-branch">
         <div class="file-explorer-node-row">
-          <button class="file-explorer-caret" :class="{ 'file-explorer-caret-open': expanded.theme }" title="Toggle" @click="toggleBranch('theme')">▸</button>
+          <span class="file-explorer-caret-spacer"></span>
           <button
             class="file-explorer-item"
             :class="{ 'file-explorer-item-active': currentFileName === 'index.css' }"
@@ -231,10 +233,27 @@ watch(
           </button>
           <span v-if="isModified('index.css')" class="file-explorer-modified-dot" title="Modified in this revision"></span>
         </div>
-        <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.theme }">
+      </li>
+
+      <li class="file-explorer-branch">
+        <div class="file-explorer-node-row">
+          <button class="file-explorer-caret" :class="{ 'file-explorer-caret-open': expanded.media }" title="Toggle" @click="toggleBranch('media')">▸</button>
+          <span class="file-explorer-media-icon" title="Media">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z"/></svg>
+          </span>
+          <button
+            class="file-explorer-item"
+            :class="{ 'file-explorer-item-active': mediaRootSelected }"
+            title="Media"
+            @click="selectMediaRoot"
+          >
+            Media
+          </button>
+        </div>
+        <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.media }">
           <ul class="file-explorer-children">
-            <li v-if="themeAssets.length === 0" class="file-explorer-empty">No assets</li>
-            <li v-for="name in themeAssets" :key="name" class="file-explorer-row">
+            <li v-if="mediaAssets.length === 0" class="file-explorer-empty">No media</li>
+            <li v-for="name in mediaAssets" :key="name" class="file-explorer-row">
               <button
                 class="file-explorer-item file-explorer-item-child"
                 :class="{ 'file-explorer-item-active': name === currentFileName }"
@@ -275,7 +294,6 @@ watch(
 .file-explorer-icon-btn { display: flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 6px; border: 1px solid #4a6fa5; background: white; color: #4a6fa5; cursor: pointer; padding: 0; font-size: 0.9rem; line-height: 1; }
 .file-explorer-icon-btn:hover:not(:disabled) { background: #4a6fa5; color: white; }
 .file-explorer-icon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.file-explorer-upload-input { display: none; }
 .file-explorer-new-menu { position: relative; }
 .file-explorer-new-menu-list {
   position: absolute;
@@ -309,6 +327,7 @@ watch(
 .file-explorer-row { display: flex; align-items: center; gap: 0.2rem; }
 .file-explorer-ai-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; margin-left: 0.3rem; }
 .file-explorer-source-icon { display: inline-flex; flex-shrink: 0; color: #4a6fa5; margin-left: 0.1rem; }
+.file-explorer-media-icon { display: inline-flex; flex-shrink: 0; color: #b06a00; margin-left: 0.1rem; }
 .file-explorer-modified-dot { flex-shrink: 0; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #f5a623; margin: 0 0.5rem 0 0.1rem; }
 .file-explorer-item { flex: 1; min-width: 0; display: block; text-align: left; padding: 0.4rem 0.5rem; border: none; border-radius: 6px; background: none; cursor: pointer; font-size: 0.85rem; color: #333; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .file-explorer-item-child { font-size: 0.82rem; color: #555; }

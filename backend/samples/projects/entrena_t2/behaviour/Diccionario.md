@@ -1,6 +1,7 @@
-DICCIONARIO DEL SISTEMA DE EVALUACIÓN EN ENTREVISTA MOTIVACIONAL
- 
-# MARCO
+# DICCIONARIO DEL SISTEMA DE EVALUACIÓN EN ENTREVISTA MOTIVACIONAL
+
+## MARCO
+
 EM · Entrevista motivacional (Miller y Rollnick).
 MITI · Sistema de codificación de fidelidad a la EM del que se toman conductas y umbrales.
 Procesos de la EM · Vincular (crear relación) → Enfocar (acordar dirección) → Evocar (hacer emerger la motivación del paciente) → Planificar (concretar el cambio).
@@ -9,8 +10,9 @@ Reflejo de corrección · Impulso del profesional a arreglar el problema: aconse
 Tramos · Escala 0-100 en cinco bandas: 0-20 Reflejo de corrección, 21-40 Inicial, 41-60 Básico (umbral de habilidad básica), 61-80 Competente, 81-100 Experto (umbral de excelencia).
 Nivel · Dificultad del paciente simulado: 1 ambivalente colaborador, 2 escéptico "sí, pero", 3 en discordancia.
 Secreto (SEC) · Información que el paciente simulado solo revela con vínculo suficiente; indicador de que la sesión va bien.
- 
-# CONDUCTAS DEL PROFESIONAL (contadores)
+
+## CONDUCTAS DEL PROFESIONAL (contadores)
+
 PA · Pregunta abierta: invita a elaborar. "Cuénteme..." cuenta como PA.
 PC · Pregunta cerrada: sí/no, dato o cifra. Un reflejo con interrogación es PC.
 RS · Reflejo simple: devuelve lo dicho sin añadir significado. Por defecto en caso de duda.
@@ -29,8 +31,9 @@ NEU · Neutro: saludos, logística, transiciones. No cuenta.
 PARS · Respuesta congruente tras un discurso de cambio: Pregunta abierta de elaboración, Afirmación, Reflejo, Sumario.
 PARS_post_DC · Número de discursos de cambio del paciente seguidos de PARS.
 IGN_post_DC · Número de discursos de cambio ignorados o seguidos de cambio de tema.
- 
-# LENGUAJE DEL PACIENTE (etiquetas ocultas del simulador)
+
+## LENGUAJE DEL PACIENTE (etiquetas ocultas del simulador)
+
 DC · Discurso de cambio: lo que el paciente dice a favor de cambiar.
   Preparatorio: D deseo ("quiero"), C capacidad ("podría"), R razones ("porque"), N necesidad ("tengo que").
   Movilizador: Co compromiso ("voy a"), A activación ("estoy dispuesto"), P pasos dados ("esta semana ya...").
@@ -40,8 +43,9 @@ Ambivalencia · Coexistencia de DC y DM; estado normal, no un obstáculo.
 Balance · Proporción DC / (DC + DM) en un tramo de la conversación.
 Trayectoria del DC · Balance del último tercio menos balance del primer tercio, en puntos porcentuales.
 Balance final · DC / (DC + DM) en el último tercio.
- 
-# TÉCNICAS NOMBRADAS
+
+## TÉCNICAS NOMBRADAS
+
 Reflejo a dos bandas · Refleja ambos lados de la ambivalencia; se termina en el lado del cambio.
 Reflejo amplificado · Exagera ligeramente el mantenimiento para que el paciente lo matice; sin sarcasmo.
 Acuerdo con matiz · Reconoce la parte cierta del mantenimiento y añade un giro.
@@ -54,16 +58,18 @@ Ramillete · Resumen que reúne varios discursos de cambio y los devuelve juntos
 Menú de opciones · Ofrecer varias alternativas con permiso en vez de una recomendación.
 Plan falso · El paciente acepta un plan para terminar la conversación; no hay DC previo ni compromiso propio.
 Digresión · Desvío del paciente hacia otro tema; se reconduce con un reflejo, no cortando.
- 
-# ÍNDICES DE ESTILO (de los contadores a 0-100)
+
+## ÍNDICES DE ESTILO (de los contadores a 0-100)
+
 Ratio R:P · (RS + RC) / (PA + PC). Básico ≥ 1,0; experto ≥ 2,0.
 % PA · PA / (PA + PC). Básico ≥ 50 %; experto ≥ 70 %.
 % RC · RC / (RS + RC). Básico ≥ 40 %; experto ≥ 50 %.
 % congruencia EM · (AF + BC + EA + INF+) / (esos + PER + CONF + DIR + EPR). Básico ≥ 90 %; experto ≥ 98 %.
 Proporción de habla · Palabras del profesional / palabras totales. Mejor cuanto menor; experto < 35 %.
 Respuesta al DC · PARS_post_DC / (PARS_post_DC + IGN_post_DC). Experto ≥ 80 %.
- 
-# AGREGADOS
+
+## AGREGADOS
+
 Relacional · Media de Empatía y Compañerismo.
 Técnico · Media de Cultivar, Suavizar, Enfoque y, si aplica, Planificación.
 Estilo · Media de los índices de estilo.

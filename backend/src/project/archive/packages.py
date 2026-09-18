@@ -143,3 +143,22 @@ def discard_other_revisions(apps_dir: Path, module_name: str, keep_revision: int
             shutil.rmtree(candidate, ignore_errors=True)
             removed.append(candidate)
     return removed
+
+
+def discard_all_packages(apps_dir: Path) -> list[Path]:
+    """Every compiled package under `apps_dir`, gone — every project
+    falls back to interpreted until its next build. For a migration that
+    rewrote Archive rows a package's own `data/` directory was built
+    from: the package still imports fine, but it would keep serving the
+    stale layout forever since nothing here ever compares a package's
+    content against the rows it was built from."""
+    if not apps_dir.is_dir():
+        return []
+    removed = []
+    for candidate in sorted(apps_dir.iterdir()):
+        if not candidate.is_dir():
+            continue
+        shutil.rmtree(candidate, ignore_errors=True)
+        removed.append(candidate)
+    return removed
+    return removed

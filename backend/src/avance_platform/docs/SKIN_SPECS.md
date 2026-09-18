@@ -20,22 +20,27 @@ A skin is:
 - **`index.css`** — one plain CSS file at the project root, alongside
   `index.yml`. Optional: a project with no `index.css` just shows the
   chat widget's own default (unstyled) look.
-- **`aspect/<basename>`** — zero or more image files the stylesheet's own
-  `url(...)` rules reference. Extensions: `.png`, `.jpg`/`.jpeg`, `.gif`,
-  `.webp`, `.svg`. 5 MB max per file.
+- **`media/<basename>`** — zero or more image files the stylesheet's own
+  `url(...)` rules reference — the project's shared Media node (see
+  `docs/PROJECT_SPECS.md`'s own file-explorer section), not a folder of
+  its own: an asset an `index.css` rule references lives there
+  alongside every other media file the project carries (PDFs, standalone
+  images, audio, Markdown docs), told apart only by whether some `url(...)`
+  still names it. Extensions: `.png`, `.jpg`/`.jpeg`, `.gif`, `.webp`,
+  `.svg`. 5 MB max per file.
 
 Both are managed through the same project-files API as every other
 project file:
 
 - `GET /api/skills/platform/projects/{project_name}/files` — lists every file, including
-  `index.css` and each `aspect/...` asset if present.
+  `index.css` and each `media/...` image if present.
 - `PUT /api/skills/platform/projects/{project_name}/files/index.css` — create or edit the
   stylesheet. Body is the raw CSS text, `Content-Type: text/plain`.
 - `PUT /api/skills/platform/projects/{project_name}/files/<any-image-name>` — create or
   edit an asset. Body is the raw image bytes, `Content-Type` must exactly
   match the extension (`image/png`, `image/jpeg`, `image/gif`,
   `image/webp`, or `image/svg+xml`). **Any name you upload under is
-  canonicalized to `aspect/<basename>`** — an image extension always
+  canonicalized to `media/<basename>`** — an image extension always
   lands there regardless of what path you PUT it to (see
   `ArchiveLayout.canonicalize_name`).
 - `GET /api/skills/platform/projects/{project_name}/files/index.css/content` and the
@@ -43,9 +48,21 @@ project file:
 - `DELETE /api/skills/platform/projects/{project_name}/files/index.css` — see §6 for its
   cascade behavior.
 
-In the editor UI (Design tab → file explorer), this is the **"Aspect"**
-branch: "+ → New aspect" seeds a fresh `index.css`, uploading a
-`.png`/`.jpg`/`.gif`/`.webp`/`.svg`/`.css` file there adds an asset.
+In the editor UI (Design tab → file explorer), `index.css` is the
+**"Aspect"** leaf — a single file, no children: "+ → New aspect" seeds a
+fresh one. An asset lives one level down, in the **"Media"** node instead
+— upload an image there and reference its basename from `index.css`,
+same as any other `media/` file.
+
+**Migration note.** Before Media existed, an asset lived under `aspect/`
+instead. `POST /api/skills/platform/projects/{project_name}/media/migrate`
+(`ProjectEditor.migrate_legacy_media_assets`) moves a project's own
+surviving `aspect/<name>` files to `media/<name>` the first time it's
+opened in the editor from here on — `index.css`'s own `url(...)` rules
+need no rewrite either way, since a reference always resolves by
+basename, never by directory (see §2). One-time and idempotent; applies
+to the current draft only, so a project published before migrating needs
+a fresh publish for its published revision to carry the move too.
 
 ## 2. Validation — what makes a save succeed or fail
 
@@ -67,7 +84,7 @@ Every `PUT` of `index.css` is validated **before** anything is persisted
    `http://...`, `https://...`, `//...`, or `data:...`. Every other
    target's **basename** (the last path segment — any directory prefix
    you write is discarded) must match the basename of an existing
-   `aspect/` asset, or the save is rejected:
+   `media/` asset, or the save is rejected:
 
    ```text
    index.css references missing file(s): logo.png.
@@ -75,7 +92,7 @@ Every `PUT` of `index.css` is validated **before** anything is persisted
 
    Practical consequence: `url("logo.png")`, `url("img/logo.png")`, and
    `url("./anything/logo.png")` are all equivalent — only the file's own
-   basename matters, and it must already exist under `aspect/` (upload
+   basename matters, and it must already exist under `media/` (upload
    the image **first**, then reference it — or accept the "missing
    file(s)" error and fix it up afterward).
 
@@ -112,7 +129,7 @@ client-side:
 
 - **`url(...)` rewriting.** Every relative `url(basename)` is rewritten
   to the asset's actual file-content endpoint
-  (`GET /api/skills/platform/projects/{name}/files/aspect/{basename}/content[?session_id=...]`).
+  (`GET /api/skills/platform/projects/{name}/files/media/{basename}/content[?session_id=...]`).
   This is why §2's basename-only rule holds: whatever directory you wrote
   is stripped and replaced regardless. Absolute URLs (`https://...`,
   `data:...`) are left untouched, so an external image/font/data-URI
@@ -209,18 +226,18 @@ it exists — there is no separate publish step beyond Save.
 
 ## 6. Deleting things
 
-- **Deleting an `aspect/` asset still referenced by `index.css`
+- **Deleting a `media/` asset still referenced by `index.css`
   (including inside a comment — see §2.3) is rejected**:
 
   ```text
-  'aspect/logo.png' is still referenced by index.css — remove the
+  'media/logo.png' is still referenced by index.css — remove the
   reference there first (or delete index.css itself, which takes its
   assets with it).
   ```
 
-- **Deleting `index.css` cascades**: every `aspect/` asset is deleted
-  along with it, since none of them mean anything without a stylesheet
-  to reference them.
+- **Deleting `index.css` cascades**: every `media/` asset it still
+  references is deleted along with it — never the rest of `media/`,
+  which belongs to the project's own Media node, not to the skin.
 
 ## 7. Worked example
 
@@ -241,7 +258,7 @@ exactly what "New aspect" seeds for you:
 A fuller example using every mechanism above — a header icon that swaps
 per state, a background image, and a one-off transition rule for one
 specific state change (upload `icon-calm.svg`, `icon-alert.svg`, and
-`bg.jpg` to `aspect/` first):
+`bg.jpg` to `media/` first):
 
 ```css
 .chat-header {
@@ -307,11 +324,11 @@ specific state change (upload `icon-calm.svg`, `icon-alert.svg`, and
   `[data-prev-state]`. Treat anything else (message bubbles, input row,
   mic/audio buttons, sessions panel) as unstyleable in practice.
 - Reference every image as `url("basename.ext")` — path prefixes are
-  ignored, so just use the basename. Upload the asset under `aspect/`
+  ignored, so just use the basename. Upload the asset under `media/`
   (any upload path canonicalizes there) before or immediately after
   referencing it.
 - Keep every `url(...)` basename — including ones inside `/* comments */`
-  — pointing at a file that actually exists under `aspect/`, or the save
+  — pointing at a file that actually exists under `media/`, or the save
   is rejected.
 - Images: `.png`/`.jpg`/`.jpeg`/`.gif`/`.webp`/`.svg` only, 5 MB max each.
 - `<key>` in `.state-<key>`/`[data-state="<key>"]`/`[data-prev-state="<key>"]`

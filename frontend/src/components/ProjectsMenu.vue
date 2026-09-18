@@ -1,13 +1,14 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onProjectsChanged } from '../projectChangeEvents.js'
-import { getProjects } from '../api.js'
+import { getProjects, getSubscribedProjects } from '../api.js'
 
 const props = defineProps({
   selectedName: { type: String, default: null },
   align: { type: String, default: 'right' },
   sessionActions: { type: Boolean, default: false },
-  closeSessionDisabled: { type: Boolean, default: false }
+  closeSessionDisabled: { type: Boolean, default: false },
+  subscribedOnly: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
@@ -28,7 +29,7 @@ const displayedProjectName = computed(() => props.selectedName ?? activeProjectN
 async function loadProjects() {
   loading.value = true
   try {
-    const res = await getProjects()
+    const res = props.subscribedOnly ? await getSubscribedProjects() : await getProjects()
     projects.value = res.projects
     activeProjectName.value = res.active
   } catch {
@@ -36,6 +37,8 @@ async function loadProjects() {
     loading.value = false
   }
 }
+
+const showAppSwitcher = computed(() => !props.subscribedOnly || projects.value.length > 1)
 
 async function toggle() {
   if (projects.value.length === 0) return
@@ -83,6 +86,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="projects-menu" ref="rootEl">
     <button
+      v-if="showAppSwitcher || sessionActions"
       class="projects-btn"
       :class="{ 'projects-btn-disabled': projects.length === 0 }"
       :disabled="projects.length === 0"
@@ -116,29 +120,31 @@ onBeforeUnmount(() => {
               </button>
             </li>
           </ul>
-          <div class="projects-menu-divider"></div>
+          <div v-if="showAppSwitcher" class="projects-menu-divider"></div>
         </template>
 
-        <p v-if="loading" class="projects-status">Loading…</p>
+        <template v-if="showAppSwitcher">
+          <p v-if="loading" class="projects-status">Loading…</p>
 
-        <ul v-else class="projects-list">
-          <li
-            v-for="project in projects"
-            :key="project.id"
-            class="project-entry"
-          >
-            <button
-              class="projects-item"
-              :title="project.ui_label ?? project.id"
-              @click="selectProject(project.id)"
+          <ul v-else class="projects-list">
+            <li
+              v-for="project in projects"
+              :key="project.id"
+              class="project-entry"
             >
-              <span class="projects-item-check">
-                {{ project.id === displayedProjectName ? '✓' : '' }}
-              </span>
-              <span class="projects-item-label">{{ project.ui_label ?? project.id }}</span>
-            </button>
-          </li>
-        </ul>
+              <button
+                class="projects-item"
+                :title="project.ui_label ?? project.id"
+                @click="selectProject(project.id)"
+              >
+                <span class="projects-item-check">
+                  {{ project.id === displayedProjectName ? '✓' : '' }}
+                </span>
+                <span class="projects-item-label">{{ project.ui_label ?? project.id }}</span>
+              </button>
+            </li>
+          </ul>
+        </template>
       </div>
     </Transition>
   </div>

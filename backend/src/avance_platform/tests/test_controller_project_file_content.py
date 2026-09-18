@@ -32,12 +32,12 @@ TWO_STATE_YML = (
 )
 
 
-def _put_png(client, project_id: str, name: str = "aspect/logo.png", content: bytes = PNG_MAGIC, content_type: str | None = "image/png"):
+def _put_png(client, project_id: str, name: str = "media/logo.png", content: bytes = PNG_MAGIC, content_type: str | None = "image/png"):
     headers = {"Content-Type": content_type} if content_type else {}
     return client.put(f"/api/skills/platform/projects/{project_id}/files/{name}", content=content, headers=headers)
 
 
-def _put_mp3(client, project_id: str, name: str = "aspect/title.mp3", content: bytes = MP3_MAGIC, content_type: str | None = "audio/mpeg"):
+def _put_mp3(client, project_id: str, name: str = "media/title.mp3", content: bytes = MP3_MAGIC, content_type: str | None = "audio/mpeg"):
     headers = {"Content-Type": content_type} if content_type else {}
     return client.put(f"/api/skills/platform/projects/{project_id}/files/{name}", content=content, headers=headers)
 
@@ -67,7 +67,7 @@ def test_get_project_file_reports_content_type_and_real_byte_size_with_content_o
 
     assert _put_png(client, hello_project).status_code == 200
 
-    response = client.get(f"/api/skills/platform/projects/{hello_project}/files/aspect/logo.png")
+    response = client.get(f"/api/skills/platform/projects/{hello_project}/files/media/logo.png")
     assert response.status_code == 200
     body = response.json()
     assert body["content_type"] == "image/png"
@@ -93,7 +93,7 @@ def test_a_missing_index_css_is_204_no_content_while_any_other_missing_file_is_4
 
 
 @pytest.mark.regression
-def test_an_aspect_image_upload_is_readable_back_raw_by_its_bare_name_too(client, hello_project):
+def test_a_media_image_upload_is_readable_back_raw_by_its_bare_name_too(client, hello_project):
     assert _put_png(client, hello_project).status_code == 200
 
     response = client.get(f"/api/core/projects/{hello_project}/files/logo.png/content")
@@ -106,7 +106,7 @@ def test_an_aspect_image_upload_is_readable_back_raw_by_its_bare_name_too(client
 def test_image_upload_rejects_a_bare_name_for_a_new_file_a_mismatched_or_missing_content_type_and_an_oversized_file(client, hello_project):
     bare = _put_png(client, hello_project, name="logo.png")
     assert bare.status_code == 400
-    assert "aspect/logo.png" in bare.json()["error"]["message"]
+    assert "media/logo.png" in bare.json()["error"]["message"]
 
     assert _put_png(client, hello_project, content_type="image/jpeg").status_code == 400
     assert _put_png(client, hello_project, content_type=None).status_code == 400
@@ -119,7 +119,7 @@ def test_index_css_save_rejects_a_missing_relative_reference_but_accepts_existin
     assert missing.status_code == 400
     assert "missing-bg.png" in missing.json()["error"]["message"]
 
-    assert _put_png(client, hello_project, name="aspect/bg.png").status_code == 200
+    assert _put_png(client, hello_project, name="media/bg.png").status_code == 200
     assert _put_css(client, hello_project, b"body { background: url('./bg.png'); }").status_code == 200
     assert _put_css(client, hello_project, b"body { background: url(https://example.com/bg.png); }").status_code == 200
 
@@ -173,25 +173,25 @@ def test_the_file_type_catalog_is_what_the_frontend_reads_instead_of_restating_i
     by_extension = {entry["extension"]: entry for entry in payload["types"]}
     assert by_extension[".mp3"] == {
         "extension": ".mp3", "content_type": "audio/mpeg", "label": "MP3 audio", "kind": "audio",
-        "folder": "aspect", "text": False, "max_upload_bytes": MAX_AUDIO_UPLOAD_BYTES,
+        "folder": "media", "text": False, "max_upload_bytes": MAX_AUDIO_UPLOAD_BYTES,
     }
-    assert by_extension[".png"]["folder"] == "aspect"
+    assert by_extension[".png"]["folder"] == "media"
     assert by_extension[".md"]["folder"] == "behaviour"
     assert by_extension[".yml"]["folder"] == ""
     assert {entry["extension"] for entry in payload["types"]} == {t.extension for t in ProjectFileTypes.all()}
 
 
 @pytest.mark.regression
-def test_an_mp3_uploads_into_aspect_and_is_served_back_as_audio(client, hello_project):
+def test_an_mp3_uploads_into_media_and_is_served_back_as_audio(client, hello_project):
     assert _put_mp3(client, hello_project).status_code == 200
 
-    response = client.get(f"/api/core/projects/{hello_project}/files/aspect/title.mp3/content")
+    response = client.get(f"/api/core/projects/{hello_project}/files/media/title.mp3/content")
     assert response.status_code == 200
     assert response.content == MP3_MAGIC
     assert response.headers["content-type"] == "audio/mpeg"
 
-    assert client.get(f"/api/skills/platform/projects/{hello_project}/files/aspect/title.mp3").json()["media_type"] == "audio/mpeg"
-    assert "aspect/title.mp3" in client.get(f"/api/skills/platform/projects/{hello_project}/files").json()["files"]
+    assert client.get(f"/api/skills/platform/projects/{hello_project}/files/media/title.mp3").json()["media_type"] == "audio/mpeg"
+    assert "media/title.mp3" in client.get(f"/api/skills/platform/projects/{hello_project}/files").json()["files"]
 
 
 @pytest.mark.regression

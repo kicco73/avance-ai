@@ -5,7 +5,7 @@ TurnService/TrackingService."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 from automaton.automaton import Automaton
 from turn.sessions.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
@@ -20,9 +20,7 @@ from metrics.metrics_framework import (
 )
 from metrics.metrics_framework import metric_names as _metric_names
 from system.web_session import WebSession
-
-if TYPE_CHECKING:
-    from project.project_service import ProjectService
+from tracking.fixed_project_context import ProjectContext
 def user_scoped_metrics() -> list[MetricCalculator]:
     return [
         metric for metric in AnalyticsCalculator.default_metrics()
@@ -54,7 +52,7 @@ class MetricService(object):
     def __init__(
         self,
         db: Db,
-        project_service: "ProjectService",
+        project_service: ProjectContext,
         max_session_duration_in_minutes: float = DEFAULT_OPEN_WINDOW_MINUTES,
     ) -> None:
         self._db = db

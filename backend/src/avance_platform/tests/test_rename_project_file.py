@@ -62,7 +62,7 @@ def test_renaming_an_attachment_moves_its_row_and_auto_rewrites_every_index_yml_
 
 
 def test_a_rename_is_refused_for_index_yml_a_taken_name_a_different_category_or_a_name_carrying_a_path(client, hello_project):
-    """Only a plain basename is ever accepted — the folder (aspect/
+    """Only a plain basename is ever accepted — the folder (media/
     behaviour) a rename keeps fixed can't be smuggled in via new_name."""
     _upload_attachment(client, hello_project)
     _upload_attachment(client, hello_project, name="behaviour/b.md", content="b")
@@ -70,7 +70,7 @@ def test_a_rename_is_refused_for_index_yml_a_taken_name_a_different_category_or_
     assert _rename(client, hello_project, "index.yml", "other.yml").status_code == 400
     assert _rename(client, hello_project, "behaviour/notes.md", "b.md").status_code == 400
     assert _rename(client, hello_project, "behaviour/notes.md", "notes.png").status_code == 400
-    assert _rename(client, hello_project, "behaviour/notes.md", "aspect/notes.md").status_code == 400
+    assert _rename(client, hello_project, "behaviour/notes.md", "media/notes.md").status_code == 400
 
     assert "behaviour/notes.md" in _files(client, hello_project)
 

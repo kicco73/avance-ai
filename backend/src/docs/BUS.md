@@ -74,6 +74,8 @@ annotating one. Even reading a transcript opens nothing
 | `output.audio_stream` | `{stream}` — the synthesized audio, for one exchange |
 | `output.tool` | `dict` — one tool call; `phase` tells its two halves apart |
 | `output.reaction` | `{user_message_id, reaction}` — the model reacted to **that** message |
+| `output.chart` | `{title, series}` — `series` is `[{line, value}]`. Published by `chat.chart(title, series)` (`tracking/actuators/chat_namespace.py`), reachable only from an action's own `on-exit:` script. Delivered like `output.text`, through the per-session "who is watching" path, so it reaches only a connection showing that conversation — unlike `output.drive`, which goes to an identity's registered connections instead |
+| `output.progress` | `{title, percentage}` — published by `chat.progress(title, percentage)` (`tracking/actuators/chat_namespace.py`), reachable only from an action's own `on-exit:` script. Delivered like `output.chart`: per-session "who is watching" only, never the identity-wide broadcast `ui.progress` (`system/broadcaster.py`) uses — the two are unrelated, one turn-scoped, one a user-wide bar |
 | `output.error` | `{message, detail, code}` — in place of the reply. Only for things that went wrong: a conversation that cannot be had is `session.blocked` |
 | `state.changed` | `{state, from_state, new_state, triggered_action}` — said only **when it moves**: a reader keeps the last one it was told. `from_state` is where it moved from, so a listener can tell a real transition (`from_state != new_state`) from a self-loop |
 | `env.changed` | `{key, value}` — one env key an action wrote, one message per key: whoever cares that a key moved does not care how many others moved with it. Same envelope as `state.changed` |

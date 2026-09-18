@@ -37,10 +37,12 @@ export function useProjectFiles(projectId, emit) {
   })
   const currentFileIsMarkdown = computed(() => /\.(md|txt)$/i.test(currentFileName.value ?? ''))
   const isBehaviorNodeSelected = computed(() => currentFileName.value === 'index.yml')
-  const themeAssetNames = computed(() => files.value.filter((name) => name.startsWith('aspect/')))
   const hasTheme = computed(() => files.value.includes('index.css'))
   const hasLegalTerms = computed(() => files.value.includes(LEGAL_TERMS_FILE_NAME))
+  const mediaRootSelected = ref(false)
+  const attachmentsRootSelected = ref(false)
   const activeEditorIsDirty = computed(() => {
+    if (mediaRootSelected.value || attachmentsRootSelected.value) return false
     if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value?.isDirty ?? false
     if (currentFileName.value === 'index.css') return indexCssEditorRef.value?.isDirty ?? false
     if (currentFileIsMedia.value) return false
@@ -49,6 +51,7 @@ export function useProjectFiles(projectId, emit) {
   })
 
   function activeEditor() {
+    if (mediaRootSelected.value || attachmentsRootSelected.value) return null
     if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value
     if (currentFileName.value === 'index.css') return indexCssEditorRef.value
     if (currentFileIsMedia.value) return null
@@ -68,7 +71,17 @@ export function useProjectFiles(projectId, emit) {
   }
 
   function switchFile(fileName) {
+    mediaRootSelected.value = false
+    attachmentsRootSelected.value = false
     currentFileName.value = fileName
+  }
+
+  function selectMediaRoot() {
+    guardedAction('view media', () => { mediaRootSelected.value = true; attachmentsRootSelected.value = false })
+  }
+
+  function selectAttachmentsRoot() {
+    guardedAction('view attachments', () => { attachmentsRootSelected.value = true; mediaRootSelected.value = false })
   }
 
   function guardedAction(label, run) {
@@ -141,21 +154,15 @@ export function useProjectFiles(projectId, emit) {
     applyPendingCursorTarget()
   }
 
-  async function handleUploadFile(event) {
-    const uploadedFiles = Array.from(event.target.files ?? [])
-    event.target.value = ''
-    if (!uploadedFiles.length) return
-
-    await ensureProjectFileTypes()
+  async function uploadFiles(uploadedFiles, { accepts, describeAcceptable, canonicalNameFor }) {
     const fileTypes = projectFileTypes.value
-
-    const invalidNames = uploadedFiles.filter((file) => !fileTypes.accepts(file.name)).map((file) => file.name)
+    const invalidNames = uploadedFiles.filter((file) => !accepts(file.name)).map((file) => file.name)
     if (invalidNames.length) {
       setApiError(
-        `Only ${fileTypes.uploadableDescription} files can be uploaded — ` +
+        `Only ${describeAcceptable} files can be uploaded — ` +
         `${invalidNames.map((name) => `"${name}"`).join(', ')} ${invalidNames.length === 1 ? "isn't" : "aren't"}.`
       )
-      return
+      return null
     }
     const oversizedFiles = uploadedFiles.filter((file) => fileTypes.oversized(file))
     if (oversizedFiles.length) {
@@ -163,28 +170,74 @@ export function useProjectFiles(projectId, emit) {
         `${oversizedFiles.map((file) => `"${file.name}" (max ${fileTypes.uploadLimitLabel(file.name)})`).join(', ')} ` +
         `${oversizedFiles.length === 1 ? 'is' : 'are'} larger than the upload limit.`
       )
-      return
+      return null
     }
 
     uploading.value = true
     clearApiError()
+    let lastUploadedName = null
     try {
       for (const file of uploadedFiles) {
-        const targetName = fileTypes.canonicalUploadName(file.name)
+        const targetName = canonicalNameFor(file.name)
         if (fileTypes.hasEditor(file.name)) {
           const text = await file.text()
           await putProjectFile(projectId, targetName, text)
         } else {
           await putProjectFileBinary(projectId, targetName, file)
         }
+        lastUploadedName = targetName
       }
       await loadFiles()
-      const lastUploadedName = fileTypes.canonicalUploadName(uploadedFiles[uploadedFiles.length - 1].name)
-      await selectFile(lastUploadedName)
     } catch {
+      return null
     } finally {
       uploading.value = false
     }
+    return lastUploadedName
+  }
+
+  async function handleUploadFile(event) {
+    const uploadedFiles = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (!uploadedFiles.length) return
+    await ensureProjectFileTypes()
+    const fileTypes = projectFileTypes.value
+    const lastUploadedName = await uploadFiles(uploadedFiles, {
+      accepts: (name) => fileTypes.accepts(name),
+      describeAcceptable: fileTypes.uploadableDescription,
+      canonicalNameFor: (name) => fileTypes.canonicalUploadName(name),
+    })
+    if (lastUploadedName) await selectFile(lastUploadedName)
+  }
+
+  const ATTACHMENT_UPLOAD_RE = /\.(md|txt)$/i
+
+  async function handleUploadAttachment(event) {
+    const uploadedFiles = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (!uploadedFiles.length) return
+    await ensureProjectFileTypes()
+    const fileTypes = projectFileTypes.value
+    const lastUploadedName = await uploadFiles(uploadedFiles, {
+      accepts: (name) => ATTACHMENT_UPLOAD_RE.test(name),
+      describeAcceptable: 'Markdown or text',
+      canonicalNameFor: (name) => fileTypes.canonicalUploadName(name),
+    })
+    if (lastUploadedName) await selectFile(lastUploadedName)
+  }
+
+  async function handleUploadMedia(event) {
+    const uploadedFiles = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (!uploadedFiles.length) return
+    await ensureProjectFileTypes()
+    const fileTypes = projectFileTypes.value
+    const lastUploadedName = await uploadFiles(uploadedFiles, {
+      accepts: (name) => fileTypes.acceptsMedia(name),
+      describeAcceptable: fileTypes.mediaUploadableDescription,
+      canonicalNameFor: (name) => fileTypes.canonicalMediaUploadName(name),
+    })
+    if (lastUploadedName) await selectFile(lastUploadedName)
   }
 
   function toMdFileName(base) {
@@ -242,10 +295,9 @@ export function useProjectFiles(projectId, emit) {
 
   async function handleDeleteFile(fileName) {
     if (fileName === 'index.yml') return
-    const cascadeAssets = fileName === 'index.css' ? themeAssetNames.value : []
     if (projectFileTypes.value.hasEditor(fileName)) {
-      const confirmMessage = cascadeAssets.length
-        ? `Delete "index.css"? This also deletes the ${cascadeAssets.length} asset${cascadeAssets.length === 1 ? '' : 's'} it can reference: ${cascadeAssets.join(', ')}.\n\nThis cannot be undone.`
+      const confirmMessage = fileName === 'index.css'
+        ? 'Delete "index.css"? This also deletes any media/ asset it still references.\n\nThis cannot be undone.'
         : `Delete file "${fileName}"? This cannot be undone.`
       const ok = await confirmDialog({ title: 'Delete file', body: confirmMessage, okLabel: 'Delete', danger: true })
       if (!ok) return
@@ -255,7 +307,7 @@ export function useProjectFiles(projectId, emit) {
     try {
       await deleteProjectFile(projectId, fileName)
       await loadFiles()
-      if (fileName === currentFileName.value || cascadeAssets.includes(currentFileName.value)) {
+      if (!files.value.includes(currentFileName.value)) {
         await switchFile('index.yml')
       }
     } catch {
@@ -304,9 +356,11 @@ export function useProjectFiles(projectId, emit) {
     filesLoading, files, currentFileName, uploading, creatingFile, deletingFile, renamingFile,
     designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
     currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
+    mediaRootSelected, selectMediaRoot,
+    attachmentsRootSelected, selectAttachmentsRoot,
     activeEditorIsDirty, activeEditor,
     loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
-    handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
+    handleUploadFile, handleUploadMedia, handleUploadAttachment, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
     handleFileRenamedByHistory, handleFileSaved,
   }
 }

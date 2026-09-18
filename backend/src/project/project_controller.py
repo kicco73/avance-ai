@@ -130,6 +130,16 @@ class ProjectController(BaseController):
         username = None if role_satisfies(WebSession().role, "supervisor") else WebSession().user
         return self.project_service.inspector.list_projects(username)
 
+    @get("/api/core/projects/subscribed")
+    def get_subscribed_projects(self):
+        """Which projects the caller is subscribed to, ignoring role.
+
+        get_projects above lets a supervisor/admin see every project, which
+        is right for the editor's own project switcher (LabelProjectView) —
+        but LiveChat's app menu (ProjectsMenu.vue with subscribed-only) is
+        the caller's own subscription list even for an elevated account."""
+        return self.project_service.inspector.list_projects(WebSession().user)
+
     @get("/api/core/projects/file-types")
     def get_project_file_types(self):
         """Every file type a project can carry — extension, stored content

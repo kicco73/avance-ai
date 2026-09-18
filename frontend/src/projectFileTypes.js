@@ -20,6 +20,10 @@ class ProjectFileType {
     return this.kind === 'audio'
   }
 
+  get isPdf() {
+    return this.kind === 'pdf'
+  }
+
   get hasEditor() {
     return this.text
   }
@@ -47,6 +51,8 @@ class ProjectFileTypeCatalog {
     this.rootFileNames = payload.root_file_names
     this.types = payload.types.map((type) => new ProjectFileType(type))
     this._byExtension = new Map(this.types.map((type) => [type.extension, type]))
+    this.mediaFolder = payload.media_folder ?? 'media'
+    this.mediaExtensions = new Set(payload.media_extensions ?? [])
   }
 
   of(fileName) {
@@ -83,8 +89,26 @@ class ProjectFileTypeCatalog {
     return this.of(fileName).hasEditor
   }
 
-  livesIn(folder, fileName) {
-    return this.of(fileName).folder === folder
+  isMediaFile(fileName) {
+    return fileName.startsWith(`${this.mediaFolder}/`)
+  }
+
+  acceptsMedia(fileName) {
+    const dot = fileName.lastIndexOf('.')
+    const extension = dot === -1 ? '' : fileName.slice(dot).toLowerCase()
+    return this.mediaExtensions.has(extension)
+  }
+
+  canonicalMediaUploadName(fileName) {
+    return `${this.mediaFolder}/${fileName}`
+  }
+
+  get mediaUploadAccept() {
+    return [...this.mediaExtensions].join(',')
+  }
+
+  get mediaUploadableDescription() {
+    return [...this.mediaExtensions].join(', ')
   }
 
   get uploadableExtensions() {

@@ -1,4 +1,4 @@
-NIVELES DE PRÁCTICA · instrucciones para el simulador
+# NIVELES DE PRÁCTICA · instrucciones para el simulador
 
 Común: el paciente responde siempre en personaje según su ficha. El usuario elige el nivel al empezar (por defecto, 1). Las opciones, cuando las hay, se muestran tras cada turno del paciente, numeradas 1-3. El usuario elige un número o escribe su propia intervención; el paciente responde a lo elegido.
 
@@ -13,6 +13,7 @@ NIVEL 3 · Libre
 Sin opciones. El usuario escribe cada intervención.
 
 Reglas de las opciones (niveles 1 y 2)
+
 - Máximo 25 palabras cada una; de tipos distintos (no tres preguntas).
 - Registro del caso (tú/usted) y momento de la conversación.
 - Nunca PER, CONF, DIR ni EPR.

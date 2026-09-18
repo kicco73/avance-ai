@@ -8,11 +8,12 @@ from automaton.builder.build_cursor import BuildCursor
 from automaton.choice_namespace import choice_key_names
 from automaton.core import TASK_FUNCTION_NAMES
 from automaton.env_types import STORED_ENV_TYPES
+from automaton.file_types import media_doc_id_for
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.trigger_namespaces import TriggerNamespaces
 from metrics.metrics_framework import metric_names
-from tracking.actuators import ChatNamespace, DriveNamespace, MAX_ATTACHMENT_READ_BYTES, TaskNamespace
+from tracking.actuators import ChatNamespace, DriveNamespace, MAX_ATTACHMENT_READ_BYTES, MediaDoc, TaskNamespace
 from tracking.sources import READ_METHOD, driver_class_for
 
 STATE_SOURCE_FIELDS = (
@@ -71,12 +72,13 @@ class AutomatonValidator:
     def validate_namespaced_expression(
         cls, expression: str, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
         known_locals: frozenset[str] = frozenset(), namespaces: frozenset[str] = frozenset(),
-        known_builtins: frozenset[str] = frozenset(),
+        known_builtins: frozenset[str] = frozenset(), media_doc_ids: frozenset[str] = frozenset(),
     ) -> None:
         try:
             namespace_refs = TriggerExpressionAnalyzer.namespace_refs(expression)
             bare_names = TriggerExpressionAnalyzer.bare_names(expression, namespaces)
             source_refs = TriggerExpressionAnalyzer.source_refs(expression)
+            media_refs = TriggerExpressionAnalyzer.media_refs(expression)
         except SyntaxError as exc:
             raise ValueError(f"{context} ('{expression}') is not a valid expression: {exc}") from exc
 
@@ -94,6 +96,11 @@ class AutomatonValidator:
             unsupported = methods - cls.supported_methods(source)
             unknown |= {f"source.{source_name}.{m}" for m in unsupported}
             read_on_a_source = read_on_a_source or "read" in unsupported
+        for doc_id, methods in media_refs.items():
+            if doc_id not in media_doc_ids:
+                unknown.add(f"media.{doc_id}")
+                continue
+            unknown |= {f"media.{doc_id}.{m}" for m in methods - {"url"}}
         if unknown:
             message = f"{context} references undefined name(s): {', '.join(sorted(unknown))}"
             if read_on_a_source:
@@ -101,6 +108,7 @@ class AutomatonValidator:
             raise ValueError(message)
         cls.validate_merged_string_arguments(expression, context)
         cls.validate_source_call_arguments(expression, context, sources)
+        cls.validate_media_call_arguments(expression, context)
         cls.validate_expression_types(expression, context)
 
     @staticmethod
@@ -134,6 +142,27 @@ class AutomatonValidator:
                 raise ValueError(
                     f"{context} ('{expression}'): source.{source_name}.{method_name}(...) {exc} — "
                     f"expected source.{source_name}.{method_name}{cls._signature_text(method)}"
+                ) from exc
+
+    @classmethod
+    def validate_media_call_arguments(cls, expression: str, context: str) -> None:
+        """Every `media.<doc_id>.<method>(...)` call must bind to
+        MediaDoc's own method signature — same idea as
+        validate_source_call_arguments, against the one fixed class
+        every doc id's namespace object actually is (see
+        tracking.actuators.media_namespace)."""
+        for doc_id, method_name, positional, keywords, unpacks in TriggerExpressionAnalyzer.media_calls(expression):
+            if unpacks:
+                continue
+            method = getattr(MediaDoc, method_name, None)
+            if method is None:
+                continue
+            try:
+                inspect.signature(method).bind(None, *([None] * positional), **{name: None for name in keywords})
+            except TypeError as exc:
+                raise ValueError(
+                    f"{context} ('{expression}'): media.{doc_id}.{method_name}(...) {exc} — "
+                    f"expected media.{doc_id}.{method_name}{cls._signature_text(method)}"
                 ) from exc
 
     @staticmethod
@@ -258,6 +287,9 @@ class AutomatonValidator:
             statements = TriggerExpressionAnalyzer.task_statements(on_exit)
         except SyntaxError as exc:
             raise ValueError(f"{context} ('{on_exit}') is not valid on-exit source: {exc}") from exc
+        media_doc_ids = frozenset(
+            doc_id for name in archives.names() if (doc_id := media_doc_id_for(name)) is not None
+        )
         known_locals: set[str] = set()
         for line_number, statement in statements:
             line_context = f"{context}, on-exit line {line_number}"
@@ -270,7 +302,8 @@ class AutomatonValidator:
                         "'env' section — declare it there first."
                     )
                 cls.validate_namespaced_expression(
-                    expression, line_context, registry, sources, frozenset(known_locals), namespaces, TASK_FUNCTION_NAMES,
+                    expression, line_context, registry, sources, frozenset(known_locals), namespaces,
+                    TASK_FUNCTION_NAMES, media_doc_ids,
                 )
                 cls.validate_attachment_read(expression, line_context, archives)
                 cls.validate_env_key_type(env_keys[env_key], expression, line_context)
@@ -284,7 +317,8 @@ class AutomatonValidator:
                         "(a namespace or core metric) and can't be used as an on-exit local variable."
                     )
                 cls.validate_namespaced_expression(
-                    expression, line_context, registry, sources, frozenset(known_locals), namespaces, TASK_FUNCTION_NAMES,
+                    expression, line_context, registry, sources, frozenset(known_locals), namespaces,
+                    TASK_FUNCTION_NAMES, media_doc_ids,
                 )
                 cls.validate_attachment_read(expression, line_context, archives)
                 known_locals.add(target)
@@ -295,7 +329,8 @@ class AutomatonValidator:
                     "'name = expr' locals, or a bare 'chat.<method>(...)' call."
                 )
             cls.validate_namespaced_expression(
-                statement, line_context, registry, sources, frozenset(known_locals), namespaces, TASK_FUNCTION_NAMES,
+                statement, line_context, registry, sources, frozenset(known_locals), namespaces,
+                TASK_FUNCTION_NAMES, media_doc_ids,
             )
             cls.validate_attachment_read(statement, line_context, archives)
             cls.validate_chat_arity(statement, line_context)

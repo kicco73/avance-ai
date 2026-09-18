@@ -6,6 +6,7 @@ import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
 import ChatSupersededOverlay from './ChatSupersededOverlay.vue'
 import ChatWaitingPanel from './ChatWaitingPanel.vue'
+import ChartDialog from './ChartDialog.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
@@ -18,6 +19,7 @@ import {
   chatConnectionState,
 } from '../../chatStoreFactory.js'
 import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
+import { customDialog } from '../../dialogStore.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
@@ -48,8 +50,16 @@ const {
   handleAction,
   blockedReason,
   blockedDetail,
-  reloadMessages
+  reloadMessages,
+  chart,
+  dismissChart
 } = props.store
+
+watch(chart, (next) => {
+  if (!next) return
+  customDialog({ component: ChartDialog, props: { title: next.title, series: next.series } })
+  dismissChart()
+})
 
 const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
 
@@ -188,6 +198,7 @@ watch(
       <template #right>
         <ProjectsMenu
           session-actions
+          subscribed-only
           :close-session-disabled="!selectedSessionActive"
           @select="(name) => emit('project-select', name)"
           @download="(name) => emit('project-download', name)"

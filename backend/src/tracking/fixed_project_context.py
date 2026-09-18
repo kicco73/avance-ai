@@ -15,7 +15,21 @@ actually call it.
 """
 from __future__ import annotations
 
-from automaton.automaton import Automaton
+from typing import Protocol
+
+from automaton.automaton import Automaton, State
+
+
+class ProjectContext(Protocol):
+    """The slice of ProjectService this module's own docstring promises
+    to duck-type — every consumer that only ever needs a fixed
+    automaton/project pair (never the live active one) should type its
+    own `project_service`-shaped parameter against this, not the
+    concrete ProjectService, so a FixedProjectContext satisfies it."""
+
+    def get_active_automaton(self) -> Automaton | None: ...
+    def get_active_automaton_and_state(self) -> tuple[Automaton | None, State | None]: ...
+    def get_active_project_id(self) -> str | None: ...
 
 
 class FixedProjectContext:

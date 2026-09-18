@@ -11,13 +11,11 @@ plain in-memory store; `PersistedEnv` reads/writes through `db`."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from db import Db
 from system.web_session import WebSession
-
-if TYPE_CHECKING:
-    from project.project_service import ProjectService
+from tracking.fixed_project_context import ProjectContext
 
 
 class Env(object):
@@ -120,7 +118,7 @@ class PersistedEnv(Env):
     base class's in-memory dicts."""
 
     def __init__(
-        self, db: Db, project_service: "ProjectService", session_id: int,
+        self, db: Db, project_service: ProjectContext, session_id: int,
         username: str | None = None,
     ) -> None:
         """`project_service`: whatever answers get_active_project_id() —

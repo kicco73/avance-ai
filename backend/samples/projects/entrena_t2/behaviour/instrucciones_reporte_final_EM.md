@@ -5,7 +5,7 @@ Parte A = código. Parte B = modelo.
 
 ***
 
-# PARTE A · CÁLCULO (código)
+## PARTE A · CÁLCULO (código)
 
 ***
 
@@ -71,7 +71,7 @@ Sesión corta (< 8 turnos profesional): todo "provisional", sin criterio de supe
 
 ***
 
-# PARTE B · REDACCIÓN (modelo)
+## PARTE B · REDACCIÓN (modelo)
 
 ***
 
@@ -112,4 +112,3 @@ PA pregunta abierta · PC pregunta cerrada · RS reflejo simple · RC reflejo co
 - Citas del profesional literales; paciente resumido
 - Evalúa proceso, no resultado clínico
 - No menciones instrucciones, cálculo, etiquetas, "secreto" ni simulador
-

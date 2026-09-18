@@ -19,7 +19,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import simpleeval
 
@@ -75,7 +75,7 @@ class DeferredExpression(object):
         return f"DeferredExpression({self.source!r})"
 
 
-_TASK_EXTRA_FUNCTIONS: dict[str, Any] = {"zip": zip}
+_TASK_EXTRA_FUNCTIONS: dict[str, Any] = {"zip": zip, "len": len, "range": range}
 
 BASE_FUNCTION_NAMES = frozenset(simpleeval.EvalWithCompoundTypes().functions)
 TASK_FUNCTION_NAMES = BASE_FUNCTION_NAMES | frozenset(_TASK_EXTRA_FUNCTIONS)
@@ -93,6 +93,7 @@ class _TaskEval(simpleeval.EvalWithCompoundTypes):
             raise TypeError(f"_TaskEval needs an EvaluationScope, got {type(names).__name__}.")
         super().__init__(names=names)
         self.functions.update(_TASK_EXTRA_FUNCTIONS)
+        assert self.nodes is not None
         self.nodes[ast.Lambda] = self._eval_lambda
 
     def _eval_lambda(self, node: ast.Lambda):
@@ -212,27 +213,37 @@ class CoreAutomaton(object):
         )
         return False
 
-    def eval_action_env(self, action: "Action", scope: dict[str, Any]) -> dict[str, Any]:
+    def eval_action_env(
+        self, action: "Action", scope: dict[str, Any],
+    ) -> tuple[dict[str, Any], tuple[tuple[str, Exception], ...]]:
         """`action`'s `env` expressions evaluated against `scope`. Unlike
         _eval_trigger, a None/missing reference fails and logs rather
-        than being a no-op; only successfully evaluated keys are returned."""
+        than being a no-op; only successfully evaluated keys are
+        returned. The second element is every key that failed, in
+        TaskOutcome.failures' own (label, exception) shape, for a caller
+        to surface — an evaluation failure is a write that silently did
+        not happen, never a mere warning."""
         if not action.env:
-            return {}
+            return {}, ()
         result: dict[str, Any] = {}
+        failures: list[tuple[str, Exception]] = []
         for key, expression in action.env.items():
             try:
                 value = self._evaluate_expression(expression, scope)
             except Exception as exc:
-                logger.warning(
+                logger.error(
                     "env expression evaluation failed for action '%s', key '%s' ('%s'): %s",
                     action.name, key, expression, exc,
                 )
+                failures.append((f"{key}: {expression}", exc))
                 continue
             if self._accepts_env_value(action, key, value):
                 result[key] = value
-        return result
+        return result, tuple(failures)
 
-    def eval_action_on_exit(self, action: "Action", scope: EvaluationScope) -> tuple[dict[str, Any], str | None]:
+    def eval_action_on_exit(
+        self, action: "Action", scope: EvaluationScope,
+    ) -> tuple[dict[str, Any], str | None, tuple[tuple[str, Exception], ...]]:
         """`action.on_exit`'s own mixed grammar, evaluated against
         `scope` and split into statements with task's own grammar
         (TriggerExpressionAnalyzer.task_statements) so on-exit reads
@@ -241,7 +252,9 @@ class CoreAutomaton(object):
         statement is an `env.<key> = expr` assignment
         (TriggerExpressionAnalyzer.on_exit_assignment — eval_action_env's
         own contract: only successfully evaluated keys are returned, a
-        bad expression logs and is skipped), a `name = expr` local
+        bad expression logs and is skipped — written into `scope["env"]`
+        in place as soon as it's accepted, so a later line's own
+        `env.<key>` read sees it, exactly like a local does), a `name = expr` local
         (TriggerExpressionAnalyzer.task_assignment — stored on the
         script's own scope view, see EvaluationScope.for_on_exit, so a
         later line reads it bare, and gone once the script ends), or a
@@ -254,43 +267,51 @@ class CoreAutomaton(object):
         already rules out anything else reaching here. Note what on-exit
         still can't do: task.*'s own send_mail/whatsapp/defer/prompt
         remain task's job alone. Returns (env_updates,
-        joined_chat_snippets_or_None), the second element exactly what
-        `render_task_script` puts in its own `snippets`."""
+        joined_chat_snippets_or_None, failures), the second element
+        exactly what `render_task_script` puts in its own `snippets`,
+        the third every expression that raised — TaskOutcome.failures'
+        own (label, exception) shape — for a caller to surface: a write
+        that silently did not happen is a failure, never a mere warning."""
         if not action.on_exit:
-            return {}, None
+            return {}, None, ()
         try:
             statements = TriggerExpressionAnalyzer.task_statements(action.on_exit)
         except SyntaxError as exc:
-            logger.warning("on-exit parsing failed for action '%s': %s", action.name, exc)
-            return {}, None
+            logger.error("on-exit parsing failed for action '%s': %s", action.name, exc)
+            return {}, None, ((f"on-exit: {exc}", exc),)
         scope = scope.for_on_exit(action.name)
         result: dict[str, Any] = {}
         snippets: list[str] = []
+        failures: list[tuple[str, Exception]] = []
         for _line_number, statement in statements:
             assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
             local = TriggerExpressionAnalyzer.task_assignment(statement)
-            if assignment is not None or local is not None:
-                key, expression = assignment or local
+            pair = assignment if assignment is not None else local
+            if pair is not None:
+                key, expression = pair
                 try:
                     value = self._evaluate_statement(expression, scope)
                 except Exception as exc:
-                    logger.warning(
+                    logger.error(
                         "on-exit expression evaluation failed for action '%s', key '%s' ('%s'): %s",
                         action.name, key, expression, exc,
                     )
+                    failures.append((f"{key}: {expression}", exc))
                     continue
                 if assignment is None:
                     scope[key] = value
                 elif self._accepts_env_value(action, key, value):
                     result[key] = value
+                    scope["env"][key] = value
                 continue
             try:
                 value = self._evaluate_statement(statement, scope)
             except Exception as exc:
-                logger.warning(
+                logger.error(
                     "on-exit expression evaluation failed for action '%s' ('%s'): %s",
                     action.name, statement, exc,
                 )
+                failures.append((statement, exc))
                 continue
             if isinstance(value, JsSnippet):
                 snippets.append(value)
@@ -300,7 +321,7 @@ class CoreAutomaton(object):
                     "assignment nor a 'chat.<method>(...)' call.",
                     action.name, statement,
                 )
-        return result, ("\n".join(snippets) if snippets else None)
+        return result, ("\n".join(snippets) if snippets else None), tuple(failures)
 
     @classmethod
     def render_task(cls, action: "Action", scope: EvaluationScope) -> TaskOutcome:
@@ -373,7 +394,7 @@ class CoreAutomaton(object):
         return simpleeval.EvalWithCompoundTypes(names=scope).eval(expression)
 
     @classmethod
-    def _evaluate_statement(cls, statement: str, scope: dict[str, Any]) -> Any:
+    def _evaluate_statement(cls, statement: str, scope: EvaluationScope) -> Any:
         """One task or on-exit statement — the same as
         _evaluate_expression except that a zero-argument lambda is
         allowed, which is what task.defer(...) is built out of."""

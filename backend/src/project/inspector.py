@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
+from automaton.file_types import media_doc_id_for
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_namespaces import TriggerNamespaces
 from db import Db
@@ -73,11 +74,26 @@ class ProjectInspector:
     def get_automaton(self, project_id: str, revision: int) -> Automaton:
         return self._automaton_loader.load_at_revision(project_id, revision)
 
+    def get_draft_automaton(self, project_id: str) -> Automaton:
+        """The live draft, always interpreted — a compiled package is
+        only ever a snapshot of a *published* revision, and the point of
+        the draft is to answer for an edit that has not been built yet.
+        `load_at_revision(project_id, get_draft_revision(project_id))`
+        cannot tell "I want the draft" from "I want whatever revision
+        this number happens to be" — right after a publish the two
+        numbers are equal, and a compiled package for it would be served
+        by mistake — so this goes through `load`, the one seam
+        CompiledAutomatonLoader itself forces back to interpreted for
+        exactly this reason."""
+        return self._automaton_loader.load(project_id)
+
     def get_automaton_and_state(
         self, project_id: str, type: str = 'live', username: str | None = None
     ) -> tuple[Automaton, State]:
-        revision = self.get_draft_revision(project_id) if type == 'test' else self.get_published_revision(project_id)
-        automaton = self.get_automaton(project_id, revision)
+        automaton = (
+            self.get_draft_automaton(project_id) if type == 'test'
+            else self.get_automaton(project_id, self.get_published_revision(project_id))
+        )
         return automaton, self._resolve_state(project_id, automaton, type=type, username=username)
 
     def get_active_automaton(self) -> Automaton:
@@ -104,7 +120,7 @@ class ProjectInspector:
             raise FileNotFoundError(f"Session {session_id} does not exist.")
         project_id = session["project_id"]
         if session["type"] == "test":
-            return self._automaton_loader.load(project_id)
+            return self.get_draft_automaton(project_id)
         return self.get_automaton(project_id, session["project_revision"])
 
     def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
@@ -220,8 +236,9 @@ class ProjectInspector:
 
     def get_identifier_registry(self, project_id: str) -> dict[str, dict[str, str]]:
         """Every identifier a trigger/`env:` expression can reference:
-        signals, env keys, `source.<name>`, and whatever namespace an
-        installed contributor declares. Reads the unpublished draft."""
+        signals, env keys, `source.<name>`, `media.<doc_id>`, and
+        whatever namespace an installed contributor declares. Reads the
+        unpublished draft."""
         automaton = self._automaton_loader.load(project_id)
         registry = IdentifierRegistry.build(automaton.signals, automaton.env_keys)
         registry["source"] = {}
@@ -231,6 +248,13 @@ class ProjectInspector:
             except (ValueError, KeyError):
                 descriptions = {}
             registry[f"source.{source.name}"] = dict(descriptions)
+        registry["media"] = {}
+        for name in self._db.list_archives(project_id):
+            doc_id = media_doc_id_for(name)
+            if doc_id is not None:
+                registry[f"media.{doc_id}"] = {
+                    "url": f"Returns the download url for '{name}' — e.g. media.{doc_id}.url()."
+                }
         registry.update(TriggerNamespaces.collect().identifiers(automaton))
         return registry
 

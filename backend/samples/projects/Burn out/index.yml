@@ -188,9 +188,9 @@ states:
     chat-enabled: false
 project:
   ui-label: Entrena-T más
-  id: entrena_t2
-  family: lluna
-  revision: 29
+  id: burn_out
+  family: refresh_retreats
+  revision: 0
   ui-description: Simulador de pacientes para entrenar conversacionalmente a los profesionales sanitarios
   services:
     listen: disabled

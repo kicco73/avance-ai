@@ -31,7 +31,8 @@
     "papaparse": "^5.7.0",
     "qrcode": "^1.5.4",
     "tabulator-tables": "^6.5.2",
-    "vue": "^3.4.0"
+    "vue": "^3.4.0",
+    "vue-pdf-embed": "^2.1.6"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.8",

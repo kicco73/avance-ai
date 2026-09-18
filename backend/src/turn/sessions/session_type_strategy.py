@@ -119,8 +119,7 @@ class TestSessionStrategy(SessionTypeStrategy):
         return True
 
     def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
-        revision = self.revision_for(project_service, project_id)
-        automaton = project_service.get_automaton(project_id, revision)
+        automaton = project_service.get_draft_automaton(project_id)
         return automaton.init_action.target
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:

@@ -251,20 +251,19 @@ bytes and its media type. Bytes rather than text, because both callers
 refuse a binary file with a message of their own and can only do that if
 the media type reaches them before anything has tried to decode.
 
-Three implementations, composed:
+Two implementations, composed:
 
 - `DbProjectFiles` — the Archive rows of this automaton's revision, what
   the platform has always done
-- `SessionCachedProjectFiles` — a decorator, not part of the database
-  implementation: the per-session frozen copy is a *source's* policy, and
-  `attachment.read` never had it and still does not. It guards against a
-  draft revision being rewritten while a test session runs on it, not
-  against a republish, so it has nothing to do for a compiled product
 - `PackageProjectFiles` — the real files under a package's own `data/`
 
-`project_files_for(db, automaton, session_id)` is the only selection
-point: an automaton with no storage location has nothing to read from a
-database, whatever database it is handed. `SourceNamespace.__init__` and
+There is no per-session copy of anything: a source reads the same real
+file every other reader does, whatever session is asking, so a build
+that rewrites a draft revision is seen by every session immediately.
+
+`project_files_for(db, automaton)` is the only selection point: an
+automaton with no storage location has nothing to read from a database,
+whatever database it is handed. `SourceNamespace.__init__` and
 `EvaluationScopeBuilder.build` call it once each; no driver ever asks.
 
 Nothing about the URL, the project YAML or the design view changes: a
@@ -397,6 +396,23 @@ called `Automaton.render_task_script` through a name `core.py` does not
 import, so it raised `NameError`. No test caught it because the only
 route there is `ActuatorSet.schedule_task`'s dispatcher-less fallback.
 Fixed — and worth remembering as the pattern, not the incident.
+
+A fifth, same family but the other half of the seam: `Compiler._collect_sources`
+put an on-exit assignment's (`env.key = expr` or bare `name = expr`) RHS
+into `expressions`, but `Automaton.eval_action_on_exit` evaluates that
+same RHS through `_evaluate_statement` — the seam that only ever looks
+in `statements`. Every compiled project with such an assignment raised
+"no compiled statement" on every run of the action, table miss, not a
+project bug; the interpreted automaton never showed it because it has
+no split to get wrong. Task's own assignment RHS already routed into
+`statements` (`render_task_script` reads it the same way), so
+`_collect_sources` now treats on-exit's assignment RHS the same way.
+`verify_compiled_seam.py`'s comparison run does not catch this class:
+it calls `_evaluate_expression`/`_evaluate_statement` straight from
+`_collect_sources`'s own two lists, so a text `_collect_sources` puts
+in the wrong list is compared against itself and always "matches" —
+the divergence is between that classification and what
+`eval_action_on_exit` actually calls, which the script never runs.
 
 ## State of the work
 

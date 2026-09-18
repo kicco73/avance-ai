@@ -107,6 +107,9 @@ class _FakeProjectService:
     def get_automaton(self, project_name, revision):
         return self._automaton
 
+    def get_draft_automaton(self, project_name):
+        return self._automaton
+
     def get_automaton_for_session(self, session_id):
         return self._automaton
 

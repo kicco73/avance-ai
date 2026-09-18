@@ -1,3 +1,5 @@
+# Reporte final de sesión · EM · v2
+
 `# REPORTE FINAL DE SESIÓN · EM · v2`
 
 `Términos: diccionario_EM.txt (Compañerismo → Colaboración).`
@@ -104,9 +106,9 @@
 
 `6. Cierre`
 
-`   - Con DC movilizador: pregunta clave o paso aceptado en los 3 últimos turnos`
+   `- Con DC movilizador: pregunta clave o paso aceptado en los 3 últimos turnos`
 
-`   - Sin él: RES con DC en los 3 últimos turnos y EPR = 0 en último tercio`
+   `- Sin él: RES con DC en los 3 últimos turnos y EPR = 0 en último tercio`
 
 `7. Seguridad: urgencia sin PA/PC/RS/RC sobre ella en los 2 turnos siguientes → NO SUPERADA siempre`
 

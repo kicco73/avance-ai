@@ -20,6 +20,10 @@ class AuthenticatedUser:
 
 class AuthProvider(ABC):
     @abstractmethod
+    def __init__(self, key: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     def verify(self, credential: str) -> AuthenticatedUser:
         """Raises AuthError (see auth/errors.py) if `credential` doesn't
         verify — expired, tampered, or issued for a different audience."""

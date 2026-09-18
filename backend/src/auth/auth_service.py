@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import jwt
 
@@ -93,7 +93,7 @@ class AuthService:
         }
         return jwt.encode(payload, self._jwt_secret, algorithm=_JWT_ALGORITHM)
 
-    def _decode(self, token: str) -> dict | None:
+    def _decode(self, token: str) -> dict[str, Any] | None:
         try:
             return jwt.decode(token, self._jwt_secret, algorithms=[_JWT_ALGORITHM])
         except jwt.PyJWTError:
@@ -111,7 +111,9 @@ class AuthService:
         terms, logout — stay reachable), which is exactly the gate
         pingBackend() in App.vue relies on (a 403 off GET /api/core/state)."""
         payload = self._decode(token)
-        email = payload.get("email") if payload else None
+        if payload is None:
+            return None
+        email = payload.get("email")
         if email is None:
             return None
 
@@ -122,7 +124,7 @@ class AuthService:
                 picture_url=user["picture_url"], role=user["role"],
             )
         return AuthenticatedUser(
-            provider_user_id=payload.get("provider_user_id"), email=email, name=payload.get("name"),
+            provider_user_id=payload["provider_user_id"], email=email, name=payload["name"],
             picture_url=payload.get("picture_url"), role=None,
         )
 
@@ -159,7 +161,9 @@ class AuthService:
         registered user from here on. See _register_with_invite for the
         invite-redemption rules this delegates to."""
         payload = self._decode(token)
-        email = payload.get("email") if payload else None
+        if payload is None:
+            raise ValueError("Invalid or expired session.")
+        email = payload.get("email")
         if email is None:
             raise ValueError("Invalid or expired session.")
         self._register_with_invite(
@@ -183,6 +187,7 @@ class AuthService:
         _user, invite = self._register_with_invite(
             phone_number, "whatsapp", None, None, None, None, invite_code, invite_exempt=False,
         )
+        assert invite is not None, "invite_exempt=False always validates a real invite or raises"
         self._db.set_whatsapp_phone_number(phone_number, phone_number)
         self._db.set_active_project_id(invite.project_id, phone_number)
         return invite.project_id

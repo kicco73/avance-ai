@@ -9,6 +9,7 @@ folder it canonicalizes into and the size it may not exceed
 """
 from __future__ import annotations
 
+import keyword
 import re
 import sys
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from pathlib import Path
 
 ASPECT_DIR = "aspect"
 BEHAVIOUR_DIR = "behaviour"
+MEDIA_DIR = "media"
 ROOT_FILE_NAMES = {"index.yml", "index.css"}
 
 TEXT_MEDIA_TYPE = "text/plain"
@@ -27,8 +29,29 @@ MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024
 
 IMAGE_KIND = "image"
 AUDIO_KIND = "audio"
+PDF_KIND = "pdf"
 
-ICON_FILE_RE = re.compile(r'^aspect/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECASE)
+MEDIA_EXTENSIONS = frozenset({".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".md", ".mp3"})
+
+ICON_FILE_RE = re.compile(r'^media/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECASE)
+
+
+def media_doc_id_for(path: str) -> str | None:
+    """The `media.<doc_id>` name `path` (a stored archive path) is
+    reachable as in an on-exit script, or None if it doesn't live
+    directly under MEDIA_DIR or its basename-without-extension isn't a
+    valid, non-reserved Python identifier. The same derivation backs the
+    build-time reference check (automaton_validator.py), the runtime
+    `media` namespace (tracking.actuators.media_namespace), and the
+    autocomplete registry (project.inspector.ProjectInspector.
+    get_identifier_registry) — a file whose name doesn't parse as one is
+    simply not reachable that way; it is still listed, exported, and
+    downloadable like any other file."""
+    parts = Path(path).parts
+    if len(parts) != 2 or parts[0] != MEDIA_DIR:
+        return None
+    stem = Path(parts[1]).stem
+    return stem if stem.isidentifier() and not keyword.iskeyword(stem) else None
 
 
 @dataclass(frozen=True)
@@ -107,13 +130,14 @@ class ProjectFileTypes:
         ProjectFileType(".md", "text/markdown", "Markdown", "document", True, UNLIMITED_UPLOAD_BYTES, BEHAVIOUR_DIR),
         ProjectFileType(".csv", "text/csv", "CSV", "data", True, UNLIMITED_UPLOAD_BYTES, BEHAVIOUR_DIR),
         ProjectFileType(".css", "text/css", "Stylesheet", "stylesheet", True, UNLIMITED_UPLOAD_BYTES, ASPECT_DIR),
-        ProjectFileType(".png", "image/png", "PNG image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, ASPECT_DIR),
-        ProjectFileType(".jpg", "image/jpeg", "JPEG image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, ASPECT_DIR),
-        ProjectFileType(".jpeg", "image/jpeg", "JPEG image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, ASPECT_DIR),
-        ProjectFileType(".gif", "image/gif", "GIF image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, ASPECT_DIR),
-        ProjectFileType(".webp", "image/webp", "WebP image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, ASPECT_DIR),
-        ProjectFileType(".svg", "image/svg+xml", "SVG image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, ASPECT_DIR),
-        ProjectFileType(".mp3", "audio/mpeg", "MP3 audio", AUDIO_KIND, False, MAX_AUDIO_UPLOAD_BYTES, ASPECT_DIR),
+        ProjectFileType(".png", "image/png", "PNG image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, MEDIA_DIR),
+        ProjectFileType(".jpg", "image/jpeg", "JPEG image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, MEDIA_DIR),
+        ProjectFileType(".jpeg", "image/jpeg", "JPEG image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, MEDIA_DIR),
+        ProjectFileType(".gif", "image/gif", "GIF image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, MEDIA_DIR),
+        ProjectFileType(".webp", "image/webp", "WebP image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, MEDIA_DIR),
+        ProjectFileType(".svg", "image/svg+xml", "SVG image", IMAGE_KIND, False, MAX_IMAGE_UPLOAD_BYTES, MEDIA_DIR),
+        ProjectFileType(".mp3", "audio/mpeg", "MP3 audio", AUDIO_KIND, False, MAX_AUDIO_UPLOAD_BYTES, MEDIA_DIR),
+        ProjectFileType(".pdf", "application/pdf", "PDF document", PDF_KIND, False, MAX_AUDIO_UPLOAD_BYTES, MEDIA_DIR),
     )
 
     UNKNOWN = UnknownProjectFileType()
@@ -133,4 +157,6 @@ class ProjectFileTypes:
         return {
             "root_file_names": sorted(ROOT_FILE_NAMES),
             "types": [file_type.payload() for file_type in cls._TYPES],
+            "media_folder": MEDIA_DIR,
+            "media_extensions": sorted(MEDIA_EXTENSIONS),
         }

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import MutableMapping, Sequence
+from typing import ClassVar, Self
 
 from automaton.builder.build_cursor import BuildCursor
 from automaton.identifier_registry import IdentifierRegistry
@@ -16,15 +17,15 @@ NAMESPACES = {
 _CALL = re.compile(r"\b" + LEGACY_NAMESPACE + r"\.([A-Za-z_][A-Za-z0-9_]*)")
 
 
-def _mapping(value) -> Mapping:
-    return value if isinstance(value, Mapping) else {}
+def _mapping(value) -> MutableMapping:
+    return value if isinstance(value, MutableMapping) else {}
 
 
 def _sequence(value) -> list:
     return value if isinstance(value, list) else []
 
 
-def actions_in(raw) -> list[Mapping]:
+def actions_in(raw) -> list[MutableMapping]:
     """Every mapping a deprecated action field can physically live in.
     A top-level `actions:` is not read by the builder, but a project can
     keep its anchors there and merge them into states (`<<: *results`),
@@ -45,7 +46,7 @@ def actions_in(raw) -> list[Mapping]:
     ]
 
 
-def actions_targeting(raw, state_name: str) -> list[Mapping]:
+def actions_targeting(raw, state_name: str) -> list[MutableMapping]:
     """Every action that lands the conversation in `state_name` — a
     missing `target` is a self-loop, so it counts as reaching its own
     state, and the init-action reaches whatever it starts on."""
@@ -60,7 +61,7 @@ def actions_targeting(raw, state_name: str) -> list[Mapping]:
     ]
 
 
-def named_entries_in(raw, section: str) -> list[tuple[str, Mapping]]:
+def named_entries_in(raw, section: str) -> list[tuple[str, MutableMapping]]:
     return [
         (name, _mapping(entry))
         for name, entry in _mapping(_mapping(raw).get(section)).items()
@@ -68,7 +69,7 @@ def named_entries_in(raw, section: str) -> list[tuple[str, Mapping]]:
     ]
 
 
-def own_field(action: Mapping, field: str):
+def own_field(action: MutableMapping, field: str):
     """What this action itself says, never what a merge key supplies.
     Writing to a mapping only ever writes locally, so a merged key read
     as if it were the action's own turns one rewrite into a copy that
@@ -80,17 +81,17 @@ def own_field(action: Mapping, field: str):
     return next((value for key, value in items() if key == field), None)
 
 
-def owns(action: Mapping, field: str) -> bool:
+def owns(action: MutableMapping, field: str) -> bool:
     items = getattr(action, "non_merged_items", None)
     return field in (dict(items()) if items is not None else action)
 
 
-def _lines_of(action: Mapping, field: str) -> list[str]:
+def _lines_of(action: MutableMapping, field: str) -> list[str]:
     script = own_field(action, field)
     return [line for line in (script if isinstance(script, str) else "").splitlines() if line.strip()]
 
 
-def _text_of(action: Mapping, field: str) -> str:
+def _text_of(action: MutableMapping, field: str) -> str:
     text = own_field(action, field)
     return text.strip() if isinstance(text, str) else ""
 
@@ -111,7 +112,7 @@ def _rewritable(line: str) -> list[str]:
     return known if len(known) == len(calls) and len(targets) < 2 else []
 
 
-def rewritable(action: Mapping) -> bool:
+def rewritable(action: MutableMapping) -> bool:
     return all(
         _rewritable(line) or not _CALL.search(line)
         for field in SCRIPT_FIELDS
@@ -126,7 +127,10 @@ class Deprecation:
     modernizer consults before a build ever sees the file."""
 
     line: int | None = None
-    section: str = "project"
+
+    @property
+    def section(self) -> str:
+        return "project"
 
 
 class LegacyTalkEnabled(Deprecation):
@@ -169,6 +173,9 @@ class EntryDeprecation(Deprecation):
     them off the editor's own tree rather than holding the nodes
     detection saw, since the two are the same document parsed twice."""
 
+    SECTION: ClassVar[str]
+    KEY: ClassVar[str]
+
     def __init__(self, name: str, line: int | None) -> None:
         self.name = name
         self.line = line
@@ -178,18 +185,18 @@ class EntryDeprecation(Deprecation):
         return f"{self.SECTION}.{self.name}"
 
     @classmethod
-    def entries(cls, raw) -> list[tuple[str, Mapping]]:
+    def entries(cls, raw) -> list[tuple[str, MutableMapping]]:
         raise NotImplementedError
 
     @classmethod
-    def found_in(cls, raw) -> list["EntryDeprecation"]:
+    def found_in(cls, raw) -> Sequence[Self]:
         return [
             cls(name, BuildCursor.line_of(entry, cls.KEY))
             for name, entry in cls.entries(raw)
             if owns(entry, cls.KEY)
         ]
 
-    def mine(self, editor) -> list[Mapping]:
+    def mine(self, editor) -> list[MutableMapping]:
         return [entry for _, entry in self.entries(editor.document()) if owns(entry, self.KEY)]
 
 
@@ -198,11 +205,11 @@ class ActionDeprecation(EntryDeprecation):
     SECTION = "actions"
 
     @classmethod
-    def entries(cls, raw) -> list[tuple[str, Mapping]]:
+    def entries(cls, raw) -> list[tuple[str, MutableMapping]]:
         return [(cls._name_of(action), action) for action in actions_in(raw)]
 
     @staticmethod
-    def _name_of(action: Mapping) -> str:
+    def _name_of(action: MutableMapping) -> str:
         name = action.get("name")
         return name if isinstance(name, str) else "init-action"
 
@@ -212,7 +219,7 @@ class StateDeprecation(EntryDeprecation):
     SECTION = "states"
 
     @classmethod
-    def entries(cls, raw) -> list[tuple[str, Mapping]]:
+    def entries(cls, raw) -> list[tuple[str, MutableMapping]]:
         return named_entries_in(raw, "states")
 
 
@@ -221,7 +228,7 @@ class EnvKeyDeprecation(EntryDeprecation):
     SECTION = "env"
 
     @classmethod
-    def entries(cls, raw) -> list[tuple[str, Mapping]]:
+    def entries(cls, raw) -> list[tuple[str, MutableMapping]]:
         return named_entries_in(raw, "env")
 
 
@@ -230,7 +237,7 @@ class LegacyScriptField(ActionDeprecation):
     FIELD = "task"
 
     @classmethod
-    def found_in(cls, raw) -> list["LegacyScriptField"]:
+    def found_in(cls, raw) -> Sequence[Self]:
         return [found for found in super().found_in(raw) if found._settled(raw)]
 
     def _settled(self, raw) -> bool:
@@ -304,7 +311,7 @@ class LegacyActuatorCall(ActionDeprecation):
         return NAMESPACES[self.call]
 
     @classmethod
-    def found_in(cls, raw) -> list["LegacyActuatorCall"]:
+    def found_in(cls, raw) -> Sequence[Self]:
         return [
             cls(name, call, BuildCursor.own_line(action))
             for name, action in cls.entries(raw)
@@ -318,7 +325,7 @@ class LegacyActuatorCall(ActionDeprecation):
                 self._redistribute(editor, action)
 
     @staticmethod
-    def _calls_in(action: Mapping) -> list[str]:
+    def _calls_in(action: MutableMapping) -> list[str]:
         found: list[str] = []
         for field in SCRIPT_FIELDS:
             for line in _lines_of(action, field):
@@ -351,6 +358,8 @@ class LegacyActuatorCall(ActionDeprecation):
 class RenamedKey(EntryDeprecation):
     """The whole deprecation: this key is that key now, and nothing else
     about the entry changes."""
+
+    NEW: ClassVar[str]
 
     @property
     def fix(self) -> str:
@@ -392,7 +401,7 @@ class LegacyStateScript(StateDeprecation):
     )
 
     @classmethod
-    def found_in(cls, raw) -> list["LegacyStateScript"]:
+    def found_in(cls, raw) -> Sequence[Self]:
         return [found for found in super().found_in(raw) if found._movable(raw)]
 
     def _movable(self, raw) -> bool:
@@ -439,7 +448,7 @@ class LegacyAiMemoryStrategy(StateDeprecation, RenamedKey):
         for entry in self.mine(editor):
             value = own_field(entry, self.KEY)
             editor.rename_key_preserving_comments(entry, self.KEY, self.NEW)
-            entry[self.NEW] = self.VALUES.get(value, value)
+            entry[self.NEW] = self.VALUES.get(value, value) if isinstance(value, str) else value
 
 
 class RemovedEnvAiAccess(EnvKeyDeprecation, RemovedKey):

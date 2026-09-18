@@ -11,14 +11,19 @@ class IdentifierRegistry:
     """The {namespace: {identifier: description}} registry every
     trigger/env: expression can reference: a project's own declared
     signals/env keys merged with the platform's fixed session/
-    user/metric identifiers. `source.<name>.<method>` is deliberately
-    absent from `build()` below:
-    it's a dynamic, per-project namespace, so both its offline validation
-    (AutomatonBuilder._validate_namespaced_expression, via
-    TriggerExpressionAnalyzer.source_refs) and its registry entries for
-    autocomplete (see project.inspector.ProjectInspector.
+    user/metric identifiers. `source.<name>.<method>` and
+    `media.<doc_id>.url` are deliberately absent from `build()` below:
+    each is a dynamic, per-project namespace, so both its offline
+    validation (AutomatonValidator.validate_namespaced_expression, via
+    TriggerExpressionAnalyzer.source_refs/media_refs) and its registry
+    entries for autocomplete (see project.inspector.ProjectInspector.
     get_identifier_registry, which merges one "source.<name>" entry per
-    this project's own declared `sources:`) live outside this class."""
+    this project's own declared `sources:` and one "media.<doc_id>"
+    entry per file uploaded under this project's own `media/` folder)
+    live outside this class. `media` itself is on-exit only (see
+    ON_EXIT_SCOPE_EXCLUDES/TRIGGER_SCOPE_EXCLUDES/TASK_SCOPE_EXCLUDES
+    below) — there is no reason to hand out a download link from a
+    trigger or a task script."""
 
     SESSION: dict[str, str] = {
         "current_session_duration_in_minutes": "How long the current session has been running so far, in minutes.",
@@ -39,8 +44,11 @@ class IdentifierRegistry:
         "celebrate": "Plays a confetti animation in the frontend — e.g. chat.celebrate(). Only available in an action's own on-exit script.",
         "notify": "Shows a toast in the frontend — e.g. chat.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown. Only available in an action's own on-exit script.",
         "show": "Shows a dialog in the frontend with body_md as its content — e.g. chat.show('**Full** details here.'). `body_md` is markdown. Only available in an action's own on-exit script.",
+        "show_media": "Shows one of this project's own media/ files in the frontend — e.g. chat.show_media(media.report.url()). An image, PDF, or Markdown file opens in a dialog; an audio file plays in a looping background player instead. `url` is a media file's own download url, e.g. media.<doc_id>.url(). Only available in an action's own on-exit script, and only takes effect in webchat.",
         "switch_to_human": "Hands the session to a person — e.g. chat.switch_to_human(user.email). `user_id` is that person's username/email; they get pushed a notification with a link to take over this session's next turns as the human, in place of the AI. Only available in an action's own on-exit script.",
         "switch_to_ai": "Hands a session back to the AI after switch_to_human — e.g. chat.switch_to_ai(). Only available in an action's own on-exit script.",
+        "chart": "Shows a bar chart in the frontend — e.g. chat.chart('Scores', [{'line': 'Empathy', 'value': 7.5}, {'line': 'Focus', 'value': 4}]). `series` is a list of {line, value} dicts, one bar per line. Only available in an action's own on-exit script, and only reaches a connection showing this conversation.",
+        "progress": "Shows a progress bar in the chat, under the current turn's own message — e.g. chat.progress('Uploading', 42). `percentage` is 0-100; the bar stays until a later call reaches 100 or higher. Only available in an action's own on-exit script, and only reaches a connection showing this conversation.",
     }
 
     DRIVE: dict[str, str] = {
@@ -84,8 +92,8 @@ class IdentifierRegistry:
         }
     SESSION_METRIC: dict[str, str] = _metric_descriptions(has_scope="one_session")
     METRIC: dict[str, str] = _metric_descriptions(has_scope="all_sessions_per_user", excludes_scope="one_session")
-    TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment", "chat", "drive")
-    TASK_SCOPE_EXCLUDES: tuple[str, ...] = ("session", "chat")
+    TRIGGER_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "attachment", "chat", "drive", "media")
+    TASK_SCOPE_EXCLUDES: tuple[str, ...] = ("session", "chat", "media")
     ON_EXIT_SCOPE_EXCLUDES: tuple[str, ...] = ("task", "drive")
 
     @staticmethod

@@ -4,14 +4,16 @@ import io
 import zipfile
 from pathlib import Path
 
-from .layout import ASPECT_DIR, BEHAVIOUR_DIR, BUNDLE_FILE_NAMES, LEGAL_TERMS_FILE_NAME, SOURCES_DIR, ArchiveLayout
+from .layout import (
+    ASPECT_DIR, BEHAVIOUR_DIR, BUNDLE_FILE_NAMES, LEGAL_TERMS_FILE_NAME, MEDIA_DIR, SOURCES_DIR, ArchiveLayout,
+)
 
 
 class ZipImporter:
     """Recognizes and safely unpacks a project zip upload/import into a
     staging directory, in this project's own layout."""
 
-    _RESERVED_DIRS = {ASPECT_DIR, BEHAVIOUR_DIR, "legal", SOURCES_DIR}
+    _RESERVED_DIRS = {ASPECT_DIR, BEHAVIOUR_DIR, "legal", SOURCES_DIR, MEDIA_DIR}
 
     @staticmethod
     def looks_like_zip(content_type: str | None, content: bytes) -> bool:
@@ -29,7 +31,7 @@ class ZipImporter:
         own root — a single top-level wrapper folder (e.g. a GitHub download
         or drag-a-folder zip) is stripped first, so it counts as root too.
         Every other file is canonicalized into this project's own layout
-        (root, 'aspect/', 'behaviour/', 'legal/' — see
+        (root, 'aspect/', 'behaviour/', 'legal/', 'media/' — see
         ArchiveLayout.canonicalize_name) by extension, regardless of where
         it originally sat in the zip."""
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
@@ -48,8 +50,8 @@ class ZipImporter:
             if wrapper_dirs and (flat_names or (top_level_dirs - wrapper_dirs) or len(wrapper_dirs) > 1):
                 raise ValueError(
                     "Zip must be either the project's own layout (index.yml/index.css at the root, "
-                    "assets under 'aspect/', 'behaviour/', 'legal/') or a single folder wrapping that "
-                    "same layout."
+                    "assets under 'aspect/', 'behaviour/', 'legal/', 'media/') or a single folder wrapping "
+                    "that same layout."
                 )
             prefix = f"{next(iter(wrapper_dirs))}/" if wrapper_dirs else ""
             effective = {n: n[len(prefix):] for n in file_names}
@@ -64,7 +66,7 @@ class ZipImporter:
                 nested_ok = (
                     "/" not in stripped
                     or stripped == LEGAL_TERMS_FILE_NAME
-                    or (top in (ASPECT_DIR, BEHAVIOUR_DIR, SOURCES_DIR) and stripped.count("/") == 1)
+                    or (top in (ASPECT_DIR, BEHAVIOUR_DIR, SOURCES_DIR, MEDIA_DIR) and stripped.count("/") == 1)
                 )
                 if not nested_ok:
                     raise ValueError(f"Unsupported path inside zip: '{original}'.")

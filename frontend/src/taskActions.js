@@ -1,12 +1,23 @@
 import { celebrate } from './confetti.js'
 import { notify } from './toastStore.js'
-import { infoDialog } from './dialogStore.js'
+import { infoDialog, customDialog } from './dialogStore.js'
+import { playBackgroundAudio } from './backgroundAudioStore.js'
+import { mediaKindFromUrl } from './mediaKind.js'
+import MediaDialog from './components/MediaDialog.vue'
 
 function show(body_md) {
   infoDialog({ body: body_md, markdown: true })
 }
 
-export const taskLocals = { celebrate, notify, show }
+function show_media(url) {
+  if (mediaKindFromUrl(url) === 'audio') {
+    playBackgroundAudio(url)
+    return
+  }
+  customDialog({ component: MediaDialog, props: { url }, wide: true })
+}
+
+export const taskLocals = { celebrate, notify, show, show_media }
 
 export function runTaskScript(script) {
   if (!script) return

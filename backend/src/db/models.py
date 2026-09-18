@@ -1,3 +1,4 @@
+# pyright: reportIncompatibleVariableOverride=false
 from __future__ import annotations
 
 import hashlib
@@ -41,6 +42,7 @@ class User(BaseModel):
         Project, field='id', column_name='active_project_id', null=True,
         backref='users_with_active', on_delete='SET NULL',
     )
+    active_project_id: str | None
     role = CharField(default='user')
     whatsapp_phone_number = CharField(null=True, unique=True)
 
@@ -58,7 +60,9 @@ class CoreSession(BaseModel):
     id = AutoField()
     username = CharField()
     user = ForeignKeyField(User, field='id', column_name='user_id', null=True, backref='chat_sessions_owned', on_delete='CASCADE')
+    user_id: str | None
     project = ForeignKeyField(Project, field='id', column_name='project_id', backref='chat_sessions', on_delete='CASCADE')
+    project_id: str
     type = CharField(default='live')
     title = CharField(null=True)
     project_revision = IntegerField(null=False)
@@ -89,6 +93,7 @@ class Message(BaseModel):
     cache_read_tokens = IntegerField(null=True)
     answered_by = IntegerField(null=True)
     session = ForeignKeyField(CoreSession, null=False, backref='messages', on_delete='CASCADE')
+    session_id: int
 
     class Meta:
         table_name = 'Message'
@@ -98,6 +103,7 @@ TRACKING_ORIGINS = ('trigger', 'manual', 'system', 'init-action', 'tool', 'outpu
 class Tracking(BaseModel):
     id = AutoField()
     session = ForeignKeyField(CoreSession, null=False, backref='tracking', on_delete='CASCADE')
+    session_id: int
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     values = TextField(null=True)
     env = TextField(null=True)
@@ -112,6 +118,7 @@ class Tracking(BaseModel):
     action = CharField(null=True)
     new_state = CharField(null=True, index=True)
     message = ForeignKeyField(Message, null=True, backref='tracking_row', on_delete='SET NULL')
+    message_id: int | None
     origin = CharField(null=True)
 
     class Meta:
@@ -146,9 +153,11 @@ class File(BaseModel):
 class Archive(BaseModel):
     id = AutoField()
     project = ForeignKeyField(Project, field='id', column_name='project_id', backref='archives', on_delete='CASCADE')
+    project_id: str
     archive_name = CharField(index=True, null=False)
     revision = IntegerField(null=False, default=0)
     hash = ForeignKeyField(File, field='hash', column_name='hash', backref='archives', null=False, on_delete='RESTRICT')
+    hash_id: str
 
     @property
     def content(self) -> bytes:
@@ -164,8 +173,11 @@ class Archive(BaseModel):
 
 class Drive(BaseModel):
     project = ForeignKeyField(Project, field='id', column_name='project_id', backref='drive_files', on_delete='CASCADE')
+    project_id: str
     user = ForeignKeyField(User, field='id', column_name='user_id', backref='drive_files', on_delete='CASCADE')
+    user_id: str
     session = ForeignKeyField(CoreSession, null=True, backref='drive_files', on_delete='SET NULL')
+    session_id: int | None
     path = CharField(null=False)
     content = BlobField(null=False)
     content_type = CharField(null=False)
@@ -192,8 +204,10 @@ class Test(BaseModel):
     id = AutoField()
     username = CharField(null=True)
     user = ForeignKeyField(User, field='id', column_name='user_id', null=True, backref='tests_owned', on_delete='CASCADE')
+    user_id: str | None
     project_id = CharField(index=True)
     session = ForeignKeyField(CoreSession, null=True, backref='tests', on_delete='CASCADE')
+    session_id: int | None
     strategy = CharField()
     project_draft_edit_count = IntegerField(null=False)
     session_labeling_revision = IntegerField(null=True)
@@ -214,8 +228,11 @@ class TestObservation(BaseModel):
     can never be mistaken for (or overwrite) real conversation data."""
     id = AutoField()
     run = ForeignKeyField(Test, null=False, backref='observations', on_delete='CASCADE')
+    run_id: int
     session = ForeignKeyField(CoreSession, null=False, backref='test_observations', on_delete='CASCADE')
+    session_id: int
     message = ForeignKeyField(Message, null=True, backref='test_observations', on_delete='SET NULL')
+    message_id: int | None
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     values = TextField(null=True)
     old_state = CharField(null=True, index=True)
@@ -309,8 +326,10 @@ class Invite(BaseModel):
     created_at = DateTimeField(default=datetime.utcnow)
     expires_at = DateTimeField()
     project = ForeignKeyField(Project, field='id', column_name='project_id', backref='invites', on_delete='CASCADE')
+    project_id: str
     max_shares = IntegerField()
     created_by = ForeignKeyField(User, field='id', column_name='created_by_id', null=True, backref='invites_created', on_delete='SET NULL')
+    created_by_id: str | None
 
     class Meta:
         table_name = 'Invite'
@@ -330,9 +349,13 @@ class UserProject(BaseModel):
     is how InviteManager counts a code's max_shares usage, by counting
     rows here rather than any counter stored on Invite itself."""
     user = ForeignKeyField(User, field='id', column_name='user_id', backref='user_projects', on_delete='CASCADE')
+    user_id: str
     project = ForeignKeyField(Project, field='id', column_name='project_id', backref='user_projects', on_delete='CASCADE')
+    project_id: str
     accepted_terms = ForeignKeyField(Archive, column_name='accepted_terms_id', backref='accepted_by', null=True, on_delete='SET NULL')
+    accepted_terms_id: int | None
     invite = ForeignKeyField(Invite, column_name='invite_id', null=True, backref='redemptions', on_delete='SET NULL')
+    invite_id: int | None
     invite_timestamp = DateTimeField(null=True)
     ai_summary = TextField(null=True)
 
@@ -363,7 +386,9 @@ class Task(BaseModel):
     key = CharField(unique=True)
     type = CharField(index=True)
     user = ForeignKeyField(User, field='id', column_name='user_id', backref='tasks', on_delete='CASCADE')
+    user_id: str
     project = ForeignKeyField(Project, field='id', column_name='project_id', backref='tasks', on_delete='CASCADE')
+    project_id: str
     run_at = DateTimeField(index=True)
     payload = TextField()
     ui_label = TextField()

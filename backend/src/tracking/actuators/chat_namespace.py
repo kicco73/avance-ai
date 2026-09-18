@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from automaton.automaton import JsSnippet
 from system.logging_factory import LoggerFactory
 from system import bus
-from system.bus import SESSION_TAKEN_OVER, UI_NOTIFICATION, Message
+from system.bus import OUTPUT_CHART, OUTPUT_PROGRESS, SESSION_TAKEN_OVER, UI_NOTIFICATION, Message
 from system.web_session import WebSession
 
 from .actuator_set import _run_sync
@@ -20,10 +20,11 @@ logger = LoggerFactory.get_logger(__name__)
 
 
 class ChatNamespace(ABC):
-    """`celebrate`/`notify`/`show` compile straight to the frontend's own
-    taskActions.js locals of the same name — no real-world side effect
-    at call time, just a JsSnippet, so all three behave identically
-    regardless of a test session's "Run actuators" toggle. `switch_to_ai`
+    """`celebrate`/`notify`/`show`/`show_media` compile straight to the
+    frontend's own taskActions.js locals of the same name — no real-world
+    side effect at call time, just a JsSnippet, so all four behave
+    identically regardless of a test session's "Run actuators" toggle.
+    `switch_to_ai`
     is the same: no real-world side effect to suppress (nobody is
     paged), so unlike `switch_to_human` it's one concrete method here,
     not a Live/Fake pair. Only `switch_to_human` (real side effect —
@@ -52,6 +53,9 @@ class ChatNamespace(ABC):
     def show(self, body_md: str) -> JsSnippet | None:
         return JsSnippet(f"show({json.dumps(body_md)})")
 
+    def show_media(self, url: str) -> JsSnippet | None:
+        return JsSnippet(f"show_media({json.dumps(url)})")
+
     def switch_to_ai(self) -> None:
         """Hands the session back to the AI after switch_to_human — a
         no-op outside a session context (see _session_id)."""
@@ -70,6 +74,30 @@ class ChatNamespace(ABC):
         _run_sync(bus.publish(Message(
             type=UI_NOTIFICATION, username=WebSession().user, session_id=self._session_id,
             project_id=self._project_id, body={"task": snippet_text},
+        )))
+
+    def chart(self, title: str, series: list[dict]) -> None:
+        """Publishes output.chart the same way push_notification publishes
+        ui.notification — best-effort and silent, whether or not the
+        session's socket is watched by anyone."""
+        if self._factory is None or self._session_id is None:
+            return
+        _run_sync(bus.publish(Message(
+            type=OUTPUT_CHART, username=WebSession().user, session_id=self._session_id,
+            project_id=self._project_id, body={"title": title, "series": series},
+        )))
+
+    def progress(self, title: str, percentage: float) -> None:
+        """Publishes output.progress the same way push_notification publishes
+        ui.notification — best-effort and silent, whether or not the
+        session's socket is watched by anyone. Distinct from ui.progress
+        (system/broadcaster.py): that one is a user-wide broadcast, this
+        one is this session's own chat turn."""
+        if self._factory is None or self._session_id is None:
+            return
+        _run_sync(bus.publish(Message(
+            type=OUTPUT_PROGRESS, username=WebSession().user, session_id=self._session_id,
+            project_id=self._project_id, body={"title": title, "percentage": percentage},
         )))
 
     @abstractmethod

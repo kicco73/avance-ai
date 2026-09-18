@@ -3,6 +3,7 @@ from .attachment_namespace import AttachmentNamespace, MAX_ATTACHMENT_READ_BYTES
 from .chat_namespace import ChatNamespace, FakeChatNamespace, LiveChatNamespace
 from .drive_namespace import DriveNamespace, NoDriveNamespace, drive_namespace_for
 from .factory import TaskNamespaceFactory
+from .media_namespace import MediaDoc, MediaNamespace
 
 __all__ = [
     "TaskNamespace",
@@ -18,4 +19,6 @@ __all__ = [
     "DriveNamespace",
     "NoDriveNamespace",
     "drive_namespace_for",
+    "MediaDoc",
+    "MediaNamespace",
 ]

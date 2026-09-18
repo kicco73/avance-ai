@@ -16,8 +16,16 @@ Only a project's *published* revision is ever served compiled. A draft
 changes under the editor's hands and has no build; an older revision some
 session is still pinned to had one at most in the past. Both go straight
 to the ordinary loader — `load`'s own override forces this even when the
-draft's revision number happens to equal the published one, since
-`load_at_revision` alone can't tell those two callers apart.
+draft's revision number happens to equal the published one (true right
+after a publish, until the next edit forks it — see
+project/archive/automaton_loader.py's own BasicAutomatonLoader docstring),
+since `load_at_revision` alone can't tell those two callers apart. It
+does this by handing the draft lookup to `_draft_loader`, a plain
+BasicAutomatonLoader — not this class, not even a second AutomatonLoader
+— so it shares no cache with `load_at_revision`'s own compiled decision
+in either direction: nothing a live request warms is ever read by
+`load`, and nothing `load` builds is ever cached anywhere to go stale or
+need evicting.
 
 Nothing here is fatal. A package that is missing, unimportable, or built
 from a different revision degrades to the interpreted automaton with a
@@ -36,7 +44,7 @@ from build.build_service import module_name_for
 from db import Db
 from system.logging_factory import LoggerFactory
 
-from project.archive.automaton_loader import AutomatonLoader
+from project.archive.automaton_loader import AutomatonLoader, BasicAutomatonLoader
 
 if TYPE_CHECKING:
     from turn.sessions.session_manager import SessionManager
@@ -52,10 +60,10 @@ class CompiledAutomatonLoader(AutomatonLoader):
         super().__init__(db, session_manager=session_manager)
         self._apps_dir = apps_dir
         self._compiled_lock = threading.Lock()
+        self._draft_loader = BasicAutomatonLoader(db, session_manager=session_manager)
 
     def load(self, project_id: str) -> Automaton:
-        revision = self._db.get_project_revision(project_id)
-        return AutomatonLoader.load_at_revision(self, project_id, revision)
+        return self._draft_loader.load(project_id)
 
     def load_at_revision(self, project_id: str, revision: int) -> Automaton:
         with self._compiled_lock:

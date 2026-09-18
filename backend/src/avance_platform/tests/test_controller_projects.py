@@ -84,7 +84,7 @@ def test_default_is_just_an_id_like_any_other_and_can_be_deleted(client):
     assert client.get("/api/core/projects").json()["projects"] == []
 
 
-def test_an_image_aspect_asset_keeps_its_content_type_across_an_export_reimport_round_trip(client):
+def test_an_image_media_asset_keeps_its_content_type_across_an_export_reimport_round_trip(client):
     """GET /api/skills/platform/projects/{id} (download) is documented to round-trip
     back through the upload endpoint with no transformation — an image
     asset's own content_type must survive that too, not just its bytes
@@ -92,7 +92,12 @@ def test_an_image_aspect_asset_keeps_its_content_type_across_an_export_reimport_
     through the text-only extension map, silently mislabeling every
     image asset, SVG included, on re-upload). Re-uploading the exact
     same content lands as a new revision of the same project (see
-    ProjectManager.put_project), not a separate one."""
+    ProjectManager.put_project), not a separate one.
+
+    The zip's own entry is still spelled `aspect/icon.svg` — a legacy
+    layout, from before an image's own extension canonicalized into
+    `media/` (see automaton.file_types) — on purpose, to prove that path
+    still imports and lands under `media/` like any other image would."""
     svg = b'<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>'
     yml = "project:\n  id: proj\n" + MINIMAL_YML
     zip_bytes = _build_zip({"index.yml": yml.encode(), "aspect/icon.svg": svg})
@@ -100,7 +105,7 @@ def test_an_image_aspect_asset_keeps_its_content_type_across_an_export_reimport_
     first = client.post("/api/skills/platform/projects/upload", content=zip_bytes, headers={"Content-Type": "application/zip"})
     assert first.status_code == 200, first.text
     project_id = parse_sse_result(first)["project_id"]
-    assert client.get(f"/api/skills/platform/projects/{project_id}/files/aspect/icon.svg").json()["content_type"] == "image/svg+xml"
+    assert client.get(f"/api/skills/platform/projects/{project_id}/files/media/icon.svg").json()["content_type"] == "image/svg+xml"
 
     downloaded = client.get(f"/api/skills/platform/projects/{project_id}")
     assert downloaded.status_code == 200, downloaded.text
@@ -108,7 +113,7 @@ def test_an_image_aspect_asset_keeps_its_content_type_across_an_export_reimport_
     reimport = client.post("/api/skills/platform/projects/upload", content=downloaded.content, headers={"Content-Type": "application/zip"})
     assert reimport.status_code == 200, reimport.text
     assert parse_sse_result(reimport)["project_id"] == project_id
-    assert client.get(f"/api/skills/platform/projects/{project_id}/files/aspect/icon.svg").json()["content_type"] == "image/svg+xml"
+    assert client.get(f"/api/skills/platform/projects/{project_id}/files/media/icon.svg").json()["content_type"] == "image/svg+xml"
 
 
 def test_new_project_creates_activates_and_de_duplicates_the_hello_world_template(client):
@@ -150,3 +155,20 @@ def test_a_plain_user_only_sees_the_projects_they_have_a_userproject_row_for(app
     WebSession().role = "user"
 
     assert [p["id"] for p in client.get("/api/core/projects").json()["projects"]] == [hello]
+
+
+def test_the_subscribed_projects_endpoint_filters_by_userproject_even_for_a_supervisor(app_db, client):
+    """Unlike /api/core/projects, this one is the caller's own subscription
+    list regardless of role — LiveChat's app menu must not offer a
+    supervisor/admin account every project just because their role
+    would otherwise see everything (see get_subscribed_projects)."""
+    hello = "hello"
+    _upload_yaml(client, hello)
+    _upload_yaml(client, "cat")
+
+    assert client.get("/api/core/projects/subscribed").json()["projects"] == []
+    assert [p["id"] for p in client.get("/api/core/projects").json()["projects"]] == [hello, "cat"]
+
+    app_db.record_terms_acceptance(WebSession().user, hello, archive_id=None)
+
+    assert [p["id"] for p in client.get("/api/core/projects/subscribed").json()["projects"]] == [hello]

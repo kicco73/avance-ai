@@ -8,6 +8,6 @@ export function resolveCssAssetUrls(cssText, projectId, sessionId) {
     const trimmed = target.trim()
     if (!trimmed || ABSOLUTE_URL_PATTERN.test(trimmed)) return whole
     const basename = trimmed.split('/').pop()
-    return `url(${quote}${projectFileContentUrl(projectId, `aspect/${basename}`, sessionId)}${quote})`
+    return `url(${quote}${projectFileContentUrl(projectId, `media/${basename}`, sessionId)}${quote})`
   })
 }

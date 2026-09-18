@@ -60,12 +60,18 @@ class ProjectFiles:
     None if there is no such file. Bytes, not text, deliberately: both
     callers refuse a binary file with a message of their own, and they
     can only do that if the media type reaches them before anything has
-    tried to decode."""
+    tried to decode. `names` is every stored path this project carries —
+    the `media` namespace's own enumeration (tracking.actuators.
+    media_namespace) is the one caller that needs the whole list rather
+    than resolving one name at a time."""
 
     def resolve(self, name: str) -> str | None:
         raise NotImplementedError
 
     def read(self, path: str) -> tuple[bytes, str] | None:
+        raise NotImplementedError
+
+    def names(self) -> list[str]:
         raise NotImplementedError
 
     def cache_key(self, path: str) -> str:
@@ -98,6 +104,9 @@ class PackageProjectFiles(ProjectFiles):
     def resolve(self, name: str) -> str | None:
         return self._resolve_among(name, self._names())
 
+    def names(self) -> list[str]:
+        return self._names()
+
     def cache_key(self, path: str) -> str:
         return f"pkg:{self._directory}\0{path}"
 
@@ -119,6 +128,9 @@ class NoProjectFiles(ProjectFiles):
     def read(self, path: str) -> tuple[bytes, str] | None:
         return None
 
+    def names(self) -> list[str]:
+        return []
+
     def cache_key(self, path: str) -> str:
         raise NotImplementedError("nothing to read, so nothing to cache")
 
@@ -135,6 +147,9 @@ class DbProjectFiles(ProjectFiles):
     def resolve(self, name: str) -> str | None:
         archives = self._db.get_archives(self._project_id(), revision=self._revision())
         return self._resolve_among(name, list(archives))
+
+    def names(self) -> list[str]:
+        return list(self._db.get_archives(self._project_id(), revision=self._revision()))
 
     def cache_key(self, path: str) -> str:
         return f"{DB_CACHE_KEY_PREFIX}{self._project_id()}\0{self._revision()}\0{path}"
@@ -230,6 +245,9 @@ class CachedProjectFiles(ProjectFiles):
 
     def resolve(self, name: str) -> str | None:
         return self._inner.resolve(name)
+
+    def names(self) -> list[str]:
+        return self._inner.names()
 
     def cache_key(self, path: str) -> str:
         return self._inner.cache_key(path)

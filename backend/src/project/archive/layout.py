@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from automaton.file_types import ASPECT_DIR, BEHAVIOUR_DIR, ROOT_FILE_NAMES, ProjectFileTypes  # noqa: F401  (re-exported: the project package reads the layout's own names from here)
+from automaton.file_types import (  # noqa: F401  (re-exported: the project package reads the layout's own names from here)
+    ASPECT_DIR, BEHAVIOUR_DIR, MEDIA_DIR, MEDIA_EXTENSIONS, ROOT_FILE_NAMES, ProjectFileTypes,
+)
 
 LEGAL_TERMS_FILE_NAME = "legal/terms.md"
 LEGAL_TERMS_SKELETON = """# Terms of this application
@@ -33,8 +35,8 @@ CACHE_DIR = "cache"
 class ArchiveLayout:
     """Where a project's files live and how their bytes are represented —
     canonicalizing an uploaded/imported name into this project's own
-    layout (root, aspect/, behaviour/, legal/), and decoding text archives
-    for parsing."""
+    layout (root, aspect/, behaviour/, legal/, media/), and decoding text
+    archives for parsing."""
 
     @staticmethod
     def canonicalize_name(name: str) -> str:
@@ -47,6 +49,8 @@ class ArchiveLayout:
             return name
         parts = Path(name).parts
         if len(parts) == 2 and parts[0] == SOURCES_DIR and Path(basename).suffix.lower() == ".csv":
+            return name
+        if len(parts) == 2 and parts[0] == MEDIA_DIR and Path(basename).suffix.lower() in MEDIA_EXTENSIONS:
             return name
         return ProjectFileTypes.of(basename).canonical_name(basename)
 

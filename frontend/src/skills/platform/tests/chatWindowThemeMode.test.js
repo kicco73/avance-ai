@@ -20,6 +20,7 @@ vi.mock('../../../api.js', () => ({
   getTestChatModels: vi.fn(),
   postTestChatModelSelection: vi.fn(),
   getProjects: vi.fn().mockResolvedValue({ projects: [{ id: 'live-proj', ui_label: 'Live' }], active: 'live-proj' }),
+  getSubscribedProjects: vi.fn().mockResolvedValue({ projects: [{ id: 'live-proj', ui_label: 'Live' }], active: 'live-proj' }),
   projectFileContentUrl: vi.fn((projectName, fileName, sessionId) => `/api/core/projects/${projectName}/files/${fileName}/content?session_id=${sessionId}`)
 }))
 

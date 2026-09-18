@@ -27,7 +27,7 @@ import { useIndexYmlEditing } from '../../../useIndexYmlEditing.js'
 import { useProjectCatalog } from '../../../useProjectCatalog.js'
 import { useLiveRunTimeline } from '../../../useLiveRunTimeline.js'
 import { useStateTabTokens } from '../../../../../composables/useStateTabTokens.js'
-import { putSessionTitle, putSessionComment, postModernizeIndexYml } from '../../../api.js'
+import { putSessionTitle, putSessionComment, postModernizeIndexYml, postMigrateLegacyMediaAssets } from '../../../api.js'
 import { onProjectChanged } from '../../../../../projectChangeEvents.js'
 import { projectModes } from '../../../../registry.js'
 import { setApiWarning } from '../../../../../errorStore.js'
@@ -56,9 +56,11 @@ const {
   filesLoading, files, currentFileName, uploading, creatingFile, deletingFile, renamingFile,
   designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
   currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
+  mediaRootSelected, selectMediaRoot,
+  attachmentsRootSelected, selectAttachmentsRoot,
   activeEditorIsDirty, activeEditor,
   loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
-  handleUploadFile, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
+  handleUploadMedia, handleUploadAttachment, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
   handleFileRenamedByHistory, handleFileSaved,
 } = useProjectFiles(props.projectId, emit)
 
@@ -91,24 +93,9 @@ onBeforeUnmount(() => { if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer)
 
 const {
   sourcesLoading, sources, currentSourceName, sourcesRootSelected, selectedSource, deletingSource,
-  loadSources, selectSource, selectSourcesRoot, handleAddSource, handleAddWebSearchSource, handleUploadSourceFile,
+  loadSources, selectSource, selectSourcesRoot, handleAddSource, handleAddWebSearchSource,
   handleSetSourceField, handleDeleteSource,
 } = useProjectSources(props.projectId, guardedAction, flashRecentlyAdded)
-
-async function handleUploadFileOrSource(event) {
-  const uploadedFiles = Array.from(event.target.files ?? [])
-  const csvFiles = uploadedFiles.filter((file) => /\.csv$/i.test(file.name))
-  if (!csvFiles.length) {
-    handleUploadFile(event)
-    return
-  }
-  const otherFiles = uploadedFiles.filter((file) => !/\.csv$/i.test(file.name))
-  event.target.value = ''
-  for (const file of csvFiles) {
-    await handleUploadSourceFile(file)
-  }
-  if (otherFiles.length) handleUploadFile({ target: { files: otherFiles, value: '' } })
-}
 
 const sourceContentPanelRef = computed(() => designPanelRef.value?.sourceContentPanelRef ?? null)
 
@@ -144,6 +131,8 @@ function selectFileNode(fileName) {
 function selectSourceNode(name) {
   guardedSourceAction(`switch to source "${name}"`, () => {
     selectedGraphElement.value = null
+    mediaRootSelected.value = false
+    attachmentsRootSelected.value = false
     selectSource(name)
   })
 }
@@ -151,7 +140,27 @@ function selectSourceNode(name) {
 function selectSourcesRootNode() {
   guardedSourceAction('view sources', () => {
     selectedGraphElement.value = null
+    mediaRootSelected.value = false
+    attachmentsRootSelected.value = false
     selectSourcesRoot()
+  })
+}
+
+function selectMediaRootNode() {
+  guardedSourceAction('view media', () => {
+    selectedGraphElement.value = null
+    currentSourceName.value = null
+    sourcesRootSelected.value = false
+    selectMediaRoot()
+  })
+}
+
+function selectAttachmentsRootNode() {
+  guardedSourceAction('view attachments', () => {
+    selectedGraphElement.value = null
+    currentSourceName.value = null
+    sourcesRootSelected.value = false
+    selectAttachmentsRoot()
   })
 }
 
@@ -193,7 +202,7 @@ const inspectorTabs = computed(() => {
       { id: 'drive', label: 'Drive' }
     ]
   }
-  if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || !isBehaviorNodeSelected.value)) {
+  if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || mediaRootSelected.value || !isBehaviorNodeSelected.value)) {
     return [{ id: 'state', label: 'Info' }]
   }
   return [
@@ -404,8 +413,13 @@ function modernizeIndexYml() {
     .catch(() => [])
 }
 
+function migrateLegacyMediaAssets() {
+  return postMigrateLegacyMediaAssets(props.projectId).catch(() => ({ moved: [] }))
+}
+
 onMounted(async () => {
   const fixed = await modernizeIndexYml()
+  await migrateLegacyMediaAssets()
   loadFiles()
   loadSources()
   loadTestChatModels()
@@ -505,6 +519,8 @@ async function handleSetSessionComment(sessionId, comment) {
           :sources-root-selected="sourcesRootSelected"
           :modified-files="projectRevision?.modified_files ?? []"
           :current-revision="projectRevision?.revision ?? null"
+          :media-root-selected="mediaRootSelected"
+          :attachments-root-selected="attachmentsRootSelected"
           @start-explorer-drag="startExplorerDrag"
           @new-attachment="handleNewAttachment"
           @new-aspect="handleNewAspect"
@@ -514,7 +530,10 @@ async function handleSetSessionComment(sessionId, comment) {
           @select-file="selectFileNode"
           @select-source="selectSourceNode"
           @select-sources-root="selectSourcesRootNode"
-          @upload-file="handleUploadFileOrSource"
+          @select-attachments-root="selectAttachmentsRootNode"
+          @select-media-root="selectMediaRootNode"
+          @upload-media="handleUploadMedia"
+          @upload-attachment="handleUploadAttachment"
           @jump-to-definition="jumpSilently"
           @select="selectedGraphElement = $event"
           @saved="handleProjectFileSaved"

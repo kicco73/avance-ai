@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .models import EditHistory
 from peewee import fn
@@ -25,6 +26,16 @@ UndoRedoOutcome = ContentRestored | FileRenamed
 
 
 class HistoryMixin:
+
+    if TYPE_CHECKING:
+        def ensure_project(self, project_id: str) -> None: ...
+        def _ensure_draft_revision(self, project_id: str) -> int: ...
+        def get_archive(self, project_id: str, archive_name: str, revision: int | None = None) -> bytes | None: ...
+        def save_project_files(self, project_id: str, files: dict[str, bytes], content_types: dict[str, str]) -> None: ...
+        def rename_archive(
+            self, project_id: str, old_name: str, new_name: str,
+            updated_files: dict[str, bytes] | None = None, content_types: dict[str, str] | None = None,
+        ) -> None: ...
 
     def _next_history_seq(self, user_id: str, project_id: str, archive_name: str, kind: str) -> int:
         latest = EditHistory.select(fn.MAX(EditHistory.seq)).where((EditHistory.user_id == user_id) & (EditHistory.project_id == project_id) & (EditHistory.archive_name == archive_name) & (EditHistory.kind == kind)).scalar()
@@ -96,6 +107,7 @@ class HistoryMixin:
             self._push_rename_marker(user_id, project_id, row.rename_target, 'redo', archive_name)
             return FileRenamed(active_name=row.rename_target)
         self._push_history(user_id, project_id, archive_name, 'redo', current_content)
+        assert row.content is not None
         return ContentRestored(content=row.content)
 
     def redo_project_file(self, user_id: str, project_id: str, archive_name: str, current_content: bytes) -> UndoRedoOutcome | None:
@@ -107,5 +119,6 @@ class HistoryMixin:
             self._push_rename_marker(user_id, project_id, row.rename_target, 'undo', archive_name)
             return FileRenamed(active_name=row.rename_target)
         self._push_history(user_id, project_id, archive_name, 'undo', current_content)
+        assert row.content is not None
         return ContentRestored(content=row.content)
 

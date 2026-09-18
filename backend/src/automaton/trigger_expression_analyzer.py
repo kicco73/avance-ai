@@ -17,7 +17,8 @@ class TriggerExpressionAnalyzer:
     analyzed for, without evaluating it: which identifiers/namespaces it
     references, and whether an ordering comparison mixes incompatible types."""
     RESERVED_NAMESPACES = (
-        "signal", "env", "session", "user", "source", "task", "chat", "attachment", "drive", "metric", "datetime",
+        "signal", "env", "session", "user", "source", "task", "chat", "attachment", "drive", "media", "metric",
+        "datetime",
     )
     NESTED_NAMESPACES = (("session", "metric"), ("datetime", "timezone"))
 
@@ -78,45 +79,72 @@ class TriggerExpressionAnalyzer:
         }
         return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - namespace_bases - comprehension_targets
 
-    @staticmethod
-    def source_refs(expression: str) -> dict[str, set[str]]:
-        """Every `source.<name>.<method>` reference in `expression`,
-        grouped by source name — `source.<name>` is a dynamic, per-project
-        namespace
-        static-tuple matching (_namespace_path_of/_NAMESPACE_PATHS) can't
-        express, so it's matched directly here instead."""
+    @classmethod
+    def _dynamic_namespace_refs(cls, expression: str, namespace: str) -> dict[str, set[str]]:
+        """Every `<namespace>.<name>.<method>` reference in `expression`,
+        grouped by name — shared by source_refs/media_refs below:
+        `source.<name>`/`media.<doc_id>` are both dynamic, per-project
+        namespaces static-tuple matching (_namespace_path_of/
+        _NAMESPACE_PATHS) can't express, so each is matched directly here
+        instead, by its own full three-part dotted chain."""
         tree = ast.parse(expression, mode="eval").body
         refs: dict[str, set[str]] = {}
         for node in ast.walk(tree):
-            if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute)):
+            if not isinstance(node, ast.Attribute):
                 continue
-            name_node = node.value
-            if not isinstance(name_node.value, ast.Name) or name_node.value.id != "source":
+            chain = cls._dotted_chain(node)
+            if chain is None or len(chain) != 3 or chain[0] != namespace:
                 continue
-            refs.setdefault(name_node.attr, set()).add(node.attr)
+            refs.setdefault(chain[1], set()).add(chain[2])
         return refs
 
-    @staticmethod
-    def source_calls(expression: str) -> list[tuple[str, str, int, tuple[str, ...], bool]]:
-        """Every `source.<name>.<method>(...)` call in `expression`, as
-        (source_name, method, positional_count, keyword_names, unpacks)
-        — `unpacks` when a `*args`/`**kwargs` argument makes the count
-        unknowable before evaluation."""
+    @classmethod
+    def _dynamic_namespace_calls(
+        cls, expression: str, namespace: str,
+    ) -> list[tuple[str, str, int, tuple[str, ...], bool]]:
+        """Every `<namespace>.<name>.<method>(...)` call in `expression`,
+        as (name, method, positional_count, keyword_names, unpacks) —
+        `unpacks` when a `*args`/`**kwargs` argument makes the count
+        unknowable before evaluation. Shared by source_calls/media_calls."""
         tree = ast.parse(expression, mode="eval").body
         calls = []
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
                 continue
-            name_node = node.func.value
-            if not (
-                isinstance(name_node, ast.Attribute) and isinstance(name_node.value, ast.Name)
-                and name_node.value.id == "source"
-            ):
+            chain = cls._dotted_chain(node.func)
+            if chain is None or len(chain) != 3 or chain[0] != namespace:
                 continue
             unpacks = any(isinstance(arg, ast.Starred) for arg in node.args) or any(kw.arg is None for kw in node.keywords)
             keywords = tuple(kw.arg for kw in node.keywords if kw.arg is not None)
-            calls.append((name_node.attr, node.func.attr, len(node.args), keywords, unpacks))
+            calls.append((chain[1], chain[2], len(node.args), keywords, unpacks))
         return calls
+
+    @classmethod
+    def source_refs(cls, expression: str) -> dict[str, set[str]]:
+        """Every `source.<name>.<method>` reference in `expression`,
+        grouped by source name."""
+        return cls._dynamic_namespace_refs(expression, "source")
+
+    @classmethod
+    def source_calls(cls, expression: str) -> list[tuple[str, str, int, tuple[str, ...], bool]]:
+        """Every `source.<name>.<method>(...)` call in `expression`, as
+        (source_name, method, positional_count, keyword_names, unpacks)."""
+        return cls._dynamic_namespace_calls(expression, "source")
+
+    @classmethod
+    def media_refs(cls, expression: str) -> dict[str, set[str]]:
+        """Every `media.<doc_id>.<method>` reference in `expression`,
+        grouped by doc id — media.<doc_id> is a dynamic, per-project
+        namespace the same way source.<name> is, one entry per file
+        uploaded under this project's own `media/` folder (see
+        automaton.file_types.media_doc_id_for)."""
+        return cls._dynamic_namespace_refs(expression, "media")
+
+    @classmethod
+    def media_calls(cls, expression: str) -> list[tuple[str, str, int, tuple[str, ...], bool]]:
+        """Every `media.<doc_id>.<method>(...)` call in `expression`, as
+        (doc_id, method, positional_count, keyword_names, unpacks)."""
+        return cls._dynamic_namespace_calls(expression, "media")
 
     @staticmethod
     def merged_string_arguments(expression: str) -> list[str]:

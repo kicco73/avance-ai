@@ -13,7 +13,10 @@ import zipfile
 
 import pytest
 
-from conftest import chat_action, chat_action_frames, enter_chat, parse_sse_result, session_of
+from conftest import (
+    _frame_deadline, chat_action, chat_action_frames, chat_socket, enter_chat, parse_sse_result,
+    session_of, turn_frame_seconds,
+)
 
 pytestmark = pytest.mark.contract
 
@@ -60,6 +63,67 @@ def test_manual_action_pushes_its_on_exits_own_chat_snippets_synchronously(clien
     assert app_db.list_tasks() == []
     assert [frame for frame in frames if frame["type"] == "ui.notification"] == [
         {"type": "ui.notification", "task": "celebrate()"},
+    ]
+
+
+YML_PROGRESS = (
+    "project:\n  id: proj\n"
+    "init-action:\n  target: a\n"
+    "states:\n"
+    "  a:\n"
+    "    contextual-prompt: hi\n"
+    "    actions:\n"
+    "      - name: go-loud\n"
+    "        target: b\n"
+    "        on-exit: chat.progress('Uploading', 42)\n"
+    "  b:\n"
+    "    contextual-prompt: there\n"
+    "    actions:\n"
+    "      - name: back\n"
+    "        target: a\n"
+)
+
+
+def test_manual_action_pushes_its_on_exits_own_output_progress(client, app_db):
+    """chat.progress publishes a real bus message, delivered on the
+    per-session "who is watching" path (like output.chart) — never the
+    identity-wide ui.progress. That path only reaches a connection that
+    has actually entered this session (session.enter watches it), so
+    unlike the ui.notification-based test above, this one keeps a single
+    socket open across session.enter and the action instead of using
+    chat_action_frames' own fresh, never-entered connection. session.enter
+    also kicks off its own background "speaks first" greeting (history is
+    empty) whose frames can interleave with the click's own — so this
+    reads until state b's own buttons ('back') actually settle, not just
+    until any state.buttons shows up."""
+    resp = client.post("/api/skills/platform/projects/upload", content=YML_PROGRESS.encode(), headers={"Content-Type": "application/x-yaml"})
+    assert resp.status_code == 200, resp.text
+    project_id = parse_sse_result(resp)["project_id"]
+    resp = client.post(f"/api/core/projects/{project_id}/activate")
+    assert resp.status_code == 200, resp.text
+    resp = client.post(f"/api/skills/platform/projects/{project_id}/publish", json={})
+    assert resp.status_code == 200, resp.text
+
+    def settled_on_b(frames: list[dict]) -> bool:
+        return any(
+            frame["type"] == "state.buttons" and any(action["name"] == "back" for action in frame["actions"])
+            for frame in frames
+        )
+
+    frames = []
+    with _frame_deadline(turn_frame_seconds(), frames):
+        with chat_socket(client) as ws:
+            ws.send_json({"type": "session.enter", "project_id": project_id, "session_type": "live"})
+            while not frames or frames[-1]["type"] != "state.buttons":
+                frames.append(ws.receive_json())
+            session_id = session_of(frames)
+            ws.send_json({"type": "input.button", "session_id": session_id, "id": "go-loud"})
+            while not settled_on_b(frames):
+                frames.append(ws.receive_json())
+
+    progress_frames = [frame for frame in frames if frame["type"] == "output.progress"]
+    assert progress_frames == [
+        {"type": "output.progress", "session_id": session_id, "project_id": project_id, "title": "Uploading", "percentage": 42},
     ]
 
 

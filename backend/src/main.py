@@ -30,6 +30,8 @@ from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
 from project.archive.loader_choice import AutomatonLoaderChoice
+from project.archive.media_migration import migrate_aspect_archives
+from project.archive.packages import discard_all_packages
 from project.project_service import ProjectService
 from system.project_locks import ProjectLocks
 from ai import AiService
@@ -38,7 +40,7 @@ from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 
-__version__ = "2.2.15"
+__version__ = "2.3.1"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -77,6 +79,8 @@ def create_app() -> FastAPI:
         configure_project_file_cache(config.project_file_cache_bytes)
 
         migrate_env_rows(db)
+        if migrate_aspect_archives(db):
+            discard_all_packages(config.build_service_config.apps_dir)
 
         ai_live_service = AiService.for_live(
             config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,

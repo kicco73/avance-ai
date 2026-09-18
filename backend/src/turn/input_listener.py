@@ -89,9 +89,26 @@ class TurnInput(object):
     async def _resolved(self, message: Message, kind: str) -> dict:
         for session_id in filter(None, [None if message.type == SESSION_CREATE else message.session_id]):
             return self._turn_service.session_named(session_id)
+        project_id = self._project_id(message)
         if message.type == SESSION_CREATE:
-            return await self._turn_service.create_session_of(message.project_id, kind)
-        return await self._turn_service.enter_session(message.project_id, kind)
+            return await self._turn_service.create_session_of(project_id, kind)
+        return await self._turn_service.enter_session(project_id, kind)
+
+    @staticmethod
+    def _project_id(message: Message) -> str:
+        """Every SESSION_CREATE/SESSION_ENTER message names the project
+        it is entering — the one field an envelope with no session yet
+        cannot do without."""
+        assert message.project_id is not None
+        return message.project_id
+
+    @staticmethod
+    def _session_id(message: Message) -> int:
+        """`_accept` is the one place a message's session_id shows up
+        unchecked; everything past it — the whole answer/turn pipeline —
+        only ever runs for a message that already cleared that check."""
+        assert isinstance(message.session_id, int)
+        return message.session_id
 
     @staticmethod
     def _refusal_of(session: dict) -> dict | None:
@@ -105,28 +122,30 @@ class TurnInput(object):
 
     async def _recalled(self, message: Message) -> None:
         await self._answering(message, lambda outbound: outbound.recalled(
-            self._turn_service.read_history(message.session_id, (message.body or {}).get("limit")),
+            self._turn_service.read_history(self._session_id(message), (message.body or {}).get("limit")),
         ))
 
     async def _terminated(self, message: Message) -> None:
         await self._answering(message, lambda outbound: None, self._turn_service.close_session)
 
     async def _exhausted(self, message: Message) -> None:
-        await self._turn_service.close_exhausted_session(message.session_id)
+        await self._turn_service.close_exhausted_session(self._session_id(message))
 
     async def _speaking(self, message: Message) -> None:
         enabled = bool((message.body or {}).get("enabled"))
-        self._turn_service.set_audio_enabled(message.session_id, enabled)
+        self._turn_service.set_audio_enabled(self._session_id(message), enabled)
 
     async def _reacted(self, message: Message) -> None:
         body = message.body or {}
-        self._turn_service.set_message_reaction(body.get("assistant_message_id"), body.get("reaction"))
+        assistant_message_id = body.get("assistant_message_id")
+        assert assistant_message_id is not None
+        self._turn_service.set_message_reaction(int(assistant_message_id), body.get("reaction"))
 
     async def _answering(self, message: Message, say, first=None) -> None:
         async with publishing(message, self._db) as outbound:
             try:
                 if first is not None:
-                    await first(message.session_id)
+                    await first(self._session_id(message))
                 say(outbound)
             except ServiceError as exc:
                 outbound.failed(exc, [])
@@ -147,12 +166,13 @@ class TurnInput(object):
             accepted = await self._accept(message, outbound)
             if accepted is None:
                 return
-            requests = self._requests.setdefault(message.session_id, _Requests())
+            session_id = self._session_id(message)
+            requests = self._requests.setdefault(session_id, _Requests())
             requests.add(accepted)
             if requests.answering:
                 return
             requests.answering = True
-            task = asyncio.create_task(self._answer(message.session_id, requests))
+            task = asyncio.create_task(self._answer(session_id, requests))
             self._turns.add(task)
             task.add_done_callback(self._turns.discard)
 
@@ -170,8 +190,9 @@ class TurnInput(object):
         try:
             if not text:
                 raise ServiceError("Message cannot be empty.", status_code=400, code="empty_message")
-            prepared = await self._turn_service.prepare_user_initiated_turn(message.session_id)
-            message_id = self._turn_service.accept_user_message(message.session_id, text)
+            session_id = self._session_id(message)
+            prepared = await self._turn_service.prepare_user_initiated_turn(session_id)
+            message_id = self._turn_service.accept_user_message(session_id, text)
         except ServiceError as exc:
             outbound.failed(exc, prepared)
             return None
@@ -196,7 +217,7 @@ class TurnInput(object):
     ) -> dict | None:
         for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
             return await self._take_action(message, outbound)
-        session_id = message.session_id
+        session_id = self._session_id(message)
         text = str((message.body or {}).get("text") or "").strip()
         try:
             result = await self._turn_service.process_turn(
@@ -222,7 +243,7 @@ class TurnInput(object):
         is no difference."""
         action = str((message.body or {}).get("id") or "")
         try:
-            selection = parse_button_name(action, self._turn_service.choice_options_for(message.session_id))
+            selection = parse_button_name(action, self._turn_service.choice_options_for(self._session_id(message)))
         except ValueError as exc:
             logger.info("Choice %r refused for session %s: %s", action, message.session_id, exc)
             outbound.put(OUTPUT_ERROR, {"code": "choice_unavailable", "message": str(exc), "detail": ""})
@@ -234,7 +255,7 @@ class TurnInput(object):
     async def _take_manual_action(self, action: str, message: Message, outbound: "Outbound") -> dict | None:
         try:
             result = await self._turn_service.apply_manual_action(
-                action, message.session_id, on_metadata=outbound.on_metadata,
+                action, self._session_id(message), on_metadata=outbound.on_metadata,
             )
         except ValueError as exc:
             logger.info("Action %r refused for session %s: %s", action, message.session_id, exc)
@@ -251,7 +272,7 @@ class TurnInput(object):
     ) -> dict | None:
         try:
             result = await self._turn_service.apply_choice(
-                selection, message.session_id, on_metadata=outbound.on_metadata,
+                selection, self._session_id(message), on_metadata=outbound.on_metadata,
             )
         except ValueError as exc:
             logger.info("Choice %r refused for session %s: %s", action, message.session_id, exc)
@@ -279,7 +300,7 @@ class _Requests(object):
 
     def __init__(self) -> None:
         self.waiting: list[Message] = []
-        self.accepted: list[int] = []
+        self.accepted: list[int | None] = []
         self.prepared: list[dict] = []
         self.answering = False
 

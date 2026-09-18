@@ -466,7 +466,7 @@ sources:
 | `url` | no | string, `<scheme>:<path>` | `""` (unconfigured) | Which driver resolves this source, and that driver's own target. Left unset, the source builds fine but none of its methods can be called yet — an "undefined name(s)" error, same as an undeclared source. |
 | `ui-label` | no | string | this source's own key | Shown in the frontend. |
 | `ui-description` | no | string | `None` | Shown in the frontend — **never sent to the model.** |
-| `ai-definition` | conditionally | string | `None` | Written *for the model*: what this file contains and how to search it well. Becomes part of the tool's own description whenever this source is exposed as a native tool. **Required** (build error otherwise) for any source named in some state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) — same requirement a signal's own `definition` gets; optional otherwise. |
+| `ai-definition` | conditionally | string | `None` | Written *for the model*: what this file contains and how to search it well. Becomes part of the tool's own description whenever this source is exposed as a native tool. **Required** (build error otherwise) for any source named in some state's own `ai-may-read-sources`/`ai-must-read-sources` (§4.2) — same requirement a signal's own `definition` gets; optional otherwise. |
 
 `ui-description` and `ai-definition` serve two different readers, and the
 distinction is load-bearing, not stylistic: `ui-description` is UI text —
@@ -536,24 +536,13 @@ of source kinds: method support is the whole compatibility story.
   trigger/env: expressions only — never exposed to the model.
   `env.caso = source.casos.row_where('caso', '=', 1)` keeps one whole
   record, and the prompt's env block renders it as JSON.
-- `update(*values, fields={...})` — assigns `fields` (column → new value)
-  to every row containing every value; returns how many rows it touched
-  (`"1 row updated"`). Unsupported by a driver that can't write.
-- `save_as(key, **columns)` — writes one whole record under `key`, the
-  first column's own value: the row carrying it is replaced, and when no
-  row does, one is added (`"1 row replaced"` / `"1 row added"`). The row
-  is built from `columns` alone — a column left out is written empty, and
-  a name that isn't a column of the file comes back as an error *text*.
-  The file written is this session's own cache copy (see `avance:<path>`
-  below), never the project's stored archive, so what a project ships is
-  the same again for the next conversation. Scripts and trigger/env:
-  expressions only — never exposed to the model.
 
 Every read returns whole rows: there is no column projection, and an
 unknown column or operator comes back as an error *text*, never an
 exception. Every driver implements `select_rows_containing`; the
-column-filtered reads, `value` and `update` only where they make sense
-for that driver (its own `SUPPORTED_METHODS`).
+column-filtered reads and `value` only where they make sense for that
+driver (its own `SUPPORTED_METHODS`). Sources are read-only — no driver
+writes anything, ever.
 
 Two drivers exist today, under the schemes `avance` and `websearch`:
 
@@ -563,12 +552,10 @@ basename under `behaviour/`, resolved directly from storage at the
 conversation's own pinned automaton revision, never "whatever's published
 now" — not the `attachments:` mechanism, nothing is eagerly loaded).
 Assumes a normalized CSV (header + one row per record; the separator is
-detected). Implements every `select_rows_*` read, `value`, `column`,
-`row_where` and `save_as` — never `update`. Its reads go through a
-per-session copy of the file, and `save_as` writes that copy: within one
-conversation a saved record reads back, while the project's own file is
-untouched and a session that never saved anything reads exactly what the
-project ships. A
+detected). Implements every `select_rows_*` read, `value`, `column` and
+`row_where` — nothing writes. Every read goes straight to the project's
+own stored file, at the conversation's own pinned revision — the same
+content for every session, no per-session copy of anything. A
 whole-file read is `attachment.read(name)`'s job (`on-exit`/`task` only), not a
 `source.*` capability.
 
@@ -816,9 +803,11 @@ span several lines, and a `#` comment just works). Each line is
   blocks the rest" evaluation-time failure handling, same "lands before
   anything else that turn generates a reply" timing), same namespaced
   scope/mechanics as `trigger`/`env` (§5.2, minus the boolean cast) —
-  the RHS may itself reference `env.<key>` (its own last stored value,
-  from *before* this action fired) exactly like a `env:` mapping entry
-  could; **or**
+  unlike a `env:` mapping entry, an accepted write lands in place right
+  away: a *later* line's own `env.<key>` read (another assignment's RHS,
+  a local, a `chat.<method>(...)` argument) sees the value this line
+  just wrote, never the one from before this action fired — on-exit is
+  an ordered script, not an unordered mapping; **or**
 - a `name = expression` local — `task`'s own assignment shape (§5.4):
   `name` may not shadow a reserved namespace or core metric, may only be
   read by a *later* line, and is dropped once the script ends — it never
@@ -831,7 +820,17 @@ Unlike `task` (§5.4), no `task.<name>(...)` calls: `task:`'s own
 job. `attachment.read(name)` (§5.2, data sources) is available in either shape, under
 the same build-time checks — a string-literal name, an existing text
 file, under the size limit — so an action can store a file in an env
-key or show one, e.g. `chat.show(attachment.read('rules.md'))`:
+key or show one, e.g. `chat.show(attachment.read('rules.md'))`.
+
+`media.<doc_id>.url()` is available the same way, on-exit only — one
+attribute per file uploaded under this project's own `media/` folder,
+`doc_id` its basename without extension (a file whose basename doesn't
+parse as a Python identifier isn't reachable this way, only by name in
+the file explorer). Unlike `attachment.read`, it never reads the file's
+own bytes — it returns the same download url the frontend already
+fetches every other project file's content from, for `chat.show_media`
+(above) to hand to the browser, e.g.
+`chat.show_media(media.report.url())`.
 
 ```yaml
     actions:
@@ -856,7 +855,7 @@ every `on-exit:` script — its own env writes and its own `chat.*`
 calls alike — runs **synchronously, in the same request that fired the
 action**, never hibernated as a background job: `chat.*` has no
 model/network call of its own to keep off the event-loop thread, so
-there's nothing to defer. Five methods exist:
+there's nothing to defer. Eight methods exist:
 
 - `chat.celebrate()` / `chat.notify(title, body_md)` / `chat.show(body_md)` —
   compile straight to `taskActions.js` locals of the same name
@@ -875,14 +874,39 @@ there's nothing to defer. Five methods exist:
   AI. No JS of its own reaches the browser.
 - `chat.switch_to_ai()` — hands a session back to the AI after
   `switch_to_human`. No JS of its own reaches the browser.
+- `chat.show_media(url)` — shows one of this project's own `media/`
+  files: `url` is that file's own download url, e.g.
+  `media.<doc_id>.url()` (below). Compiles the same way `chat.show` does
+  — a tunneled `show_media(url)` JS snippet — but the frontend decides
+  what to render from `url`'s own extension: an image, PDF, or Markdown
+  file opens in the app's existing generic dialog; an audio file plays
+  instead, in a looping background player, no dialog at all. Only takes
+  effect in webchat — the one frontend that has a dialog/player to show
+  it in.
+- `chat.chart(title, series)` — `series` is a list of `{line, value}`
+  dicts. Publishes `output.chart` (`title`, `series`, the session's own
+  `session_id`) on the bus, delivered only to a connection actually
+  showing this conversation — like `chat.notify`, no JS of its own is
+  tunneled; unlike it, this reaches the browser as a real bus message,
+  not a `ui.notification` frame, and renders as a bar chart, one bar per
+  `line`.
+- `chat.progress(title, percentage)` — publishes `output.progress`
+  (`title`, `percentage`, the session's own `session_id`) on the bus,
+  delivered only to a connection actually showing this conversation —
+  same delivery as `chat.chart`, a real bus message rather than a
+  tunneled JS call. Distinct from the platform's own `ui.progress`
+  (a user-wide broadcast bar, unrelated): this one lives inside the
+  current turn's own chat bubble. `percentage` below 100 shows a title
+  and a bar; `None` (never called) or 100 and above shows the bubble as
+  usual, with no bar.
 
 `switch_to_human`/`switch_to_ai` never run for real during a draft/test
 conversation unless actuators are explicitly enabled for it — while off
 (the default there) `switch_to_human` is suppressed and reported back
 as a `notify(...)` toast describing what would have happened instead,
 same suppress-and-report contract `task:`'s own real side effects get
-(§5.4). `celebrate`/`notify`/`show`/`switch_to_ai` have no real-world
-side effect to suppress, so they always run.
+(§5.4). `celebrate`/`notify`/`show`/`show_media`/`switch_to_ai`/`chart`/`progress`
+have no real-world side effect to suppress, so they always run.
 
 **5.4 Action `task`.** One or more statements, one per non-blank
 line, same namespaced scope as `trigger`/`env` (§5.2) as a firing side
@@ -1137,7 +1161,7 @@ of how you're likely to hit them:
 - Every `attachments:` entry (global/signal/state — actions have none) names a file actually present alongside `index.yml`.
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance:<path>`) its path names a file actually present alongside `index.yml`.
 - Every name in a state's own `input`/`output` (§4.3) names a key actually declared in `env:`, and that env key declares its own `ai-definition`.
-- Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources`/`ai-may-write-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements the method the field exposes (`select_rows_containing`/`update`), and no name appears in both read fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement — the one place a build does say what a name used to be, because there is nothing that can settle it on the author's behalf (§8.2).
+- Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements `select_rows_containing`, and no name appears in both fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement, and the removed `ai-may-write-sources` is rejected outright — the one place a build does say what a name used to be, because there is nothing that can settle it on the author's behalf (§8.2).
 
 ### 8.1 A field nobody reads
 
