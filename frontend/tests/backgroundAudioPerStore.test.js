@@ -30,6 +30,7 @@ describe('background audio is scoped per chat store, not shared globally', () =>
     vi.resetModules()
     HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined)
     HTMLMediaElement.prototype.pause = vi.fn()
+    HTMLMediaElement.prototype.load = vi.fn()
     bus = await import('./fakeBus.js')
     bus.resetFakeBus()
     const { createChatStore } = await import('../src/chatStoreFactory.js')

@@ -78,6 +78,7 @@ export function createBackgroundAudio() {
     el.pause()
     el.volume = 1
     el.src = backgroundAudioUrl.value
+    el.load()
     el.play().catch(() => {})
     backgroundAudioPlaying.value = true
     activePlayer = backgroundAudioPlaying
