@@ -133,8 +133,7 @@ function isSelfLoop(transition) {
 }
 
 .chat-timeline-content {
-  flex: 1;
-  min-height: 0;
+  flex: none;
   display: flex;
   flex-direction: column;
 }
