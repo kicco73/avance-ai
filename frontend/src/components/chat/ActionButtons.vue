@@ -17,6 +17,7 @@ const emit = defineEmits(['action'])
 const trackRef = ref(null)
 const overflowing = ref(false)
 const bounce = ref(false)
+const presentation = ref(0)
 
 function checkOverflow() {
   const el = trackRef.value
@@ -37,7 +38,14 @@ watch(trackRef, (el, prevEl) => {
   checkOverflow()
 })
 
-watch(() => props.actions, () => nextTick(checkOverflow), { deep: true })
+watch(() => props.actions, () => {
+  presentation.value += 1
+  nextTick(checkOverflow)
+}, { deep: true })
+
+watch(() => props.disabled, (isDisabled) => {
+  if (!isDisabled) presentation.value += 1
+})
 
 onBeforeUnmount(() => resizeObserver?.disconnect())
 </script>
@@ -52,7 +60,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
     >
       <button
         v-for="action in actions"
-        :key="action.name"
+        :key="presentation + ':' + action.name"
         class="action-btn"
         :disabled="disabled || action.disabled"
         @click="emit('action', action.name)"
