@@ -101,7 +101,7 @@ class EvaluationScopeBuilder(object):
         scope.update(TriggerNamespaces.collect().scope(automaton, selection))
         scope["chat"] = self._chat_namespace.with_session(session_id) if session_id is not None else self._chat_namespace
         task_namespace = self._task_namespace.with_services(automaton.services).with_websearch_archive(
-            websearch_archive_for(self._db, automaton)
+            websearch_archive_for(self._db, automaton, session_id)
         )
         if self._ai_service is not None:
             tool_set = (

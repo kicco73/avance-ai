@@ -178,8 +178,8 @@ class ProjectMixin:
     def write_archive_at_revision(self, project_id: str, archive_name: str, revision: int, content: bytes, content_type: str) -> None:
         """Upserts one Archive row at an *exact* revision, bypassing
         _ensure_draft_revision's own draft-fork/current-revision
-        resolution entirely — for a source's own per-session read cache
-        (tracking.sources.avance_archive), which must live alongside
+        resolution entirely — for a per-session read cache
+        (tracking.sources.websearch), which must live alongside
         whatever revision the reading session's own automaton is actually
         pinned to, never wherever the project's current draft happens to
         be by the time the cache write runs (a long-open session can

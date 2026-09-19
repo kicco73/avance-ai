@@ -14,7 +14,6 @@ import pytest
 
 from automaton.automaton import Action, Automaton, Source, State
 from metrics.metric_service import MetricService
-from system.web_session import WebSession
 from tracking.actuators.actuator_set import FakeTaskNamespace, LiveTaskNamespace
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -139,34 +138,42 @@ def _automaton(db) -> Automaton:
     return automaton
 
 
-def _scope(db, automaton: Automaton):
+def _scope(db, automaton: Automaton, session_id: int = 1):
     context = FixedProjectContext(automaton=automaton, project_id=PROJECT_ID)
     builder = EvaluationScopeBuilder(
         Env(), MetricService(db, context), SessionFacts(db, context), UserFacts(db), db,
         task_namespace=FakeTaskNamespace(crawler=FakeCrawler(PAGES)),
     )
-    return builder.build(automaton, "a", {}, ChoiceSelection.NONE)
+    return builder.build(automaton, "a", {}, ChoiceSelection.NONE, session_id=session_id)
 
 
-def test_what_task_websearch_found_is_kept_for_this_user_and_read_back_through_a_websearch_source(db):
+def test_what_task_websearch_found_is_kept_for_this_session_and_read_back_through_a_websearch_source(db):
     automaton = _automaton(db)
-    scope = _scope(db, automaton)
+    scope = _scope(db, automaton, session_id=1)
 
     found = scope["task"].with_ai_service(FakeWebSearchAi(COLUMNS, MODEL_CSV)).websearch("dentists in Barcelona")
 
     assert found == MODEL_CSV
-    assert db.get_archive(PROJECT_ID, "cache/websearch/proj/user", revision=automaton.revision) == MODEL_CSV.encode()
+    assert db.get_archive(PROJECT_ID, "cache/sessions/1/websearch", revision=automaton.revision) == MODEL_CSV.encode()
     assert scope["source"].web.select_rows_containing("Gracia") == "name,district,rating\nDr. Pau,Gracia,4.6\n"
     assert scope["source"].web.value("Gracia", key="rating") == "4.6"
 
 
-def test_a_websearch_source_reads_empty_before_any_search_and_never_another_users_results(db):
-    scope = _scope(db, _automaton(db))
+def test_a_websearch_source_reads_empty_before_any_search_and_never_another_sessions_results(db):
+    automaton = _automaton(db)
+    scope = _scope(db, automaton, session_id=1)
 
     assert scope["source"].web.select_rows_containing("Gracia") == ""
     assert scope["source"].web.value("Gracia", key="rating") == ""
 
     scope["task"].with_ai_service(FakeWebSearchAi(COLUMNS, MODEL_CSV)).websearch("dentists in Barcelona")
     assert scope["source"].web.select_rows_containing("Gracia") != ""
-    with WebSession().impersonate("somebody-else"):
-        assert scope["source"].web.select_rows_containing("Gracia") == ""
+    assert _scope(db, automaton, session_id=2)["source"].web.select_rows_containing("Gracia") == ""
+
+
+def test_a_websearch_source_reads_empty_outside_a_real_session(db):
+    automaton = _automaton(db)
+    scope = _scope(db, automaton, session_id=None)
+
+    assert scope["task"].with_ai_service(FakeWebSearchAi(COLUMNS, MODEL_CSV)).websearch("dentists in Barcelona") == MODEL_CSV
+    assert scope["source"].web.select_rows_containing("Gracia") == ""

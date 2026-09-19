@@ -927,10 +927,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.415,
-    "runs": 49,
-    "seconds": 24.552,
+    "runs": 51,
+    "seconds": 26.596,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestAdd::test_signal_is_created_with_defaults_and_persisted": {
@@ -938,10 +938,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.423,
-    "runs": 49,
-    "seconds": 23.768,
+    "runs": 51,
+    "seconds": 25.455,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestAdd::test_state_is_created_with_defaults_and_persisted_and_an_unknown_project_is_404": {
@@ -949,10 +949,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.429,
-    "runs": 49,
-    "seconds": 27.736,
+    "runs": 51,
+    "seconds": 32.058,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestDelete::test_removes_a_state_action_or_signal_but_never_the_init_actions_own_target": {
@@ -960,10 +960,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.678,
-    "runs": 49,
-    "seconds": 38.689,
+    "runs": 51,
+    "seconds": 41.921,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestExportOmitsCache::test_downloaded_zip_excludes_every_cache_prefixed_archive": {
@@ -971,10 +971,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.369,
-    "runs": 49,
-    "seconds": 21.475,
+    "runs": 51,
+    "seconds": 23.341,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutActionField::test_an_invalid_trigger_returns_structured_error_fields": {
@@ -982,10 +982,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.435,
-    "runs": 49,
-    "seconds": 23.392,
+    "runs": 51,
+    "seconds": 25.047,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutActionField::test_edits_target_ui_description_task_and_trigger_and_clearing_trigger_removes_the_key": {
@@ -993,10 +993,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": "2026-09-14T16:40:36+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.768,
-    "runs": 49,
-    "seconds": 40.37,
+    "runs": 51,
+    "seconds": 43.446,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutActionField::test_env_is_set_cleared_without_leaving_an_empty_mapping_and_gated_on_declared_keys": {
@@ -1004,10 +1004,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": "2026-09-15T10:11:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.615,
-    "runs": 49,
-    "seconds": 34.168,
+    "runs": 51,
+    "seconds": 36.633,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutFileDirectlyToASourcesPath::test_creates_it_at_the_exact_sources_path_given_not_rerouted_to_behaviour": {
@@ -1015,10 +1015,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.41,
-    "runs": 51,
-    "seconds": 21.944,
+    "runs": 53,
+    "seconds": 23.478,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutInitAction::test_edits_ui_description_and_task_never_reports_a_trigger_and_rejects_setting_one": {
@@ -1026,10 +1026,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.51,
-    "runs": 49,
-    "seconds": 29.524,
+    "runs": 51,
+    "seconds": 31.927,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutInitAction::test_env_is_set_cleared_without_leaving_an_empty_mapping_and_gated_on_declared_keys": {
@@ -1037,10 +1037,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": "2026-09-15T10:11:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.859,
-    "runs": 49,
-    "seconds": 29.234,
+    "runs": 51,
+    "seconds": 31.383,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutInitAction::test_target_moves_the_start_state_and_rejects_an_unknown_one": {
@@ -1048,10 +1048,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.538,
-    "runs": 49,
-    "seconds": 30.889,
+    "runs": 51,
+    "seconds": 33.505,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutSignalField::test_edits_definition_and_ui_description_and_a_ui_label_edit_renames_the_signal": {
@@ -1059,10 +1059,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.562,
-    "runs": 49,
-    "seconds": 29.832,
+    "runs": 51,
+    "seconds": 32.72,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutStateField::test_edits_ui_label_trimmed_history_cutoff_and_ui_description": {
@@ -1070,10 +1070,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.876,
-    "runs": 49,
-    "seconds": 28.57,
+    "runs": 51,
+    "seconds": 30.609,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestReorderActions::test_moves_an_action_returning_the_new_order_and_an_out_of_range_position_is_400": {
@@ -1081,10 +1081,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": "2026-09-14T16:40:36+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.51,
-    "runs": 49,
-    "seconds": 28.014,
+    "runs": 51,
+    "seconds": 30.559,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSourceZipRoundTrip::test_downloading_then_reuploading_keeps_the_source_and_its_content": {
@@ -1092,10 +1092,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.66,
-    "runs": 49,
-    "seconds": 35.678,
+    "runs": 51,
+    "seconds": 38.075,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_add_creates_an_empty_archive_per_source_suffixing_name_collisions": {
@@ -1103,10 +1103,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.496,
-    "runs": 51,
-    "seconds": 30.304,
+    "runs": 53,
+    "seconds": 32.687,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_add_websearch_declares_a_user_scoped_source_with_no_archive_of_its_own": {
@@ -1114,10 +1114,10 @@
     "first_run": "2026-09-14T09:58:25+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.516,
-    "runs": 33,
-    "seconds": 17.774,
+    "runs": 35,
+    "seconds": 19.748,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_delete_removes_it_and_its_archive": {
@@ -1125,10 +1125,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.489,
-    "runs": 51,
-    "seconds": 27.769,
+    "runs": 53,
+    "seconds": 29.79,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_the_websearch_cache_is_served_to_the_panel_and_cleared_on_demand": {
@@ -1147,10 +1147,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.888,
-    "runs": 51,
-    "seconds": 32.452,
+    "runs": 53,
+    "seconds": 34.91,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::test_every_field_endpoint_rejects_a_field_not_on_its_whitelist": {
@@ -1158,10 +1158,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.522,
-    "runs": 49,
-    "seconds": 30.392,
+    "runs": 51,
+    "seconds": 32.475,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_field.py::TestGetProjectMetadata::test_reports_declared_fields": {
@@ -3288,10 +3288,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 1.051,
-    "runs": 36,
-    "seconds": 20.085,
+    "runs": 38,
+    "seconds": 21.985,
     "skips": 0
   },
   "src/avance_platform/tests/test_source_web_import.py::test_web_import_normalizes_the_model_csv_against_the_extracted_schema": {
@@ -3299,10 +3299,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.601,
-    "runs": 36,
-    "seconds": 21.568,
+    "runs": 38,
+    "seconds": 23.642,
     "skips": 0
   },
   "src/avance_platform/tests/test_source_web_import.py::test_web_import_of_an_unknown_source_or_an_empty_query_is_refused_before_any_job_runs": {
@@ -3310,10 +3310,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.491,
-    "runs": 36,
-    "seconds": 17.983,
+    "runs": 38,
+    "seconds": 19.889,
     "skips": 0
   },
   "src/avance_platform/tests/test_source_web_import.py::test_web_import_reports_one_quarter_per_step_and_writes_the_csv_into_the_source": {
@@ -3321,10 +3321,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 1.039,
-    "runs": 36,
-    "seconds": 40.39,
+    "runs": 38,
+    "seconds": 44.428,
     "skips": 0
   },
   "src/avance_platform/tests/test_task_prompt.py::test_task_can_compose_prompt_with_send_mail": {
@@ -6194,10 +6194,10 @@
     "first_run": "2026-09-15T11:41:42+00:00",
     "last_failed": "2026-09-15T11:41:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:00:25+00:00",
     "last_seconds": 0.368,
-    "runs": 18,
-    "seconds": 9.176,
+    "runs": 19,
+    "seconds": 10.153,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_delete_env_value_for_an_unknown_key_is_a_noop": {
@@ -6205,10 +6205,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:00:25+00:00",
     "last_seconds": 0.629,
-    "runs": 28,
-    "seconds": 15.555,
+    "runs": 29,
+    "seconds": 16.45,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_delete_env_value_removes_the_key": {
@@ -6216,10 +6216,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:00:25+00:00",
     "last_seconds": 0.392,
-    "runs": 28,
-    "seconds": 15.244,
+    "runs": 29,
+    "seconds": 16.153,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_env_endpoint_reports_stored_and_action_set_only": {
@@ -6227,10 +6227,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:00:25+00:00",
     "last_seconds": 0.331,
-    "runs": 28,
-    "seconds": 16.741,
+    "runs": 29,
+    "seconds": 17.71,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_env_for_an_unknown_session_is_404": {
@@ -6238,21 +6238,21 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:00:25+00:00",
     "last_seconds": 0.225,
-    "runs": 28,
-    "seconds": 9.781,
+    "runs": 29,
+    "seconds": 10.69,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_env_with_a_message_id_restricts_to_a_point_in_time": {
-    "failures": 8,
+    "failures": 10,
     "first_run": "2026-09-13T21:45:34+00:00",
-    "last_failed": "2026-09-18T09:21:38+00:00",
+    "last_failed": "2026-09-19T07:00:42+00:00",
     "last_outcome": "failed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:00:42+00:00",
     "last_seconds": 0.396,
-    "runs": 28,
-    "seconds": 16.925,
+    "runs": 30,
+    "seconds": 20.122,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_env_with_an_unknown_message_id_is_404": {
@@ -6260,10 +6260,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:00:25+00:00",
     "last_seconds": 0.333,
-    "runs": 28,
-    "seconds": 15.116,
+    "runs": 29,
+    "seconds": 15.997,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_put_env_value_overwrites_an_existing_key": {
@@ -6271,10 +6271,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:00:25+00:00",
     "last_seconds": 0.359,
-    "runs": 28,
-    "seconds": 17.572,
+    "runs": 29,
+    "seconds": 18.863,
     "skips": 0
   },
   "src/webchat/tests/test_controller_env.py::test_put_env_value_stores_it": {
@@ -6282,10 +6282,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:00:25+00:00",
     "last_seconds": 0.36,
-    "runs": 28,
-    "seconds": 15.392,
+    "runs": 29,
+    "seconds": 16.31,
     "skips": 0
   },
   "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_falls_back_to_an_earlier_session_when_the_latest_has_none": {
@@ -9683,10 +9683,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.014,
-    "runs": 58,
-    "seconds": 1.11,
+    "runs": 60,
+    "seconds": 1.169,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_a_source_call_with_a_full_argument_list_or_extra_strings_builds": {
@@ -9694,10 +9694,10 @@
     "first_run": "2026-09-15T09:00:58+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.014,
-    "runs": 29,
-    "seconds": 0.463,
+    "runs": 31,
+    "seconds": 0.507,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_a_trigger_may_only_call_a_supported_method_on_a_declared_source[read-points-to-attachment-read]": {
@@ -9705,10 +9705,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.006,
-    "runs": 61,
-    "seconds": 0.362,
+    "runs": 63,
+    "seconds": 0.378,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_a_trigger_may_only_call_a_supported_method_on_a_declared_source[undeclared-source]": {
@@ -9716,10 +9716,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.005,
-    "runs": 61,
-    "seconds": 0.337,
+    "runs": 63,
+    "seconds": 0.351,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_a_trigger_may_only_call_a_supported_method_on_a_declared_source[unsupported-method]": {
@@ -9727,10 +9727,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.006,
-    "runs": 61,
-    "seconds": 0.317,
+    "runs": 63,
+    "seconds": 0.337,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_a_websearch_url_builds_on_the_user_scope_alone_and_supports_the_same_reads_as_an_archive": {
@@ -9738,10 +9738,10 @@
     "first_run": "2026-09-14T09:33:18+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.005,
-    "runs": 42,
-    "seconds": 0.23,
+    "runs": 44,
+    "seconds": 0.25,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_an_avance_url_is_provisioned_empty_when_never_seen_and_a_trigger_may_call_a_declared_sources_select": {
@@ -9749,10 +9749,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.01,
-    "runs": 61,
-    "seconds": 0.576,
+    "runs": 63,
+    "seconds": 0.608,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_malformed_sources_section_a_bad_url_or_a_reference_to_a_source_with_no_url_yet[no-scheme]": {
@@ -9760,10 +9760,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.005,
-    "runs": 58,
-    "seconds": 0.307,
+    "runs": 60,
+    "seconds": 0.324,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_malformed_sources_section_a_bad_url_or_a_reference_to_a_source_with_no_url_yet[not-a-mapping]": {
@@ -9771,10 +9771,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.005,
-    "runs": 58,
-    "seconds": 0.286,
+    "runs": 60,
+    "seconds": 0.301,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_malformed_sources_section_a_bad_url_or_a_reference_to_a_source_with_no_url_yet[referenced-without-url]": {
@@ -9782,10 +9782,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.006,
-    "runs": 58,
-    "seconds": 0.358,
+    "runs": 60,
+    "seconds": 0.378,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_malformed_sources_section_a_bad_url_or_a_reference_to_a_source_with_no_url_yet[unknown-scheme]": {
@@ -9793,10 +9793,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.005,
-    "runs": 58,
-    "seconds": 0.279,
+    "runs": 60,
+    "seconds": 0.294,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_malformed_sources_section_a_bad_url_or_a_reference_to_a_source_with_no_url_yet[websearch-path-is-not-a-scope]": {
@@ -9804,10 +9804,10 @@
     "first_run": "2026-09-14T09:33:18+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.004,
-    "runs": 42,
-    "seconds": 0.208,
+    "runs": 44,
+    "seconds": 0.225,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_source_call_whose_arguments_do_not_fit_the_drivers_signature_and_says_which[merged-literals]": {
@@ -9815,10 +9815,10 @@
     "first_run": "2026-09-15T09:00:58+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.006,
-    "runs": 30,
-    "seconds": 0.177,
+    "runs": 32,
+    "seconds": 0.194,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_source_call_whose_arguments_do_not_fit_the_drivers_signature_and_says_which[missing-keyword]": {
@@ -9826,10 +9826,10 @@
     "first_run": "2026-09-15T09:00:58+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.006,
-    "runs": 30,
-    "seconds": 0.17,
+    "runs": 32,
+    "seconds": 0.19,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_source_call_whose_arguments_do_not_fit_the_drivers_signature_and_says_which[missing-positional]": {
@@ -9837,10 +9837,10 @@
     "first_run": "2026-09-15T09:00:58+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.006,
-    "runs": 30,
-    "seconds": 0.178,
+    "runs": 32,
+    "seconds": 0.203,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_source_call_whose_arguments_do_not_fit_the_drivers_signature_and_says_which[no-arguments]": {
@@ -9848,10 +9848,10 @@
     "first_run": "2026-09-15T09:00:58+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.006,
-    "runs": 30,
-    "seconds": 0.226,
+    "runs": 32,
+    "seconds": 0.247,
     "skips": 0
   },
   "tests/test_automaton_builder_sources.py::test_build_rejects_a_source_call_whose_arguments_do_not_fit_the_drivers_signature_and_says_which[unexpected-keyword]": {
@@ -9859,10 +9859,10 @@
     "first_run": "2026-09-15T09:00:58+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.006,
-    "runs": 30,
-    "seconds": 0.176,
+    "runs": 32,
+    "seconds": 0.193,
     "skips": 0
   },
   "tests/test_automaton_builder_state_io.py::test_a_variable_used_as_input_or_output_requires_its_own_ai_definition": {
@@ -18509,9 +18509,9 @@
     "first_run": "2026-09-18T08:09:35+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:39:07+00:00",
-    "runs": 10,
-    "seconds": 0.367,
+    "last_run": "2026-09-19T07:04:13+00:00",
+    "runs": 11,
+    "seconds": 0.424,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_column_over_the_char_limit_is_refused_as_an_empty_list": {
@@ -18519,10 +18519,10 @@
     "first_run": "2026-09-15T06:59:04+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.262,
-    "runs": 31,
-    "seconds": 1.22,
+    "runs": 32,
+    "seconds": 1.287,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_column_returns_every_cell_of_the_matching_rows_as_a_list_the_whole_column_with_no_filter_and_nothing_for_an_unknown_column": {
@@ -18530,10 +18530,10 @@
     "first_run": "2026-09-15T06:59:04+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.044,
-    "runs": 33,
-    "seconds": 0.868,
+    "runs": 34,
+    "seconds": 0.929,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_create_delete_and_read_do_not_exist_and_update_is_unsupported_on_the_archive_driver": {
@@ -18552,9 +18552,9 @@
     "first_run": "2026-09-18T08:09:35+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
-    "runs": 7,
-    "seconds": 0.239,
+    "last_run": "2026-09-19T07:04:13+00:00",
+    "runs": 8,
+    "seconds": 0.279,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_every_read_works_on_csv_records_not_physical_lines_when_a_quoted_field_spans_lines": {
@@ -18562,10 +18562,10 @@
     "first_run": "2026-09-15T07:09:20+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.031,
-    "runs": 28,
-    "seconds": 0.733,
+    "runs": 29,
+    "seconds": 0.773,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_parse_source_url_splits_scheme_and_path_rejecting_a_missing_scheme_or_path": {
@@ -18573,10 +18573,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.001,
-    "runs": 50,
-    "seconds": 0.058,
+    "runs": 51,
+    "seconds": 0.059,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_row_where_over_the_char_limit_is_refused_as_an_empty_dict": {
@@ -18584,10 +18584,10 @@
     "first_run": "2026-09-15T08:43:49+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.037,
-    "runs": 24,
-    "seconds": 0.717,
+    "runs": 25,
+    "seconds": 0.761,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_row_where_returns_the_first_matching_row_as_a_dict_and_an_empty_dict_for_no_match_or_an_unknown_column_or_operator": {
@@ -18595,10 +18595,10 @@
     "first_run": "2026-09-15T08:43:49+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.037,
-    "runs": 26,
-    "seconds": 0.726,
+    "runs": 27,
+    "seconds": 0.769,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_containing_ands_several_values_together_while_one_value_returns_every_match": {
@@ -18606,10 +18606,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.039,
-    "runs": 53,
-    "seconds": 1.357,
+    "runs": 54,
+    "seconds": 1.398,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_containing_raises_for_an_unknown_or_binary_archive": {
@@ -18617,10 +18617,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.024,
-    "runs": 50,
-    "seconds": 1.372,
+    "runs": 51,
+    "seconds": 1.418,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_containing_result_beyond_the_char_limit_is_refused_with_the_header_still_attached": {
@@ -18628,10 +18628,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.057,
-    "runs": 50,
-    "seconds": 2.278,
+    "runs": 51,
+    "seconds": 2.354,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_containing_returns_the_header_plus_every_case_insensitive_match_or_the_empty_string_or_every_row": {
@@ -18639,10 +18639,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.032,
-    "runs": 53,
-    "seconds": 1.402,
+    "runs": 54,
+    "seconds": 1.449,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_containing_returns_whole_rows_and_takes_no_keys_argument": {
@@ -18650,10 +18650,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.035,
-    "runs": 53,
-    "seconds": 1.545,
+    "runs": 54,
+    "seconds": 1.6,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_in_range_ands_additional_strings_with_the_range_condition": {
@@ -18661,10 +18661,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.031,
-    "runs": 50,
-    "seconds": 1.321,
+    "runs": 51,
+    "seconds": 1.366,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_in_range_includes_both_bounds_over_numbers_and_iso_dates": {
@@ -18672,10 +18672,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.032,
-    "runs": 50,
-    "seconds": 1.618,
+    "runs": 51,
+    "seconds": 1.677,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_where_ands_additional_strings_with_the_column_condition": {
@@ -18683,10 +18683,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.027,
-    "runs": 50,
-    "seconds": 1.357,
+    "runs": 51,
+    "seconds": 1.4,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_where_compares_numbers_iso_dates_and_text_returning_whole_rows": {
@@ -18694,10 +18694,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.037,
-    "runs": 53,
-    "seconds": 1.696,
+    "runs": 54,
+    "seconds": 1.757,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_select_rows_where_reports_an_unknown_column_or_operator_as_text_never_an_exception": {
@@ -18705,10 +18705,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.025,
-    "runs": 50,
-    "seconds": 1.263,
+    "runs": 51,
+    "seconds": 1.308,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_source_namespace_resolves_a_declared_name_to_its_driver_and_raises_for_an_undeclared_one": {
@@ -18716,10 +18716,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.031,
-    "runs": 51,
-    "seconds": 1.326,
+    "runs": 52,
+    "seconds": 1.374,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_the_column_filtered_reads_keep_the_files_own_delimiter_and_bound_their_result": {
@@ -18727,10 +18727,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.07,
-    "runs": 50,
-    "seconds": 3.396,
+    "runs": 51,
+    "seconds": 3.731,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_the_filtered_reads_accept_a_bare_number_where_a_script_passes_one": {
@@ -18738,10 +18738,10 @@
     "first_run": "2026-09-15T08:20:46+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.031,
-    "runs": 25,
-    "seconds": 0.692,
+    "runs": 26,
+    "seconds": 0.735,
     "skips": 0
   },
   "tests/test_sources_avance_archive.py::test_value_returns_the_key_cell_of_the_first_matching_row_or_the_empty_string_reporting_an_unknown_column_as_text": {
@@ -18749,10 +18749,10 @@
     "first_run": "2026-09-13T21:45:34+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.033,
-    "runs": 53,
-    "seconds": 1.368,
+    "runs": 54,
+    "seconds": 1.422,
     "skips": 0
   },
   "tests/test_strip_comments.py::test_a_file_the_tool_does_not_know_is_never_touched": {
@@ -21472,10 +21472,10 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.002,
-    "runs": 36,
-    "seconds": 0.078,
+    "runs": 38,
+    "seconds": 0.09,
     "skips": 0
   },
   "tests/test_websearch.py::test_a_schema_the_model_did_not_return_fails_the_search_instead_of_inventing_one": {
@@ -21483,10 +21483,10 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.003,
-    "runs": 39,
-    "seconds": 0.078,
+    "runs": 41,
+    "seconds": 0.088,
     "skips": 0
   },
   "tests/test_websearch.py::test_a_search_result_link_resolves_to_its_real_target_and_never_to_the_engine_itself": {
@@ -21494,10 +21494,20 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.002,
-    "runs": 36,
-    "seconds": 0.067,
+    "runs": 38,
+    "seconds": 0.075,
+    "skips": 0
+  },
+  "tests/test_websearch.py::test_a_websearch_source_reads_empty_before_any_search_and_never_another_sessions_results": {
+    "failures": 0,
+    "first_run": "2026-09-19T06:59:38+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-19T07:04:13+00:00",
+    "runs": 2,
+    "seconds": 0.109,
     "skips": 0
   },
   "tests/test_websearch.py::test_a_websearch_source_reads_empty_before_any_search_and_never_another_users_results": {
@@ -21511,15 +21521,25 @@
     "seconds": 0.868,
     "skips": 0
   },
+  "tests/test_websearch.py::test_a_websearch_source_reads_empty_outside_a_real_session": {
+    "failures": 0,
+    "first_run": "2026-09-19T06:59:38+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-19T07:04:13+00:00",
+    "runs": 2,
+    "seconds": 0.083,
+    "skips": 0
+  },
   "tests/test_websearch.py::test_parse_columns_reads_a_fenced_or_prefixed_json_array_and_refuses_anything_else": {
     "failures": 0,
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.002,
-    "runs": 36,
-    "seconds": 0.044,
+    "runs": 38,
+    "seconds": 0.048,
     "skips": 0
   },
   "tests/test_websearch.py::test_task_websearch_hands_the_script_the_csv_and_runs_suppressed_or_not": {
@@ -21527,10 +21547,10 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.004,
-    "runs": 37,
-    "seconds": 0.107,
+    "runs": 39,
+    "seconds": 0.12,
     "skips": 0
   },
   "tests/test_websearch.py::test_task_websearch_returns_empty_string_with_no_ai_service_bound": {
@@ -21538,10 +21558,10 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.002,
-    "runs": 40,
-    "seconds": 0.05,
+    "runs": 42,
+    "seconds": 0.056,
     "skips": 0
   },
   "tests/test_websearch.py::test_the_csv_is_normalized_against_the_schema_whatever_shape_the_model_replied_in": {
@@ -21549,10 +21569,20 @@
     "first_run": "2026-09-14T08:35:15+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-18T09:21:38+00:00",
+    "last_run": "2026-09-19T07:04:13+00:00",
     "last_seconds": 0.003,
-    "runs": 36,
-    "seconds": 0.078,
+    "runs": 38,
+    "seconds": 0.084,
+    "skips": 0
+  },
+  "tests/test_websearch.py::test_what_task_websearch_found_is_kept_for_this_session_and_read_back_through_a_websearch_source": {
+    "failures": 0,
+    "first_run": "2026-09-19T06:59:38+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-19T07:04:13+00:00",
+    "runs": 2,
+    "seconds": 0.115,
     "skips": 0
   },
   "tests/test_websearch.py::test_what_task_websearch_found_is_kept_for_this_user_and_read_back_through_a_websearch_source": {

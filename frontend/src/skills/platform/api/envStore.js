@@ -12,6 +12,10 @@ export function getEnv(sessionId, messageId) {
   return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/env${query}`)
 }
 
+export function getWebSearchCache(sessionId) {
+  return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/websearch-cache`)
+}
+
 export function getOutput(sessionId, messageId) {
   const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
   return apiFetch(`${API_URL}/skills/platform/sessions/${encodeURIComponent(sessionId)}/output${query}`)

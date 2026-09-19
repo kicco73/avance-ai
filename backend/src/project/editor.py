@@ -17,7 +17,7 @@ from system import doc_catalog
 from system.logging_factory import LoggerFactory
 from system.web_session import WebSession
 from tracking.project_files import PROJECT_FILE_CACHE
-from tracking.sources.websearch import SCHEME as WEBSEARCH_SCHEME, USER_SCOPE, WebSearchArchive
+from tracking.sources.websearch import SCHEME as WEBSEARCH_SCHEME, USER_SCOPE
 
 from .inspector import ProjectInspector
 from .manager import ProjectManager
@@ -563,26 +563,14 @@ class ProjectEditor:
 
     async def add_websearch_source(self, project_id: str) -> SourcePayload:
         """The one source with no archive of its own: `websearch:user`
-        reads whatever task.websearch(...) last stored for the user now
-        talking (see tracking/sources/websearch.py), so nothing is written
+        reads whatever task.websearch(...) last stored for the session now
+        running (see tracking/sources/websearch.py), so nothing is written
         under sources/ and there is no CSV to edit — contrast add_source
         above, whose archive has to exist before the project revalidates."""
         def operation(editor: AutomatonYamlEditor) -> SourcePayload:
             payload = editor.add_source(WEBSEARCH_SCHEME)
             return editor.set_source_field(payload["name"], "url", f"{WEBSEARCH_SCHEME}:{USER_SCOPE}")
         return await self._edit_index_yml(project_id, operation)
-
-    def _websearch_cache(self, project_id: str) -> WebSearchArchive:
-        """The cache entry of the user doing the editing, at the revision
-        their own test sessions run on — a live session pinned to an older
-        published revision keeps its own, untouched by this."""
-        return WebSearchArchive(self._db, project_id, self._db.get_project_revision(project_id))
-
-    def read_websearch_cache(self, project_id: str) -> dict:
-        return {"content": self._websearch_cache(project_id).read()}
-
-    def clear_websearch_cache(self, project_id: str) -> None:
-        self._websearch_cache(project_id).clear()
 
     async def set_source_field(
         self, project_id: str, source_name: str, field: str, value

@@ -24,6 +24,7 @@ from tracking.translatable_labels import TranslatableLabels
 
 from tracking.actuators import TaskNamespace, TaskNamespaceFactory
 from tracking.env import Env
+from tracking.sources.websearch import websearch_archive_for
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
@@ -477,6 +478,11 @@ class TurnService(object):
 			"action_set": env.action_set(until),
 			"ai_definition": {env_key.name: env_key.ai_definition for env_key in automaton.env_keys},
 		}
+
+	def get_websearch_cache(self, session_id: int) -> dict:
+		self._ownership.require_own_session(session_id)
+		automaton = self.__project_service.get_automaton_for_session(session_id)
+		return {"content": websearch_archive_for(self._db, automaton, session_id).read()}
 
 	def get_output(self, session_id: int, message_id: int | None = None) -> dict:
 		"""This turn's own raw structured `output` field values (see

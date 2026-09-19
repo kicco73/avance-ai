@@ -6,7 +6,6 @@ import IndexYmlEditorPanel from './IndexYmlEditorPanel.vue'
 import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
 import MarkdownEditor from '../../../../MarkdownEditor.vue'
 import SourceContentPanel from './SourceContentPanel.vue'
-import WebSearchSourcePanel from './WebSearchSourcePanel.vue'
 import { projectFileContentUrl } from '../../../../api.js'
 import { projectFileTypes } from '../../../../../../projectFileTypes.js'
 import { sourceDriverOf, WEBSEARCH_DRIVER } from '../../../../sourceDrivers.js'
@@ -161,12 +160,14 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
           <input ref="mediaUploadInputRef" type="file" multiple :accept="projectFileTypes.mediaUploadAccept" class="media-upload-input" @change="emit('upload-media', $event)" />
         </div>
       </div>
-      <WebSearchSourcePanel
-        v-if="currentSourceName && currentSourceIsWebSearch"
-        :key="currentSourceName"
-        :project-id="projectId"
-        :source-name="currentSourceName"
-      />
+      <div v-if="currentSourceName && currentSourceIsWebSearch" class="edit-project-source-empty-state">
+        <span class="edit-project-source-empty-icon">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+            <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z" />
+          </svg>
+        </span>
+        <p><code>source.{{ currentSourceName }}</code> reads what <code>task.websearch(…)</code> last found for the running session — nothing to edit here. Open the Websearch tab in Run &gt; Inspector to see it.</p>
+      </div>
       <SourceContentPanel
         v-else-if="currentSourceName"
         :key="currentSourceName"

@@ -13,14 +13,11 @@ import pytest
 
 from avance_platform.settings_controller import NEW_PROJECT_TEMPLATE
 from conftest import parse_sse_result
-from tracking.sources.websearch import WebSearchArchive
 
 pytestmark = pytest.mark.contract
 
 TEMPLATE_YML = zipfile.ZipFile(NEW_PROJECT_TEMPLATE).read("index.yml").decode()
 TEMPLATE_SELF_LOOP = "again"
-
-WEBSEARCH_CSV = "name,district\nDr. Nuria,Eixample\n"
 
 
 def _index_yml(client, project_name: str) -> str:
@@ -303,18 +300,6 @@ class TestSources:
         assert renamed["name"] == "last_search"
         assert renamed["url"] == "websearch:user"
 
-    def test_the_websearch_cache_is_served_to_the_panel_and_cleared_on_demand(self, client, app_db, hello_project):
-        client.post(f"/api/skills/platform/projects/{hello_project}/websearch-sources")
-        assert client.get(f"/api/skills/platform/projects/{hello_project}/websearch-cache").json() == {"content": ""}
-
-        WebSearchArchive(app_db, hello_project, app_db.get_project_revision(hello_project)).write(WEBSEARCH_CSV)
-        assert client.get(f"/api/skills/platform/projects/{hello_project}/websearch-cache").json() == {
-            "content": WEBSEARCH_CSV,
-        }
-
-        assert client.delete(f"/api/skills/platform/projects/{hello_project}/websearch-cache").status_code == 204
-        assert client.get(f"/api/skills/platform/projects/{hello_project}/websearch-cache").json() == {"content": ""}
-
     def test_ui_label_is_a_plain_edit_and_renaming_the_id_renames_its_archive_keeping_its_content(self, client, hello_project):
         source = client.post(f"/api/skills/platform/projects/{hello_project}/sources").json()
         client.put(f"/api/skills/platform/projects/{hello_project}/files/sources/{source['name']}.csv", content=b"a,b\n1,2\n")
@@ -358,9 +343,9 @@ class TestPutFileDirectlyToASourcesPath:
 
 
 class TestExportOmitsCache:
-    """A source's own per-session read cache (cache/sessions/<id>/...,
-    see tracking.sources.avance_archive) is pure runtime scratch space,
-    never part of a project's own versioned definition — ProjectManager.
+    """A per-session read cache (cache/sessions/<id>/..., see
+    tracking.sources.websearch) is pure runtime scratch space, never part
+    of a project's own versioned definition — ProjectManager.
     export_project_zip must never include it, even though it's a real
     Archive row like any canonical file."""
 

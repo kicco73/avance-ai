@@ -18,25 +18,20 @@ class ResumeNewSession:
     def starting_state(self, automaton: "Automaton", state: "State") -> str:
         return state.key
 
-    def fires_init_action(self, automaton: "Automaton") -> bool:
-        return False
-
-    def reset_env(self, env: "Env") -> None:
-        return None
+    def fires_init_action(self, has_ever_run: bool) -> bool:
+        return not has_ever_run
 
 
 class RestartNewSession:
     def starting_state(self, automaton: "Automaton", state: "State") -> str:
         return automaton.init_action.target
 
-    def fires_init_action(self, automaton: "Automaton") -> bool:
+    def fires_init_action(self, has_ever_run: bool) -> bool:
         return True
-
-    def reset_env(self, env: "Env") -> None:
-        env.clear()
 
 
 NEW_SESSION_POLICIES = {"resume": ResumeNewSession(), "restart": RestartNewSession()}
+RESTART = NEW_SESSION_POLICIES["restart"]
 
 
 class SessionTypeStrategy(ABC):
@@ -52,13 +47,25 @@ class SessionTypeStrategy(ABC):
     @abstractmethod
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool: ...
     @abstractmethod
-    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str: ...
+    def automaton_and_state(
+        self, project_service: "ProjectService", project_id: str, username: str
+    ) -> tuple["Automaton", "State"]: ...
+    @abstractmethod
+    def policy(self, automaton: "Automaton") -> ResumeNewSession | RestartNewSession: ...
     @abstractmethod
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int: ...
-    @abstractmethod
-    def fires_init_action(self, automaton: "Automaton") -> bool: ...
-    def reset_env_for_new_session(self, automaton: "Automaton", env: "Env") -> None:
-        return None
+
+    def has_ever_run(self, project_service: "ProjectService", project_id: str, username: str) -> bool:
+        return False
+
+    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
+        automaton, state = self.automaton_and_state(project_service, project_id, username)
+        return self.policy(automaton).starting_state(automaton, state)
+
+    def fires_init_action(self, project_service: "ProjectService", project_id: str, username: str) -> bool:
+        automaton, _ = self.automaton_and_state(project_service, project_id, username)
+        return self.policy(automaton).fires_init_action(self.has_ever_run(project_service, project_id, username))
+
     def discard_superseded(self, session_manager: "SessionManager", username: str, project_id: str) -> None:
         return None
 
@@ -83,18 +90,19 @@ class LiveSessionStrategy(SessionTypeStrategy):
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return self.is_current(session, active_session) and session["channel"] == channel
 
-    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
-        automaton, state = project_service.get_automaton_and_state(project_id, type=self.type_name, username=username)
-        return NEW_SESSION_POLICIES[automaton.new_session_strategy].starting_state(automaton, state)
+    def automaton_and_state(
+        self, project_service: "ProjectService", project_id: str, username: str
+    ) -> tuple["Automaton", "State"]:
+        return project_service.get_automaton_and_state(project_id, type=self.type_name, username=username)
+
+    def policy(self, automaton: "Automaton") -> ResumeNewSession | RestartNewSession:
+        return NEW_SESSION_POLICIES[automaton.new_session_strategy]
+
+    def has_ever_run(self, project_service: "ProjectService", project_id: str, username: str) -> bool:
+        return project_service.has_ever_run(project_id, username, type=self.type_name)
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         return project_service.get_published_revision(project_id)
-
-    def fires_init_action(self, automaton: "Automaton") -> bool:
-        return NEW_SESSION_POLICIES[automaton.new_session_strategy].fires_init_action(automaton)
-
-    def reset_env_for_new_session(self, automaton: "Automaton", env: "Env") -> None:
-        NEW_SESSION_POLICIES[automaton.new_session_strategy].reset_env(env)
 
 
 class TestSessionStrategy(SessionTypeStrategy):
@@ -118,15 +126,17 @@ class TestSessionStrategy(SessionTypeStrategy):
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return True
 
-    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
+    def automaton_and_state(
+        self, project_service: "ProjectService", project_id: str, username: str
+    ) -> tuple["Automaton", "State"]:
         automaton = project_service.get_draft_automaton(project_id)
-        return automaton.init_action.target
+        return automaton, automaton.get_state(automaton.init_action.target)
+
+    def policy(self, automaton: "Automaton") -> ResumeNewSession | RestartNewSession:
+        return RESTART
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         return project_service.get_draft_revision(project_id)
-
-    def fires_init_action(self, automaton: "Automaton") -> bool:
-        return True
 
     def discard_superseded(self, session_manager: "SessionManager", username: str, project_id: str) -> None:
         session_manager.clear_drive_of_type(username, project_id, self.type_name)

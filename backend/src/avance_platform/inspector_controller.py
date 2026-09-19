@@ -52,6 +52,15 @@ class InspectorController(BaseController):
         the session's latest), for the Run Inspector's own Output card."""
         return self.turn_service.get_output(session_id, message_id)
 
+    @get("/api/skills/platform/sessions/{session_id}/websearch-cache")
+    def get_websearch_cache(self, session_id: int):
+        """{"content": ...} — the CSV task.websearch(...) last stored for
+        this session, the table a `websearch:user` source reads. Empty
+        for a session that has never searched. Read-only: this cache is
+        wiped with the session (see tracking.sources.websearch), never
+        edited by hand."""
+        return self.turn_service.get_websearch_cache(session_id)
+
     @delete("/api/skills/platform/sessions/{session_id}/memory")
     def clear_memory(self, session_id: int):
         """Wipes every one of the model's own memory notes for

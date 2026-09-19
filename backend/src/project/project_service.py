@@ -154,12 +154,6 @@ class ProjectService(object):
     ) -> SourcePayload:
         return await self.editor.add_source(project_id, name_hint, content)
 
-    def read_websearch_cache(self, project_id: str) -> dict:
-        return self.editor.read_websearch_cache(project_id)
-
-    def clear_websearch_cache(self, project_id: str) -> None:
-        self.editor.clear_websearch_cache(project_id)
-
     async def add_websearch_source(self, project_id: str) -> SourcePayload:
         return await self.editor.add_websearch_source(project_id)
 

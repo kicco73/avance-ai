@@ -233,18 +233,6 @@ class EditProjectController(BaseController):
     async def add_websearch_source(self, project_id: str):
         return await self.project_service.add_websearch_source(project_id)
 
-    @get("/api/skills/platform/projects/{project_id}/websearch-cache", role="admin")
-    def get_websearch_cache(self, project_id: str):
-        """{content}: the CSV task.websearch(...) last stored for the
-        editing user, the table a `websearch:user` source reads. Empty
-        for a user who has never searched."""
-        return self.project_service.read_websearch_cache(project_id)
-
-    @delete("/api/skills/platform/projects/{project_id}/websearch-cache", role="admin")
-    def clear_websearch_cache(self, project_id: str):
-        self.project_service.clear_websearch_cache(project_id)
-        return Response(status_code=HTTPStatus.NO_CONTENT)
-
     @post("/api/skills/platform/projects/{project_id}/sources/{source_name}/web-import", role="admin")
     async def post_source_web_import(self, project_id: str, source_name: str, req: WebImportRequest):
         job = self.platform_service.build_web_import_job(
