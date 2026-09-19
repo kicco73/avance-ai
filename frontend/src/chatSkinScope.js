@@ -1,6 +1,8 @@
 export const SKIN_SCOPE_SELECTOR = '.chat-window-shell'
 
-const DOCUMENT_LEVEL_AT_RULE = /^@(?:-webkit-)?(?:keyframes|font-face|property|import|charset|namespace)\b/i
+const PRELUDE_AT_RULE = /^@(?:charset|import|layer\s*[\w.,\s]*;)/i
+const DOCUMENT_LEVEL_AT_RULE = /^@(?:-webkit-)?(?:keyframes|font-face|property|namespace)\b/i
+const LEADING_COMMENTS = /^(?:\s*\/\*[\s\S]*?\*\/)*\s*/
 const NESTING_AT_RULE = /^@(?:media|supports|container|layer|scope)\b/i
 
 function splitTopLevel(text, separators) {
@@ -27,7 +29,7 @@ function splitTopLevel(text, separators) {
     if (char === '(' || char === '[' || char === '{') depth++
     else if (char === ')' || char === ']' || char === '}') {
       depth--
-      if (depth === 0 && separators.includes('}')) {
+      if (depth === 0 && char === '}' && separators.includes('}')) {
         parts.push(text.slice(start, i + 1))
         start = i + 1
       }
@@ -72,15 +74,27 @@ function scopeRules(cssText) {
   return rules(cssText).map((rule) => scopeRule(rule.trim())).join('\n')
 }
 
+function statement(rule) {
+  return rule.replace(LEADING_COMMENTS, '')
+}
+
+function terminated(rule) {
+  return rule.endsWith(';') ? rule : `${rule};`
+}
+
 export function scopeSkinToChat(cssText) {
+  const prelude = []
   const documentLevel = []
   const scoped = []
   for (const rule of rules(cssText)) {
-    const target = DOCUMENT_LEVEL_AT_RULE.test(rule.trim()) ? documentLevel : scoped
-    target.push(rule.trim())
+    const trimmed = rule.trim()
+    const head = statement(trimmed)
+    if (PRELUDE_AT_RULE.test(head)) prelude.push(terminated(head))
+    else if (DOCUMENT_LEVEL_AT_RULE.test(head)) documentLevel.push(trimmed)
+    else scoped.push(trimmed)
   }
   const scopedBlock = scoped.length
     ? [`@scope (${SKIN_SCOPE_SELECTOR}) {`, scopeRules(scoped.join('\n')), '}']
     : []
-  return [...documentLevel, ...scopedBlock].join('\n')
+  return [...prelude, ...documentLevel, ...scopedBlock].join('\n')
 }
