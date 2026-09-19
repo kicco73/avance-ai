@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from typing import Any, Iterable, NoReturn
 
 from system.logging_factory import LoggerFactory
@@ -546,6 +547,42 @@ class OutputBatchPrompt(Prompt):
 
 	def decode(self, raw: str) -> list[dict[str, str]]:
 		return _decode_turn_keyed_lines(self.channel, raw, self.expected_turns)
+
+
+_LANG_TAG_RE = re.compile(r"^[a-z]{2}-[A-Z]{2}$")
+
+EMBED_LANG_TAG_PROMPT = """
+Definition of lang metadata:
+	- a string containing a JSON object, formatted as valid JSON text (e.g. "{\"src\": \"en-US\", \"dst\": \"it-IT\"}"),
+	  not a nested object.
+	- "src": the language and region the labels below were originally written in.
+	- "dst": the language and region the user's last message is written in — what a translation of those
+	  labels should be written in.
+	- always a full locale tag, lowercase language + uppercase region joined by a hyphen (e.g. "it-IT",
+	  "es-ES", "en-GB", "pt-BR"), following the IETF BCP 47 standard — never a bare language code.
+
+Always fill in the 'lang' field of your structured response with a JSON object with keys "src" and "dst".
+"""
+
+
+class LangPrompt(Prompt):
+	channel = "lang"
+	definition = EMBED_LANG_TAG_PROMPT
+	schema_description = (
+		"JSON object {src, dst}: the locale tag (IETF BCP 47, e.g. \"it-IT\") of the labels' own language "
+		"and of the language to translate them into (the user's last message's own language), rendered as text."
+	)
+
+	def decode(self, raw: str) -> tuple[str, str]:
+		try:
+			value = json.loads(raw, strict=False) if raw else {}
+			assert isinstance(value, dict)
+			src, dst = value.get("src"), value.get("dst")
+			if isinstance(src, str) and isinstance(dst, str) and _LANG_TAG_RE.match(src) and _LANG_TAG_RE.match(dst):
+				return src, dst
+		except Exception as exc:
+			logger.error(f"lang: {exc} -- raw: {raw!r}")
+		return "", ""
 
 
 EMBED_TRANSLATE_TAG_PROMPT = """

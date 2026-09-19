@@ -1113,10 +1113,23 @@ own default (§5.3) — a separate, implicit action of its own, so the
 init-action's `env:` may read the defaults and override them.
 
 **When it fires.** Once for a project's first session ever, the first
-time that session opens; and once at creation for every session whose
-type restarts — a test or preview session always, a live session when
-`project.new-session-strategy` is `restart` (§1.1). A live session under
-`resume` inherits the state the previous one left and fires nothing.
+time that session opens; and once for every session whose type restarts,
+when that session is created — a test or preview session always, a live
+session when `project.new-session-strategy` is `restart` (§1.1). A live
+session under `resume` inherits the state the previous one left and fires
+nothing.
+
+Both are the same event: the automaton starting, or restarting. What
+they are not is "a session was created" — a live session under `resume`
+is created and starts nothing. And the request that created it does not
+matter either: `session.create` makes one outright, `session.enter` makes
+one whenever it finds no open conversation to enter (see docs/BUS.md),
+and the automaton restarts in both.
+
+A session already introduced never fires it twice, which is what
+re-entering an open conversation is. A state is only ever entered by an
+action, the initial one included, so the session whose tracking holds no
+transition of its own is exactly the session still owed one.
 
 ## 8. Validation checklist
 

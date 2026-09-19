@@ -11,7 +11,7 @@ from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
 from automaton.choice import ChoiceSelection
 from system import bus
-from system.bus import POINT_SPOKEN_REPLY
+from system.bus import POINT_SPOKEN_REPLY, POINT_TRANSLATABLE_LABELS, TURN_TRANSLATION
 from system.logging_factory import LoggerFactory
 from system.web_session import WebSession
 from automaton.project_services import ProjectServices
@@ -26,14 +26,15 @@ from .env import Env, LocalMemoryEnv
 from .env_prompt_block import EnvPromptBlock
 from .evaluation_scope import EvaluationScopeBuilder
 from .prompt import (
-	AudioPrompt, MemoryPrompt, OutputPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt, TranslatePrompt,
-	build_output_definition_for_names,
+	AudioPrompt, LangPrompt, MemoryPrompt, OutputPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt,
+	TranslatePrompt, build_output_definition_for_names,
 )
 from .attachments import load_attachments
 from .priming import build_priming_messages
 from .project_files import project_files_for
 from .sources import SourceNamespace, ToolSet
 from .tracking_engine import DbTrackingSink, TrackingEngine
+from .translatable_labels import TranslatableLabels
 from .turn_size_estimate import TurnSizeEstimate, estimate_turn_request
 from .definitions import Signals
 from .errors import TrackingServiceError
@@ -84,6 +85,8 @@ class Metadata:
 	cache_read_tokens: int | None = None
 	tool_calls: list[dict] = field(default_factory=list)
 	button_translations: dict[str, str] = field(default_factory=dict)
+	src_lang: str = ""
+	dst_lang: str = ""
 
 @dataclass(frozen=True, slots=True)
 class UserVariables:
@@ -177,6 +180,7 @@ class TrackingProcessor(object):
 		self.input_token_budget_per_turn = input_token_budget_per_turn
 		self._memory_scopes = memory_scopes
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder)
+		self._pending_translatable_labels: dict[str, tuple[str, str]] = {}
 
 	def _memory_store_for(self, state: State) -> Env | None:
 		return self._memory_scopes[state.ai_memory_scope].store(self)
@@ -232,6 +236,7 @@ class TrackingProcessor(object):
 		self.metadata = Metadata(on_metadata or (lambda key, value: None), {}, {})
 		self.metadata.on_metadata("typing", None)
 		self.out = await self._get_ai_reply()
+		await self._publish_translation_events()
 
 		logger.info(
 			"process() got metadata.audio=%r for session %s", self.metadata.audio, self.user.session_id,
@@ -300,6 +305,8 @@ class TrackingProcessor(object):
 			self.metadata.reaction = value
 		elif key == 'translations':
 			self.metadata.button_translations = value
+		elif key == 'lang':
+			self.metadata.src_lang, self.metadata.dst_lang = value
 		elif key == 'input_tokens':
 			rv = self.metadata.input_tokens = (self.metadata.input_tokens or 0) + value
 		elif key == 'output_tokens':
@@ -542,10 +549,29 @@ class TrackingProcessor(object):
 		return self._append_translate_prompt(prompt, state)
 
 	def _append_translate_prompt(self, prompt: Prompt, state: State) -> Prompt:
-		originals = self._button_labels_to_translate(state)
+		manual = self._button_labels_to_translate(state)
+		contributed = bus.collect(
+			POINT_TRANSLATABLE_LABELS, TranslatableLabels(state_key=state.key, session_id=self.user.session_id),
+		).items
+		self._pending_translatable_labels = {f"__label_{i}": pair for i, pair in enumerate(contributed)}
+		originals = {**manual, **{id_: text for id_, (_, text) in self._pending_translatable_labels.items()}}
 		if originals:
-			return prompt.compose(TranslatePrompt(originals))
+			return prompt.compose(TranslatePrompt(originals)).compose(LangPrompt())
 		return prompt
+
+	async def _publish_translation_events(self) -> None:
+		for id_, (key, text) in self._pending_translatable_labels.items():
+			translation = self.metadata.button_translations.get(id_, text)
+			await bus.publish(bus.Message(
+				type=TURN_TRANSLATION,
+				body={
+					"key": key, "text": text, "translation": translation,
+					"src_lang": self.metadata.src_lang, "dst_lang": self.metadata.dst_lang,
+				},
+				username=WebSession().user,
+				project_id=self.user.project_id,
+				session_id=self.user.session_id,
+			))
 
 	@staticmethod
 	def _button_labels_to_translate(state: State) -> dict[str, str]:

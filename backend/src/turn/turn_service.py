@@ -18,8 +18,9 @@ from system.project_locks import ProjectLocks
 from project.archive.layout import CACHE_DIR
 from system.web_session import WebSession
 from system import bus
-from system.bus import POINT_SESSION_SERVICES
+from system.bus import POINT_SESSION_SERVICES, POINT_TRANSLATABLE_LABELS, TURN_TRANSLATION, Message
 from tracking.session_services import SessionServices
+from tracking.translatable_labels import TranslatableLabels
 
 from tracking.actuators import TaskNamespace, TaskNamespaceFactory
 from tracking.env import Env
@@ -79,6 +80,10 @@ class TurnService(object):
 		self._session_locks = KeyedLockRegistry(asyncio.Lock)
 		self._session_lifecycle_locks = KeyedLockRegistry(asyncio.Lock)
 		self._global_lock = asyncio.Lock()
+
+		self._choice_translations: dict[int, dict[tuple[str, str], str]] = {}
+		bus.contribute(POINT_TRANSLATABLE_LABELS, self._contribute_choice_labels)
+		bus.subscribe(TURN_TRANSLATION, self._on_translation)
 
 	def _ai_service_for_session(self, session_id: int) -> AiService:
 		session = self._db.get_chat_session(session_id)
@@ -230,7 +235,15 @@ class TurnService(object):
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		return self._session_response(session, current=True)
+		response = self._session_response(session, current=True)
+		response["_pending_init_action"] = self._init_action_pending(session)
+		return response
+
+	def _init_action_pending(self, session: dict) -> bool:
+		automaton = self.__project_service.get_automaton_for_session(session["id"])
+		starts = self._db.get_current_state(session["project_id"]) is None
+		restarts = get_session_type_strategy(session["type"]).fires_init_action(automaton)
+		return (starts or restarts) and not self._db.was_entered_by_an_action(session["id"])
 
 	def session_named(self, session_id: int) -> dict:
 		"""That very conversation, for whoever was handed its id rather
@@ -309,9 +322,8 @@ class TurnService(object):
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		automaton = self.__project_service.get_automaton_for_session(session["id"])
 		response = self._session_response(session, current=True)
-		response["_pending_init_action"] = strategy.fires_init_action(automaton)
+		response["_pending_init_action"] = self._init_action_pending(session)
 		return response
 
 	def fire_pending_init_action(self, session_id: int, project_id: str) -> None:
@@ -569,11 +581,12 @@ class TurnService(object):
 		automaton = self.__project_service.get_automaton_for_session(session_id)
 		descriptions = {env_key.name: env_key.ui_description for env_key in automaton.env_keys}
 		options_by_key = self.choice_options_for(session_id)
+		translations = self._choice_translations.pop(session_id, {})
 		return [
 			{
 				"name": button_name(key, index),
-				"ui_label": option,
-				"ui_button": option,
+				"ui_label": translations.get((key, option), option),
+				"ui_button": translations.get((key, option), option),
 				"ui_description": descriptions.get(key),
 				"target": "",
 				"has_trigger": False,
@@ -583,6 +596,20 @@ class TurnService(object):
 			for key in automaton.states[state_key].choice_keys
 			for index, option in enumerate(options_by_key.get(key, []))
 		]
+
+	def _contribute_choice_labels(self, target: TranslatableLabels) -> None:
+		automaton = self.__project_service.get_automaton_for_session(target.session_id)
+		state = automaton.states.get(target.state_key)
+		if state is None or not state.choice_keys:
+			return
+		options_by_key = self.choice_options_for(target.session_id)
+		for key in state.choice_keys:
+			for option in options_by_key.get(key, []):
+				target.contribute(key, option)
+
+	async def _on_translation(self, message: Message) -> None:
+		key, text, translation = message.body["key"], message.body["text"], message.body["translation"]
+		self._choice_translations.setdefault(message.session_id, {})[(key, text)] = translation
 
 	def choice_options_for(self, session_id: int) -> dict[str, list[str]]:
 		automaton = self.__project_service.get_automaton_for_session(session_id)

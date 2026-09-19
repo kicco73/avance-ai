@@ -213,6 +213,11 @@ class TrackingMixin:
         transition = self._latest_transition(project_id, type=type, username=username)
         return transition.new_state if transition else None
 
+    def was_entered_by_an_action(self, session_id: int) -> bool:
+        return Tracking.select().where(
+            (Tracking.session == session_id) & Tracking.new_state.is_null(False)
+        ).exists()
+
     def get_current_state_for_session(self, session_id: int) -> str | None:
         transition = (
             Tracking.select()
