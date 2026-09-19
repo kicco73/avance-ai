@@ -85,3 +85,45 @@ describe('a pushed task script runs once, in the chat whose conversation it is a
     expect(taskActions.runTaskScript).not.toHaveBeenCalled()
   })
 })
+
+describe('a store waiting for its session only takes a session.info of its own kind', () => {
+  let bus
+  let liveStore
+  let testStore
+
+  beforeEach(async () => {
+    vi.resetModules()
+    bus = await import('./fakeBus.js')
+    bus.resetFakeBus()
+    const { createChatStore } = await import('../src/chatStoreFactory.js')
+    const api = await import('../src/api.js')
+    api.getHistory.mockResolvedValue([])
+    api.getSessions.mockResolvedValue([])
+    api.getTestSessions.mockResolvedValue([])
+    liveStore = createChatStore({ kind: 'live', getSessionsList: vi.fn().mockResolvedValue([]) })
+    testStore = createChatStore({ kind: 'test', getSessionsList: vi.fn().mockResolvedValue([]) })
+    liveStore.setProject('proj')
+    testStore.setProject('proj')
+    await liveStore.loadMessages()
+    await testStore.loadMessages()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('leaves the test conversation to the test store, buttons and all', () => {
+    bus.deliverEntered({ sessionId: 8, projectId: 'proj', sessionType: 'test', state: STATE, actions: [{ name: 'go' }] })
+
+    expect(testStore.currentSessionId.value).toBe(8)
+    expect(testStore.buttons.value).toEqual([{ name: 'go' }])
+    expect(liveStore.currentSessionId.value).toBeNull()
+
+    bus.deliverEntered({ sessionId: 7, projectId: 'proj', state: STATE, actions: [{ name: 'start' }] })
+
+    expect(liveStore.currentSessionId.value).toBe(7)
+    expect(liveStore.buttons.value).toEqual([{ name: 'start' }])
+    expect(testStore.currentSessionId.value).toBe(8)
+    expect(testStore.buttons.value).toEqual([{ name: 'go' }])
+  })
+})

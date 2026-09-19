@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
-from turn.sessions.env_for_session import env_for_session
 from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from system import bus
 from system.bus import OUTPUT_DRIVE, SESSION_ENDED, Message
@@ -37,6 +36,11 @@ def _publish(message: Message) -> None:
 DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 
 
+class NoAutomatonStarter:
+    def start_automaton(self, strategy: SessionTypeStrategy, session: dict, username: str) -> None:
+        return None
+
+
 class SessionNotWritable(ValueError):
     def __init__(self, message: str, code: str) -> None:
         super().__init__(message)
@@ -48,6 +52,7 @@ class SessionManager(object):
         self._db = db
         self._open_window = timedelta(minutes=open_window_minutes)
         self._session_report_scheduler: "SessionReportScheduler | None" = None
+        self._automaton_starter = NoAutomatonStarter()
 
     @property
     def open_window(self) -> timedelta:
@@ -55,6 +60,9 @@ class SessionManager(object):
 
     def set_session_report_scheduler(self, session_report_scheduler: "SessionReportScheduler") -> None:
         self._session_report_scheduler = session_report_scheduler
+
+    def set_automaton_starter(self, automaton_starter) -> None:
+        self._automaton_starter = automaton_starter
 
     def is_open(self, session: dict, now: datetime | None = None) -> bool:
         """`datetime_end` is just a session's last-activity timestamp;
@@ -97,9 +105,7 @@ class SessionManager(object):
         )
         session = self._db.get_chat_session(session_id)
         assert session is not None
-        strategy.reset_env_for_new_session(
-            project_service.get_automaton_for_session(session_id), env_for_session(self._db, session),
-        )
+        self._automaton_starter.start_automaton(strategy, session, username)
         return session
 
     def discard_sessions_of_type(self, username: str, type: str) -> None:

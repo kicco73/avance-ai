@@ -34,7 +34,7 @@ def _automaton() -> Automaton:
 		states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
 		general_prompt="", signals=[], general_attachments=(), autotracking_on_ai_message=False,
 		project_id=PROJECT_ID,
-		env_keys=[EnvKey(name="slot", type="choice", ui_description="The appointment slot.")],
+		env_keys=[EnvKey(name="slot", type="list", ai_definition="The appointment slot.")],
 	)
 
 
@@ -68,6 +68,41 @@ async def test_a_choice_options_current_text_is_translated_alongside_manual_butt
 	assert by_name["manual"]["ui_button"] == "MANUAL"
 	assert by_name["choice:slot:0"]["ui_button"] == "MORNING"
 	assert by_name["choice:slot:1"]["ui_button"] == "EVENING"
+
+
+def _automaton_reached_by_a_manual_action() -> Automaton:
+	enter = Action(name="enter", ui_label="Enter", ui_button="Enter", target="b")
+	state_a = State(key="a", ui_label="A", final=False, actions=[enter])
+	state_b = State(key="b", ui_label="B", final=False, contextual_prompt="hi", choice_keys=("slot",))
+	init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a")
+	return Automaton(
+		init_action=init_action,
+		states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
+		general_prompt="", signals=[], general_attachments=(), autotracking_on_ai_message=False,
+		project_id=PROJECT_ID,
+		env_keys=[EnvKey(name="slot", type="list", ai_definition="The appointment slot.")],
+	)
+
+
+async def test_a_manual_transitions_own_buttons_still_carry_the_translation_a_discarded_earlier_read_already_consumed(
+	turn_service_for,
+):
+	"""apply_manual_action computes buttons_for twice for the same turn
+	— once inside _process_turn_body (its result thrown away, see
+	TurnService._messages_for_transition), once again for the response
+	that actually reaches the caller. A read that consumes the per-
+	session translation on the first, discarded call would leave the
+	second with nothing to show but the untranslated option text."""
+	db = turn_service_for.db
+	turn_service = turn_service_for(_automaton_reached_by_a_manual_action(), ai_service=UppercasingSchemaAiService())
+	db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
+	session = await turn_service.enter_session(PROJECT_ID, "live")
+	env_for_session(db, db.get_chat_session(session["id"])).update_action_set({"slot": ["morning"]})
+
+	result = await turn_service.apply_manual_action("enter", session["id"])
+
+	by_name = {b["name"]: b for b in result["buttons"]}
+	assert by_name["choice:slot:0"]["ui_button"] == "MORNING"
 
 
 async def test_no_translation_event_leaves_choice_buttons_with_the_raw_option_text(turn_service_for):
@@ -110,6 +145,28 @@ async def test_turn_translation_events_carry_the_turns_own_lang_prompt_answer(tu
 
 	choice_event = next(e for e in events if e["key"] == "slot")
 	assert (choice_event["src_lang"], choice_event["dst_lang"]) == ("en-US", "it-IT")
+
+
+async def test_same_source_and_destination_language_writes_nothing_to_the_translation_cache(turn_service_for):
+	class SameLanguageAiService(UppercasingSchemaAiService):
+		async def generate_stream_with_metadata(
+			self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False,
+		):
+			translations = {name: text for name, text in _LABEL_RE.findall(system_prompt.stable)}
+			if translations:
+				on_metadata("translations", json.dumps(translations))
+				on_metadata("lang", json.dumps({"src": "en-US", "dst": "en-US"}))
+			yield "reply "
+
+	db = turn_service_for.db
+	turn_service = turn_service_for(_automaton(), ai_service=SameLanguageAiService())
+	db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
+	session = await turn_service.enter_session(PROJECT_ID, "live")
+	env_for_session(db, db.get_chat_session(session["id"])).update_action_set({"slot": ["morning"]})
+
+	await turn_service.process_turn(session["id"], "hello")
+
+	assert db.count_translations() == 0
 
 
 @pytest.mark.parametrize("raw", [

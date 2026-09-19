@@ -21,9 +21,9 @@ project:
   id: proj
 env:
   slot:
-    type: choice
+    type: list
   other:
-    type: choice
+    type: list
   booked_slot:
     type: string
   visits:
@@ -64,7 +64,7 @@ def test_an_on_exit_assignment_may_read_a_declared_choice_key_too():
 
 @pytest.mark.parametrize(("actions_yaml", "match"), [
     ("      - name: go\n        target: b\n        trigger: \"choice.visits != ''\"\n",
-     r"State a, action 'go': trigger references choice.visits — 'visits' is not an env key declared of type choice"),
+     r"State a, action 'go': trigger references choice.visits — 'visits' is not an env key declared of type list"),
     ("      - name: go\n        target: b\n        trigger: \"choice.nowhere != ''\"\n",
      r"State a, action 'go': trigger references choice.nowhere — 'nowhere' is not an env key"),
     ("      - name: go\n        target: b\n        trigger: \"choice.slot.first != ''\"\n",
@@ -72,7 +72,7 @@ def test_an_on_exit_assignment_may_read_a_declared_choice_key_too():
     ("      - name: go\n        target: b\n        env:\n          booked_slot: choice.visits\n",
      r"State a, action 'go': env expression for 'booked_slot' references choice.visits"),
     ("      - name: go\n        target: b\n        on-exit: env.booked_slot = choice.visits\n",
-     r"State a, action 'go': on-exit references choice.visits — 'visits' is not an env key declared of type choice"),
+     r"State a, action 'go': on-exit references choice.visits — 'visits' is not an env key declared of type list"),
     ("      - name: go\n        target: b\n        trigger: \"choice.slot()\"\n",
      r"State a, action 'go': trigger calls choice.slot\(\) — choice.<key> is the option pressed, a string, not a call"),
     ("      - name: go\n        target: b\n        on-exit: env.booked_slot = choice.slot()\n",
@@ -90,9 +90,9 @@ def test_build_rejects_a_chain_that_is_not_exactly_a_declared_choice_key_or_sits
 
 @pytest.mark.parametrize("field_name", ["input", "output"])
 def test_a_choice_key_is_never_an_input_or_an_output(field_name):
-    with pytest.raises(ValueError, match=r"a choice key is never rendered to the model"):
+    with pytest.raises(ValueError, match=r"a list key is never rendered to the model"):
         _build(BOOK, state_extra=f"    {field_name}:\n      - slot\n").replace(
-            "  slot:\n    type: choice\n", "  slot:\n    type: choice\n    ai-definition: The slot.\n",
+            "  slot:\n    type: list\n", "  slot:\n    type: list\n    ai-definition: The slot.\n",
         )
 
 
@@ -115,7 +115,7 @@ def _automaton() -> Automaton:
             "a": State(key="a", ui_label="A", final=True, contextual_prompt="hi"),
         },
         general_prompt="", signals=[], general_attachments=(), autotracking_on_ai_message=False,
-        env_keys=[EnvKey(name="slot", type="choice"), EnvKey(name="other", type="choice"), EnvKey(name="n", type="number")],
+        env_keys=[EnvKey(name="slot", type="list"), EnvKey(name="other", type="list"), EnvKey(name="n", type="number")],
     )
 
 
@@ -134,7 +134,7 @@ def test_with_no_selection_every_choice_key_reads_as_an_empty_string():
 
 def test_identifiers_list_the_choice_keys_with_their_descriptions():
     automaton = _automaton()
-    automaton.env_keys[0].ui_description = "The appointment slot."
+    automaton.env_keys[0].ai_definition = "The appointment slot."
     assert ChoiceNamespace().identifiers(automaton) == {"choice": {"slot": "The appointment slot.", "other": ""}}
 
 

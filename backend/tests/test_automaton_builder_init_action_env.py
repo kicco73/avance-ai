@@ -22,7 +22,6 @@ def test_init_action_can_declare_its_own_env():
 env:
   greeting:
     type: string
-    value: ""
 init-action:
   target: a
   env:
@@ -39,10 +38,8 @@ def test_init_actions_own_env_holds_only_its_own_writes_never_the_declared_defau
 env:
   a:
     type: number
-    value: "1"
   b:
     type: number
-    value: "2"
 init-action:
   target: a
   env:
@@ -52,7 +49,7 @@ states:
     contextual-prompt: hi
 """)
     assert automaton.init_action.env == {"a": "99"}
-    assert automaton.env_defaults_action.env == {"a": "1", "b": "2"}
+    assert automaton.env_defaults_action.env == {"a": "0", "b": "0"}
 
 
 def test_an_init_action_without_env_has_none_even_when_keys_are_declared():
@@ -60,7 +57,6 @@ def test_an_init_action_without_env_has_none_even_when_keys_are_declared():
 env:
   a:
     type: number
-    value: "1"
 init-action:
   target: a
 states:

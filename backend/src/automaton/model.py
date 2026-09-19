@@ -14,7 +14,7 @@ from typing import ClassVar
 
 from typing_extensions import TypedDict, Literal, Any
 
-ENV_TYPE_DEFAULTS: dict[str, Any] = {"number": 0, "string": "", "bool": False, "choice": [], "undeclared": ""}
+ENV_TYPE_DEFAULTS: dict[str, Any] = {"number": 0, "string": "", "bool": False, "list": [], "undeclared": ""}
 ENV_DEFAULTS_ACTION_NAME = "env-defaults"
 
 class SourceDict(TypedDict):
@@ -99,8 +99,8 @@ class Reaction:
 @dataclass
 class EnvKey:
     """One project-level `env:` declaration — the automaton's own variable.
-    `value` is the default, evaluated once whenever nothing has set the key
-    yet. `ai_definition` is the text the model reads to know what this
+    Its first value is the declared type's own default; `ai_definition` is
+    the text the model reads to know what this
     variable means — required for any key some state actually lists in its
     own `input`/`output` (see AutomatonValidator.validate_state_io), unused
     otherwise. Whether the model sees or produces a given key at all is
@@ -109,13 +109,11 @@ class EnvKey:
     action's own `env:`) write any key regardless."""
     name: str
     type: str
-    value: str = ""
-    ui_description: str | None = None
     ai_definition: str | None = None
 
 
 def env_defaults_action(env_keys: list[EnvKey]) -> Action:
-    env = {key.name: key.value or repr(ENV_TYPE_DEFAULTS[key.type]) for key in env_keys}
+    env = {key.name: repr(ENV_TYPE_DEFAULTS[key.type]) for key in env_keys}
     return Action(
         name=ENV_DEFAULTS_ACTION_NAME, ui_label=ENV_DEFAULTS_ACTION_NAME, ui_button="", target="", env=env or None,
     )
@@ -173,8 +171,6 @@ class SignalPayload(TypedDict):
 class EnvKeyPayload(TypedDict):
     name: str
     type: str
-    ui_description: str | None
-    value: str
     ai_definition: str | None
 
 class SourcePayload(TypedDict):

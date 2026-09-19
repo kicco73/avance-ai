@@ -39,10 +39,8 @@ init-action:
 env:
   counter:
     type: number
-    value: 0
   flight:
     type: string
-    value: ""
 {env_yaml}
 """
 
@@ -97,7 +95,8 @@ def test_on_exit_accepts_chat_switch_to_human_and_switch_to_ai():
     ("env = 1", r"'env' is a reserved name"),
     ("chat = 1", r"'chat' is a reserved name"),
     ("task.send_mail(user.email, 'hi')", r"on-exit only supports 'env.<key> = expr' assignments"),
-    ("chat.celebrate(1)", r"chat.celebrate\(\.\.\.\) takes 0 argument\(s\), got 1"),
+    ("chat.celebrate(1)", r"chat.celebrate\(\.\.\.\) too many positional arguments"),
+    ("chat.chart('Score', top=100)", r"unexpected keyword argument 'top'"),
     ("env.unknown_key = 1", r"env key 'unknown_key' is not declared"),
     ("env.counter = user.name", r"is a string, but 'counter' is declared number"),
     ("|\n          env.counter = 1\n          env.unknown_key = 2", r"on-exit line 2.*env key 'unknown_key' is not declared"),
@@ -105,6 +104,22 @@ def test_on_exit_accepts_chat_switch_to_human_and_switch_to_ai():
 def test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines(on_exit, match):
     with pytest.raises(ValueError, match=match):
         _build(_go(f"        on-exit: {on_exit}\n"))
+
+
+def test_on_exit_accepts_a_chart_written_as_one_bar_per_argument_with_a_full_scale():
+    """chat.chart's own shape: the title, then a dict per bar, then the
+    value a full bar stands for."""
+    on_exit = (
+        "|\n          chat.chart('Score',\n"
+        "            {'line': 'Emotional exhaustion', 'value': env.counter},\n"
+        "            {'line': 'Overall', 'value': env.counter},\n"
+        "            max_scale=100\n"
+        "          )"
+    )
+
+    automaton = _build(_go(f"        on-exit: {on_exit}\n"))
+
+    assert "max_scale=100" in automaton.states["a"].actions[0].on_exit
 
 
 def test_on_exit_accepts_a_local_assigned_before_the_lines_that_read_it():

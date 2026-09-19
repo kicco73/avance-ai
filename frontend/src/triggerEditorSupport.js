@@ -5,6 +5,7 @@ const CALL_PARAMS = {
   'task.websearch': ['query'],
   'chat.notify': ['title', 'body_md'],
   'chat.show': ['body_md'],
+  'chat.chart': ['title', 'bar'],
   'chat.switch_to_human': ['user_id'],
   'drive.read': ['path'],
   'drive.write': ['path', 'text'],

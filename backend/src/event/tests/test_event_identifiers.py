@@ -39,7 +39,7 @@ init-action:
 env:
   budget:
     type: number
-    ui-description: "Remaining shared budget."
+    ai-definition: "Remaining shared budget."
 
 states:
   x:
@@ -74,7 +74,7 @@ project:
 
 env:
   budget:
-    ui-description: "Still listed, never built."
+    ai-definition: "Still listed, never built."
 
 init-action:
   target: x

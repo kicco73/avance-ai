@@ -47,6 +47,37 @@ announced on the same Bus, and answering it would be one package greeting
 a conversation it does not serve, so `_opened` filters on
 `message.channel` before opening anything.
 
+## Frames that arrive before the session does
+
+A session's `init-action` runs at its creation, so its `chat.*` frames are
+published before `session.info` (`docs/BUS.md`, "What creating a session
+starts"). Between asking and being answered, this package's store does
+not yet know which session it is in, so it cannot match those frames on
+the session id.
+
+`chatStoreFactory.isAboutOurConversation` is that match: the session id
+when it has one, and, while it is still waiting, the session type and the
+project — which is what `session.info` and `session.blocked` were already
+matched on. `ui.notification`, `output.chart` and `output.progress` go
+through it too; without them an `init-action`'s notification was dropped
+in silence, as if it were for somebody else's conversation.
+
+The type is half the match because the editor holds a live store, a test
+store and a preview store open on the same project at once. They all
+re-enter together when the socket reconnects, so on the project alone
+each would answer the others' `session.info`, overwrite its own session
+id, and then discard the `state.buttons` meant for it — buttons gone,
+and nothing to bring them back. A frame carrying no type is matched on
+the project, which is all an `init-action`'s own frames carry.
+
+The window that remains is the one `session.info` already lived in: two
+stores of the *same* kind waiting on the same project in the same instant
+could still take each other's frame. It lasts one round trip.
+
+`ui.notification` keeps a second way in, for a frame carrying no session
+at all — what `task.defer` schedules (`ActionTask.later`) — matched on
+the project alone.
+
 ## Standing down
 
 A live session belongs to one channel at a time, and the rule both sides

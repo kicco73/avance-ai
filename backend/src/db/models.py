@@ -294,6 +294,27 @@ class AiTokenUsage(BaseModel):
     class Meta:
         table_name = 'AiTokenUsage'
 
+class Translation(BaseModel):
+    """One label already translated, keyed by its own context (`key`) and
+    the exact source/destination locale pair — see docs/BUS.md's
+    `turn.translation`, the only writer. Global, not per-session: the same
+    label in the same language pair reuses the same row for every
+    session/project that asks."""
+    id = AutoField()
+    key = CharField()
+    src_lang = CharField()
+    src_text = TextField()
+    dst_lang = CharField()
+    dst_text = TextField()
+    timestamp = DateTimeField(default=datetime.utcnow)
+
+    class Meta:
+        table_name = 'Translation'
+        indexes = (
+            (('key', 'src_lang', 'src_text', 'dst_lang'), True),
+            (('key', 'src_lang', 'src_text'), False),
+        )
+
 class EditHistory(BaseModel):
     """Per-(user, project, file) undo/redo trail for the project editor —
     named EditHistory (not just History) to read unambiguously as project-

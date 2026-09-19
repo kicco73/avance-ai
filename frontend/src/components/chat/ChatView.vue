@@ -62,7 +62,7 @@ const {
 
 watch(chart, (next) => {
   if (!next) return
-  customDialog({ component: ChartDialog, props: { title: next.title, series: next.series } })
+  customDialog({ component: ChartDialog, props: { title: next.title, series: next.series, maxScale: next.maxScale } })
   dismissChart()
 })
 

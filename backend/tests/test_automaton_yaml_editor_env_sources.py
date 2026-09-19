@@ -20,8 +20,8 @@ class TestAddEnvKey:
         editor = make_editor()
         payload = editor.add_env_key()
         assert payload["name"] == "new_env_key"
-        assert payload["ui_description"] is None
-        assert payload["value"] == ""
+        assert payload["ai_definition"] is None
+        assert payload["type"] == "string"
 
         assert editor.add_env_key()["name"] == "new_env_key_2"
         assert any(e.name == payload["name"] for e in builds(editor.serialize()).env_keys)
@@ -30,10 +30,10 @@ class TestAddEnvKey:
 class TestSetEnvKeyField:
     def test_plain_edits_stay_in_place_and_a_name_changing_the_sanitized_name_renames_the_key(self):
         editor = make_editor(ENV_BASE_YAML)
-        payload = editor.set_env_key_field("visits", "ui-description", "Updated description")
+        payload = editor.set_env_key_field("visits", "ai-definition", "Updated definition")
         assert payload["name"] == "visits"
-        assert payload["ui_description"] == "Updated description"
-        assert editor.set_env_key_field("score", "value", "0")["value"] == "0"
+        assert payload["ai_definition"] == "Updated definition"
+        assert editor.set_env_key_field("score", "type", "number")["type"] == "number"
         assert editor.set_env_key_field("visits", "name", "visits")["name"] == "visits"
 
         assert editor.set_env_key_field("visits", "name", "Visit Count")["name"] == "visit_count"

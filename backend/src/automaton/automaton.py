@@ -19,7 +19,7 @@ Payload type, JsSnippet, TaskOutcome, DeferredExpression, pressable_actions — 
 re-exported here unchanged, so no import anywhere had to move."""
 from __future__ import annotations
 
-from .core import CoreAutomaton, DeferredExpression, JsSnippet, TaskOutcome, _TaskEval
+from .core import CoreAutomaton, DeferredExpression, JsSnippet, LambdaFunction, TaskOutcome, _TaskEval
 from .introspection import IntrospectionMixin
 from .model import (
     Action,
@@ -42,7 +42,7 @@ from .payloads import PayloadsMixin, pressable_actions
 
 __all__ = [
     "Action", "ActionPayload", "Automaton", "CompiledAutomaton", "CoreAutomaton", "DeferredExpression",
-    "EnvKey", "EnvKeyPayload", "IntrospectionMixin", "JsSnippet", "MemoryArchive", "PayloadsMixin",
+    "EnvKey", "EnvKeyPayload", "IntrospectionMixin", "JsSnippet", "LambdaFunction", "MemoryArchive", "PayloadsMixin",
     "ProjectPayload", "Reaction", "ReactionOptionPayload", "Signal", "SignalPayload", "Source",
     "SourceDict", "SourcePayload", "State", "StatePayload", "TaskOutcome", "pressable_actions",
 ]

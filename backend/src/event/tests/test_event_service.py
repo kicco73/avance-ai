@@ -196,7 +196,7 @@ project:
   id: bystander
 env:
   visits:
-    value: "0"
+    type: number
 init-action:
   target: a
 states:

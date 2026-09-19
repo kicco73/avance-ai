@@ -39,7 +39,6 @@ init-action:
 env:
   counter:
     type: number
-    value: 0
 states:
   a:
     ui-label: A

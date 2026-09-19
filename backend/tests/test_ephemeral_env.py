@@ -82,7 +82,7 @@ async def test_a_test_sessions_env_lives_only_in_memory_isolated_from_the_live_o
     assert result["state"]["key"] == "b"
     assert _env_tracking_row_count(first["id"]) == 0
     assert service.get_env(first["id"])["action_set"] == {"favorite_color": "blue"}
-    assert service.get_env(live_session["id"])["action_set"] == {}
+    assert service.get_env(live_session["id"])["action_set"] == {"favorite_color": ""}
 
     second = await service.create_session_of(PROJECT_ID, 'test')
     assert service.get_env(second["id"])["action_set"] == {"favorite_color": ""}

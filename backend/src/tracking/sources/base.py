@@ -101,9 +101,11 @@ class SourceDriver:
     def select_rows_in_range(self, column: str, start: str | float, end: str | float, *strings: str | float) -> str:
         raise self._unsupported("select_rows_in_range")
 
-    def value(self, *values: str | float, key: str) -> str:
+    def value(self, *values: str | float, key: str) -> str | int | float:
         """The `key` cell of the *first* row containing every value
-        (same filter as select_rows_containing), as a string — "" if no row satisfies it,
+        (same filter as select_rows_containing), numeric when the cell
+        reads as one (see tracking.sources.comparison.numeric_or_text),
+        the raw string otherwise — "" if no row satisfies it,
         an error *text* if `key` isn't a real column. Never a ToolSet
         tool (ToolSet only ever wires up the select_rows_*/update methods, see its own
         _add_tool) — scripts and trigger/env: expressions only, where a
@@ -111,10 +113,12 @@ class SourceDriver:
         own text."""
         raise self._unsupported("value")
 
-    def column(self, column: str, *values: str) -> list[str]:
+    def column(self, column: str, *values: str) -> list[str | int | float]:
         raise self._unsupported("column")
 
-    def row_where(self, column: str, operator: str, value: str | float, *strings: str | float) -> dict[str, str]:
+    def row_where(
+        self, column: str, operator: str, value: str | float, *strings: str | float,
+    ) -> dict[str, str | int | float]:
         raise self._unsupported("row_where")
 
     def parameter_schema(self, method: str) -> dict | None:

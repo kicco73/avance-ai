@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import pytest
 import simpleeval
 
-from automaton.automaton import DeferredExpression, _TaskEval
+from automaton.automaton import CoreAutomaton, DeferredExpression, _TaskEval
 from automaton.scope import EvaluationScope
 from conftest import make_test_namespace_factory
 from tracking.actuators.actuator_set import FakeTaskNamespace, LiveTaskNamespace
@@ -68,10 +68,44 @@ def test_a_zero_argument_lambda_evaluates_to_a_deferred_expression_that_knows_it
     assert recorder.calls == [3]
 
 
-def test_task_eval_rejects_a_lambda_with_arguments_and_a_plain_dict_scope():
+def test_task_eval_rejects_a_starred_lambda_and_a_plain_dict_scope():
     """A plain dict has no automaton/state behind it — nothing a deferred
     call could be hibernated with — so it is refused up front."""
     with pytest.raises(simpleeval.FeatureNotAvailable):
-        _TaskEval(names=_scope({})).eval("lambda x: x")
+        _TaskEval(names=_scope({})).eval("lambda *args: args")
     with pytest.raises(TypeError, match="EvaluationScope"):
         _TaskEval(names={})
+
+
+def test_a_lambda_with_parameters_is_a_function_a_later_task_line_calls_by_name():
+    scope = _scope({"env": {"questions": [1, 2, 3, 4]}}).for_task(action_name="a")
+
+    outcome = CoreAutomaton.render_task_script(
+        "normalize = lambda x: x * 100 / len(env.questions)\nscaled = normalize(3)\n", scope,
+    )
+
+    assert outcome.failures == ()
+    assert scope["scaled"] == 75.0
+
+
+def test_a_lambda_parameter_is_bound_for_the_call_alone_and_never_leaks_into_the_script():
+    scope = _scope({}).for_task(action_name="a")
+
+    outcome = CoreAutomaton.render_task_script(
+        "x = 999\ntwice = lambda x: x * 2\nsmall = twice(2)\nkept = x\n", scope,
+    )
+
+    assert outcome.failures == ()
+    assert scope["small"] == 4
+    assert scope["kept"] == 999
+
+
+def test_a_defer_still_refuses_a_lambda_that_takes_parameters(db):
+    """A parameterized lambda is a function, not a deferred call: it has
+    arguments no hibernated task could supply later."""
+    function = _TaskEval(names=_scope({})).eval("lambda x: x")
+
+    with pytest.raises(TypeError, match="lambda"):
+        _live_task_namespace(db).defer(function, datetime.now(timezone.utc))
+
+    assert db.list_tasks() == []

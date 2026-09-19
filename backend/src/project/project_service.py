@@ -96,6 +96,9 @@ class ProjectService(object):
     def get_active_automaton_and_state(self, username: str | None = None) -> tuple[Automaton, State]:
         return self.inspector.get_active_automaton_and_state(username)
 
+    def has_ever_run(self, project_id: str, username: str, type: str = 'live') -> bool:
+        return self.inspector.has_ever_run(project_id, username, type)
+
     def get_automaton_for_session(self, session_id: int) -> Automaton:
         return self.inspector.get_automaton_for_session(session_id)
 

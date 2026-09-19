@@ -3,18 +3,43 @@ import { computed } from 'vue'
 
 const props = defineProps({
   title: { type: String, default: '' },
-  series: { type: Array, default: () => [] }
+  series: { type: Array, default: () => [] },
+  maxScale: { type: Number, default: null }
 })
 
+const percent = (fraction) => `${Math.min(Math.max(fraction, 0), 1) * 100}%`
+
+class SpreadScale {
+  constructor(values) {
+    this.min = values.length ? Math.min(...values) : 0
+    this.max = values.length ? Math.max(...values) : 0
+  }
+
+  widthFor(value) {
+    if (this.max === this.min) return '100%'
+    return percent((value - this.min) / (this.max - this.min))
+  }
+}
+
+class FullScale {
+  constructor(max) {
+    this.max = max
+  }
+
+  widthFor(value) {
+    return percent(value / this.max)
+  }
+}
+
 const values = computed(() => props.series.map((entry) => Number(entry.value) || 0))
-const minValue = computed(() => (values.value.length ? Math.min(...values.value) : 0))
-const maxValue = computed(() => (values.value.length ? Math.max(...values.value) : 0))
+const scale = computed(() => (
+  Number.isFinite(props.maxScale) && props.maxScale > 0
+    ? new FullScale(props.maxScale)
+    : new SpreadScale(values.value)
+))
 
 function widthFor(value) {
-  const min = minValue.value
-  const max = maxValue.value
-  if (max === min) return '100%'
-  return `${((value - min) / (max - min)) * 100}%`
+  return scale.value.widthFor(value)
 }
 </script>
 

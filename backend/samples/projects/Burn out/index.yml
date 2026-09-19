@@ -253,11 +253,10 @@ env:
     type: string
     ai-definition: Haz un reporte al usuario. pon quanto más pueda bajo forma de tabla markdown. asegúrate que sea MD bien formado, sin errores.
   casos:
-    type: choice
-    ui-description: perfiles de pacientes
+    type: list
+    ai-definition: perfiles de pacientes
   casos_con_descripcion:
     type: string
-    value: ''
     ai-definition: lista de casos de pacientes disponibles, uno por linea.
 sources:
   casos:

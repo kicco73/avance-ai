@@ -59,8 +59,6 @@ class PayloadsMixin(object):
         return {
             "name": env_key.name,
             "type": env_key.type,
-            "ui_description": env_key.ui_description,
-            "value": env_key.value,
             "ai_definition": env_key.ai_definition,
         }
 

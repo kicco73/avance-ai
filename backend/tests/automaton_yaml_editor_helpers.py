@@ -55,7 +55,7 @@ init-action:
 env:
   visits:
     type: number
-    ui-description: Visit counter
+    ai-definition: Visit counter
   score:
     type: number
 states:

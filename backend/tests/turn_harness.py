@@ -56,6 +56,9 @@ class FakeProjectService:
     def get_published_revision(self, project_id: str) -> int:
         return 0
 
+    def has_ever_run(self, project_id: str, username: str, type: str = 'live') -> bool:
+        return self._db.get_current_state_for_user(project_id, username, type=type) is not None
+
     def legal_terms_pending(self, username: str, project_id: str) -> bool:
         return False
 

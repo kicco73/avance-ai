@@ -3,7 +3,6 @@ import { nextTick, ref, watch } from 'vue'
 import { vAutosize } from '../../../../components/skillkit/textareaAutosize.js'
 import CardMenu from '../../../../components/skillkit/CardMenu.vue'
 import SegmentedControl from '../../../../components/skillkit/SegmentedControl.vue'
-import TriggerEditor from '../../../../components/skillkit/TriggerEditor.vue'
 import { handleEnterNext } from '../../../../components/skillkit/enterToNextField.js'
 
 const props = defineProps({
@@ -18,21 +17,17 @@ function handleDeleteEnvKey(name) {
   emit('delete', name)
 }
 
-const ENV_TYPES = ['number', 'string', 'bool', 'choice']
+const ENV_TYPES = ['number', 'string', 'bool', 'list']
 const ENV_TYPE_OPTIONS = ENV_TYPES.map((envType) => ({ id: envType, label: envType }))
 
 const expandedName = ref(null)
 const editName = ref('')
 const editType = ref('string')
-const editUiDescription = ref('')
-const editValue = ref('')
 const editAiDefinition = ref('')
 
 function resetEditBuffers(envKey) {
   editName.value = envKey?.name ?? ''
   editType.value = envKey?.type ?? 'string'
-  editUiDescription.value = envKey?.ui_description ?? ''
-  editValue.value = envKey?.value ?? ''
   editAiDefinition.value = envKey?.ai_definition ?? ''
 }
 
@@ -116,15 +111,6 @@ function commitField(field, currentValue, originalValue) {
                 <button type="button" class="card-menu-item-danger" @click="handleDeleteEnvKey(envKey.name)">Delete</button>
               </CardMenu>
             </div>
-            <label class="inspector-signal-form-label">Description</label>
-            <textarea
-              v-model="editUiDescription"
-              v-autosize
-              class="inspector-signal-textarea"
-              rows="2"
-              @click.stop
-              @blur="commitField('ui-description', editUiDescription, envKey.ui_description ?? '')"
-            ></textarea>
             <label class="inspector-signal-form-label">
               <span class="inspector-ai-field-icon" title="Read by the AI">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
@@ -140,28 +126,14 @@ function commitField(field, currentValue, originalValue) {
               @click.stop
               @blur="commitField('ai-definition', editAiDefinition, envKey.ai_definition ?? '')"
             ></textarea>
-            <div class="inspector-env-value-row">
-              <div class="inspector-env-type">
-                <label class="inspector-signal-form-label">Type</label>
-                <SegmentedControl
-                  :model-value="editType"
-                  :options="ENV_TYPE_OPTIONS"
-                  @click.stop
-                  @update:model-value="(value) => { editType = value; commitField('type', value, envKey.type ?? '') }"
-                />
-              </div>
-              <div class="inspector-env-value">
-                <label class="inspector-signal-form-label" title="A Python expression, evaluated server-side">
-                  <span class="inspector-py-field-icon" title="Python expression">PY</span>
-                  Value
-                </label>
-                <TriggerEditor
-                  v-model="editValue"
-                  :exclude-namespaces="['task', 'chat']"
-                  @click.stop
-                  @blur="commitField('value', editValue, envKey.value ?? '')"
-                />
-              </div>
+            <div class="inspector-env-type">
+              <label class="inspector-signal-form-label">Type</label>
+              <SegmentedControl
+                :model-value="editType"
+                :options="ENV_TYPE_OPTIONS"
+                @click.stop
+                @update:model-value="(value) => { editType = value; commitField('type', value, envKey.type ?? '') }"
+              />
             </div>
           </div>
           <div v-else key="readonly" class="inspector-signal-readonly">
@@ -173,14 +145,12 @@ function commitField(field, currentValue, originalValue) {
                 <button type="button" class="card-menu-item-danger" @click="handleDeleteEnvKey(envKey.name)">Delete</button>
               </CardMenu>
             </div>
-            <span v-if="envKey.ui_description" class="inspector-signal-ui_description">{{ envKey.ui_description }}</span>
             <span v-if="envKey.ai_definition" class="inspector-signal-ai_definition">
               <span class="inspector-ai-field-icon" title="Read by the AI">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
               </span>
               {{ envKey.ai_definition }}
             </span>
-            <code v-if="envKey.value" class="inspector-detail-code">{{ envKey.value }}</code>
           </div>
         </Transition>
       </div>
@@ -204,19 +174,14 @@ function commitField(field, currentValue, originalValue) {
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-env { background: #00838f; }
 .inspector-env-type-tag { flex-shrink: 0; font-size: 0.72rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; color: #00838f; }
-.inspector-env-value-row { display: flex; gap: 0.6rem; align-items: flex-start; }
-.inspector-env-type { flex-shrink: 0; display: flex; flex-direction: column; }
-.inspector-env-value { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.inspector-env-type { display: flex; flex-direction: column; align-items: flex-start; }
 .inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
 .inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
 .inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }
 .inspector-signal-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
-.inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
 .inspector-signal-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.78rem; line-height: 1.54; padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
-.inspector-signal-ui_description { display: block; margin-top: 0.3rem; font-size: 0.78rem; color: #666; line-height: 1.4; }
 .inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; margin-top: 0.15rem; }
 .inspector-signal-ai_definition { display: flex; align-items: flex-start; gap: 0.35rem; margin-top: 0.3rem; font-size: 0.78rem; color: #555; line-height: 1.4; }
-.inspector-detail-code { display: block; margin-top: 0.3rem; font-size: 0.78rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; color: #444; word-break: break-word; white-space: pre-wrap; user-select: none; }
 .crossfade-enter-active, .crossfade-leave-active { transition: opacity 0.15s ease; }
 .crossfade-enter-from, .crossfade-leave-to { opacity: 0; }
 </style>

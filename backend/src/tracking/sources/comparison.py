@@ -12,6 +12,16 @@ def _as_number(text: str) -> float | None:
         return None
 
 
+def numeric_or_text(text: str) -> str | int | float:
+    number = _as_number(text)
+    if number is None:
+        return text
+    try:
+        return int(text.strip())
+    except ValueError:
+        return number
+
+
 def _as_moment(text: str) -> datetime | None:
     try:
         return datetime.fromisoformat(text.strip().replace(" ", "T"))

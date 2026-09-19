@@ -13,7 +13,8 @@ ISO dates included, see tracking.sources.comparison), further narrowed by
 `select_rows_containing`. No row at all
 matching the filter returns "" — not even the header — so
 `select_rows_containing(...) != ''` is a real existence check.
-`value(*values, key=...)`: the `key` cell of the first matching row, as a scalar string, for
+`value(*values, key=...)`: the `key` cell of the first matching row, numeric when the cell
+reads as one (see tracking.sources.comparison.numeric_or_text) or the raw string otherwise, for
 scripts/triggers that want one value rather than a table to parse —
 never a model tool. `column(column, *values)`: every `column` cell of
 the matching rows, as a list, for a script that wants the whole column
@@ -39,7 +40,7 @@ import csv
 from system.logging_factory import LoggerFactory
 
 from .base import MAX_SOURCE_RESULT_CHARS, SourceContext, SourceDriver
-from .comparison import OPERATORS, ColumnComparison, ColumnRange
+from .comparison import OPERATORS, ColumnComparison, ColumnRange, numeric_or_text
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -144,6 +145,10 @@ class AvanceArchiveSource(SourceDriver):
     def _unknown_column(column: str, names: list[str]) -> str:
         return f"error: unknown column(s) {column!r} — available: {', '.join(names)}"
 
+    @staticmethod
+    def _cell(cells: list[str], index: int) -> str | int | float:
+        return numeric_or_text(cells[index]) if index < len(cells) else ""
+
     def select_rows_containing(self, *values: str | float) -> str:
         found = self._matches(values)
         if found is None:
@@ -182,7 +187,9 @@ class AvanceArchiveSource(SourceDriver):
         index = names.index(column)
         return [(text, cells) for text, cells in records if index < len(cells) and condition.matches(cells[index])]
 
-    def row_where(self, column: str, operator: str, value: str | float, *strings: str | float) -> dict[str, str]:
+    def row_where(
+        self, column: str, operator: str, value: str | float, *strings: str | float,
+    ) -> dict[str, str | int | float]:
         if operator not in OPERATORS:
             logger.warning("source.%s.row_where: unknown operator %r — available: %s", self._name, operator, ", ".join(OPERATORS))
             return {}
@@ -200,9 +207,9 @@ class AvanceArchiveSource(SourceDriver):
         if len(text) > MAX_SOURCE_RESULT_CHARS:
             logger.warning("source.%s.row_where(%r): row over %d chars", self._name, column, MAX_SOURCE_RESULT_CHARS)
             return {}
-        return {name: cells[index] if index < len(cells) else "" for index, name in enumerate(names)}
+        return {name: self._cell(cells, index) for index, name in enumerate(names)}
 
-    def column(self, column: str, *values: str | float) -> list[str]:
+    def column(self, column: str, *values: str | float) -> list[str | int | float]:
         found = self._matches(values)
         if found is None:
             return []
@@ -211,13 +218,13 @@ class AvanceArchiveSource(SourceDriver):
             logger.warning("source.%s.column(%r): unknown column — available: %s", self._name, column, ", ".join(names))
             return []
         index = names.index(column)
-        values_found = [cells[index] if index < len(cells) else "" for _, cells in matches]
-        if len(delimiter.join(values_found)) > MAX_SOURCE_RESULT_CHARS:
+        values_found = [self._cell(cells, index) for _, cells in matches]
+        if len(delimiter.join(str(v) for v in values_found)) > MAX_SOURCE_RESULT_CHARS:
             logger.warning("source.%s.column(%r): result over %d chars — narrow it with values", self._name, column, MAX_SOURCE_RESULT_CHARS)
             return []
         return values_found
 
-    def value(self, *values: str | float, key: str) -> str:
+    def value(self, *values: str | float, key: str) -> str | int | float:
         found = self._matches(values)
         if found is None:
             return ""
@@ -227,5 +234,4 @@ class AvanceArchiveSource(SourceDriver):
         if key not in names:
             return self._unknown_column(key, names)
         index = names.index(key)
-        cells = matches[0][1]
-        return cells[index] if index < len(cells) else ""
+        return self._cell(matches[0][1], index)

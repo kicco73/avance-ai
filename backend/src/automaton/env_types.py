@@ -39,8 +39,8 @@ class BoolType(EnvType):
         return isinstance(value, bool)
 
 
-class ChoiceType(EnvType):
-    name = "choice"
+class ListType(EnvType):
+    name = "list"
 
     def accepts(self, value: Any) -> bool:
         return isinstance(value, list) and all(isinstance(option, str) for option in value)
@@ -57,7 +57,7 @@ class UndeclaredType(EnvType):
 
 
 ENV_TYPES: dict[str, EnvType] = {
-    env_type.name: env_type for env_type in (NumberType(), StringType(), BoolType(), ChoiceType())
+    env_type.name: env_type for env_type in (NumberType(), StringType(), BoolType(), ListType())
 }
 UNDECLARED_ENV_TYPE = UndeclaredType()
 ENV_TYPE_NAMES = ", ".join(ENV_TYPES)

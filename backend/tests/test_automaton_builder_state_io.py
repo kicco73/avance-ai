@@ -51,7 +51,7 @@ def test_output_referencing_an_undeclared_env_variable_is_rejected():
 
 def test_a_variable_used_as_input_or_output_requires_its_own_ai_definition():
     with pytest.raises(ValueError, match="'ai-definition'"):
-        _build("env:\n  customer_record:\n    type: string\n    value: ''\n", "    input:\n      - customer_record\n")
+        _build("env:\n  customer_record:\n    type: string\n", "    input:\n      - customer_record\n")
 
 
 def test_input_and_output_must_be_lists_of_strings():

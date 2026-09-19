@@ -34,7 +34,6 @@ states:
 env:
   counter:
     type: number
-    value: 0
 """
 
 

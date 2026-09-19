@@ -206,13 +206,10 @@ class AutomatonYamlEditor:
 
     def _env_key_payload(self, name: str) -> EnvKeyPayload:
         raw_env_key = self._env_key(name)
-        ui_description = raw_env_key.get("ui-description")
         ai_definition = raw_env_key.get("ai-definition")
         return {
             "name": name,
             "type": raw_env_key.get("type") or "",
-            "ui_description": ui_description.strip() if ui_description else None,
-            "value": raw_env_key.get("value") or "",
             "ai_definition": ai_definition.strip() if ai_definition else None,
         }
 
@@ -269,13 +266,12 @@ class AutomatonYamlEditor:
         (valid identifier chars), never _next_numbered_name's "-N" suffix."""
         env = self._env()
         name = self._unique_signal_name("new_env_key", set(env.keys()))
-        self._add_entry(env, name, CommentedMap({"type": "string", "value": ""}))
+        self._add_entry(env, name, CommentedMap({"type": "string"}))
         return self._env_key_payload(name)
 
     def add_source(self, name_hint: str | None = None) -> SourcePayload:
-        """`url` is left unset — same "not yet configured" state as a
-        fresh env key's `value` — until the user picks a driver from
-        the Inspector (see set_source_field)."""
+        """`url` is left unset — "not yet configured" — until the user
+        picks a driver from the Inspector (see set_source_field)."""
         sources = self._sources()
         base = self.to_snake_case(name_hint) if name_hint else ""
         name = self._unique_source_name(base or "behaviour", set(sources.keys()))

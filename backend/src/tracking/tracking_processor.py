@@ -10,6 +10,7 @@ from ai import AiService
 from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
 from automaton.choice import ChoiceSelection
+from automaton.model import ENV_TYPE_DEFAULTS
 from system import bus
 from system.bus import POINT_SPOKEN_REPLY, POINT_TRANSLATABLE_LABELS, TURN_TRANSLATION
 from system.logging_factory import LoggerFactory
@@ -562,6 +563,8 @@ class TrackingProcessor(object):
 	async def _publish_translation_events(self) -> None:
 		for id_, (key, text) in self._pending_translatable_labels.items():
 			translation = self.metadata.button_translations.get(id_, text)
+			if self.metadata.src_lang and self.metadata.dst_lang and self.metadata.src_lang != self.metadata.dst_lang:
+				self.db.save_translation(key, self.metadata.src_lang, text, self.metadata.dst_lang, translation)
 			await bus.publish(bus.Message(
 				type=TURN_TRANSLATION,
 				body={
@@ -703,7 +706,7 @@ def estimate_state_prompt(
 		)
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
 		turn_attachments = load_attachments(files, _turn_attachment_paths(automaton, state, True))
-	env = Env(action_set={key.name: key.value for key in automaton.env_keys})
+	env = Env(action_set={key.name: ENV_TYPE_DEFAULTS[key.type] for key in automaton.env_keys})
 	has_to_evaluate_signals_before_ai_reply = not automaton.autotracking_on_ai_message
 	output_prompt = OutputPrompt(output_definition) if state.output else None
 	signals_prompt = SignalsPrompt(signal_definition)

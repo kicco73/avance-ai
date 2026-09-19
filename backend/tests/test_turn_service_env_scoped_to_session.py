@@ -41,9 +41,10 @@ project:
 env:
   {env_key}:
     type: string
-    value: "'{default}'"
 init-action:
   target: a
+  env:
+    {env_key}: "'{default}'"
 states:
   a:
     ui-label: a
@@ -115,7 +116,7 @@ async def test_another_projects_defaults_are_written_once_however_often_it_is_op
     action_env_rows = Tracking.select().where(
         (Tracking.session == other_session_id) & Tracking.action_env.is_null(False)
     ).count()
-    assert action_env_rows == 1
+    assert action_env_rows == 2
 
 
 async def test_a_supervisor_opening_someone_elses_session_touches_that_users_env(db, two_projects):

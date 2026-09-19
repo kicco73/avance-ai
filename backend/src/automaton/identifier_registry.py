@@ -47,7 +47,7 @@ class IdentifierRegistry:
         "show_media": "Shows one of this project's own media/ files in the frontend — e.g. chat.show_media(media.report.url()). An image, PDF, or Markdown file opens in a dialog; an audio file plays in a looping background player instead. `url` is a media file's own download url, e.g. media.<doc_id>.url(). Only available in an action's own on-exit script, and only takes effect in webchat.",
         "switch_to_human": "Hands the session to a person — e.g. chat.switch_to_human(user.email). `user_id` is that person's username/email; they get pushed a notification with a link to take over this session's next turns as the human, in place of the AI. Only available in an action's own on-exit script.",
         "switch_to_ai": "Hands a session back to the AI after switch_to_human — e.g. chat.switch_to_ai(). Only available in an action's own on-exit script.",
-        "chart": "Shows a bar chart in the frontend — e.g. chat.chart('Scores', [{'line': 'Empathy', 'value': 7.5}, {'line': 'Focus', 'value': 4}]). `series` is a list of {line, value} dicts, one bar per line. Only available in an action's own on-exit script, and only reaches a connection showing this conversation.",
+        "chart": "Shows a bar chart in the frontend — e.g. chat.chart('Scores', {'line': 'Empathy', 'value': 7.5}, {'line': 'Focus', 'value': 4}, max_scale=10). One {'line': ..., 'value': ...} dict per bar, each its own argument. `max_scale` is the value a full bar stands for: without it the chart scales to its own values, so the largest bar is always full — give it when the values are scores out of a known maximum. Only available in an action's own on-exit script, and only reaches a connection showing this conversation.",
         "progress": "Shows a progress bar in the chat, under the current turn's own message — e.g. chat.progress('Uploading', 42). `percentage` is 0-100; the bar stays until a later call reaches 100 or higher. Only available in an action's own on-exit script, and only reaches a connection showing this conversation.",
     }
 
@@ -122,7 +122,7 @@ class IdentifierRegistry:
         expression) and off an already-built Automaton's own attributes."""
         return {
             "signal": {signal.name: signal.ui_description for signal in signals},
-            "env": {env_key.name: env_key.ui_description or "" for env_key in env_keys},
+            "env": {env_key.name: env_key.ai_definition or "" for env_key in env_keys},
             "session": dict(cls.SESSION),
             "session.metric": dict(cls.SESSION_METRIC),
             "user": dict(cls.USER),

@@ -31,7 +31,7 @@ documentation; this page says only what the messages are.
 | Type | Body |
 | --- | --- |
 | `input.text` | `{text}` — what the person asks |
-| `input.button` | `{id}` — one of the choices, taken: an action's `name`, or `choice:<key>:<index>` for the option of a `choice` env key (see `state.buttons`). Same road as `input.text`, so the two cannot overtake each other. A `choice:` id nobody offers is `output.error` with code `choice_unavailable`; one whose trigger does not answer publishes nothing at all |
+| `input.button` | `{id}` — one of the choices, taken: an action's `name`, or `choice:<key>:<index>` for the option of a `list` env key (see `state.buttons`). Same road as `input.text`, so the two cannot overtake each other. A `choice:` id nobody offers is `output.error` with code `choice_unavailable`; one whose trigger does not answer publishes nothing at all |
 | `input.audio` | `{audio}` — the bytes, or a callable that fetches them. Whoever transcribes converts it to `input.text` on the same envelope; the publisher never re-publishes the transcript itself |
 | `input.reaction` | `{assistant_message_id, reaction}` — the person's own reaction to a message. The model's reaction to theirs is `output.reaction`: two facts about two different messages |
 
@@ -74,12 +74,12 @@ annotating one. Even reading a transcript opens nothing
 | `output.audio_stream` | `{stream}` — the synthesized audio, for one exchange |
 | `output.tool` | `dict` — one tool call; `phase` tells its two halves apart |
 | `output.reaction` | `{user_message_id, reaction}` — the model reacted to **that** message |
-| `output.chart` | `{title, series}` — `series` is `[{line, value}]`. Published by `chat.chart(title, series)` (`tracking/actuators/chat_namespace.py`), reachable only from an action's own `on-exit:` script. Delivered like `output.text`, through the per-session "who is watching" path, so it reaches only a connection showing that conversation — unlike `output.drive`, which goes to an identity's registered connections instead |
+| `output.chart` | `{title, series, max_scale}` — `series` is `[{line, value}]`, `max_scale` the value a full bar stands for (`None`: the chart scales to its own values). Published by `chat.chart(title, *series, max_scale=None)` (`tracking/actuators/chat_namespace.py`), reachable only from an action's own `on-exit:` script. Delivered like `output.text`, through the per-session "who is watching" path, so it reaches only a connection showing that conversation — unlike `output.drive`, which goes to an identity's registered connections instead |
 | `output.progress` | `{title, percentage}` — published by `chat.progress(title, percentage)` (`tracking/actuators/chat_namespace.py`), reachable only from an action's own `on-exit:` script. Delivered like `output.chart`: per-session "who is watching" only, never the identity-wide broadcast `ui.progress` (`system/broadcaster.py`) uses — the two are unrelated, one turn-scoped, one a user-wide bar |
 | `output.error` | `{message, detail, code}` — in place of the reply. Only for things that went wrong: a conversation that cannot be had is `session.blocked` |
 | `state.changed` | `{state, from_state, new_state, triggered_action}` — said only **when it moves**: a reader keeps the last one it was told. `from_state` is where it moved from, so a listener can tell a real transition (`from_state != new_state`) from a self-loop |
 | `env.changed` | `{key, value}` — one env key an action wrote, one message per key: whoever cares that a key moved does not care how many others moved with it. Same envelope as `state.changed` |
-| `state.buttons` | `{actions}` — what can be done now, and the **only** place the choices are: no state payload carries them. The pressable actions first, then — for every `choice` env key a trigger of the state reads — one entry per current option, named `choice:<key>:<index>` with the option as its `ui_button`/`ui_label` and `target` `""`; pressing one sends that `name` back as `input.button` unchanged |
+| `state.buttons` | `{actions}` — what can be done now, and the **only** place the choices are: no state payload carries them. The pressable actions first, then — for every `list` env key a trigger of the state reads — one entry per current option, named `choice:<key>:<index>` with the option as its `ui_button`/`ui_label` and `target` `""`; pressing one sends that `name` back as `input.button` unchanged |
 | `turn.translation` | `{key, text, translation, src_lang, dst_lang}` — one label whoever contributed to `turn.translatable_labels` asked translated, translated by the same `translations` channel a turn's own manual button labels ride (`tracking/tracking_processor.py`). `key` is the context the contributor gave (an env key's name, say), returned unchanged so a listener can match its own contribution. `src_lang`/`dst_lang` are this turn's own answer from `LangPrompt` (`tracking/prompt.py`) — the full locale tag (IETF BCP 47, e.g. `it-IT`) the labels were authored in and the one the user's last message is written in; empty when the model's answer was missing, unparseable, or not a full locale tag (a bare language code is rejected too). Neither is persisted anywhere: a conversation's language is free to change turn to turn, so this is asked fresh every time, never assumed from an earlier turn. One message per label, same reason `env.changed` is one per key: whoever asked for one label does not care about the others. Published once the reply is generated, so whoever contributed reads the answer off the Bus instead of it being threaded back as a return value. Never reaches a client |
 
 ## Notifications and tools
@@ -228,6 +228,29 @@ untouched — wrote through `Drive.session_id`
 if anything was actually cleared. A fresh test run always starts against
 an empty drive, without losing the transcript of the run that used it.
 
+## What creating a session starts
+
+`SessionManager.create_session` is also the only place an automaton
+starts. Having written the row, it asks the starter it was given
+(`SessionManager.set_automaton_starter`, wired to `TurnService`) to run
+that session's `init-action` — if the session type's policy says the
+automaton restarts, or has never run for this user (see
+`docs/PROJECT_SPECS.md` §7). Restarting wipes the env persisted for that
+project and user and the model's `global` memory first.
+
+It happens *before* the session is answered for, so `session.info` and
+`state.buttons` already describe a session whose `init-action` has run,
+and the transition `"" → target` it writes is what puts the session in
+its starting state. There is no deferred firing and no marker on the
+answer: `session.enter` and `session.create` carry nothing private, and
+the listener that announces a session does not fire anything.
+
+So an `init-action`'s own `chat.*` frames (`ui.notification`,
+`output.chart`, `output.progress`) are published *before* `session.info`.
+A client that asked for a session and has not been told its id yet is
+addressed by frames it cannot match on that id: whoever asks has to
+accept them the way it already accepts `session.info` itself.
+
 ## Who is told what
 
 An **answer** goes back to the connection that asked: the request carried
@@ -298,7 +321,7 @@ written here.
 | `turn.spoken_reply` | `SpokenReply` — `want()` from whoever runs the interface, `ask()` from whoever can speak | `tracking/tracking_processor.py` |
 | `session.services` | `SessionServices` — `offers(name, installed)`: what each service can do for **one** conversation. The session's own project can only narrow the server's switch | `turn/turn_service.py` |
 | `trigger.namespaces` | `TriggerNamespaces` — `declare(namespace)`: one more root name a `trigger:` may reference, with what it checks at build time, what it resolves to at run time and what the editor lists for it (`automaton/trigger_namespaces.py`) | `automaton/automaton_builder.py`, `tracking/evaluation_scope.py`, `project/inspector.py` |
-| `turn.translatable_labels` | `TranslatableLabels` — `contribute(key, text)`: one more label, not an `Action.ui_button`, that the turn's own translation call should also cover; answered with `{state_key, session_id}` in hand. The result comes back as `turn.translation`, one message per label | `turn/turn_service.py` (the current `choice` env key options), asked by `tracking/tracking_processor.py` |
+| `turn.translatable_labels` | `TranslatableLabels` — `contribute(key, text)`: one more label, not an `Action.ui_button`, that the turn's own translation call should also cover; answered with `{state_key, session_id}` in hand. The result comes back as `turn.translation`, one message per label | `turn/turn_service.py` (the current `list` env key options), asked by `tracking/tracking_processor.py` |
 
 ## Queued work
 

@@ -66,7 +66,8 @@ class TriggerExpressionAnalyzer:
         namespaces (see RESERVED_NAMESPACES) or `namespaces` — in practice a core metric name.
         A nested-namespace root (see NESTED_NAMESPACES) is excluded too,
         and so is a name a comprehension binds itself (`for key, value in
-        ...`) — that one exists only inside the expression."""
+        ...`) or a lambda takes as a parameter — each exists only inside
+        the expression."""
         tree = ast.parse(expression, mode="eval")
         reserved = set(cls.RESERVED_NAMESPACES) | set(namespaces)
         namespace_bases = {
@@ -77,7 +78,14 @@ class TriggerExpressionAnalyzer:
             name.id for node in ast.walk(tree) if isinstance(node, ast.comprehension)
             for name in ast.walk(node.target) if isinstance(name, ast.Name)
         }
-        return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - namespace_bases - comprehension_targets
+        lambda_parameters = {
+            argument.arg for node in ast.walk(tree) if isinstance(node, ast.Lambda)
+            for argument in node.args.args
+        }
+        return (
+            {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+            - namespace_bases - comprehension_targets - lambda_parameters
+        )
 
     @classmethod
     def _dynamic_namespace_refs(cls, expression: str, namespace: str) -> dict[str, set[str]]:
@@ -185,7 +193,12 @@ class TriggerExpressionAnalyzer:
         return refs
 
     @classmethod
-    def namespace_calls(cls, expression: str, *namespace: str) -> list[tuple[str, int]]:
+    def namespace_calls(cls, expression: str, *namespace: str) -> list[tuple[str, int, tuple[str, ...], bool]]:
+        """Every `<namespace>.<method>(...)` call in `expression`, as
+        (method, positional_count, keyword_names, unpacks) — the same
+        shape _dynamic_namespace_calls returns for source/media, so
+        AutomatonValidator checks all three against inspect's own bind
+        rather than a count a `*args` method can't be described by."""
         tree = ast.parse(expression, mode="eval")
         calls = []
         for node in ast.walk(tree):
@@ -194,7 +207,9 @@ class TriggerExpressionAnalyzer:
             ref = cls._namespace_path_of(node.func)
             if ref is None or ref[0] != namespace:
                 continue
-            calls.append((ref[1], len(node.args) + len(node.keywords)))
+            unpacks = any(isinstance(arg, ast.Starred) for arg in node.args) or any(kw.arg is None for kw in node.keywords)
+            keywords = tuple(kw.arg for kw in node.keywords if kw.arg is not None)
+            calls.append((ref[1], len(node.args), keywords, unpacks))
         return calls
 
     @staticmethod

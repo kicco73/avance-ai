@@ -58,6 +58,7 @@ def _seed_older_session_with_action_env(db, values: dict) -> int:
         datetime_start=datetime(2020, 1, 1), datetime_end=datetime(2020, 1, 1),
         start_state="a", end_state="a",
     )
+    db.save_transition("", "init-action", "a", session_id, "INFO", origin="init-action")
     db.set_action_env(session_id, values)
     return session_id
 

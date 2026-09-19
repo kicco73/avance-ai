@@ -170,13 +170,13 @@ def test_persisted_env_cannot_be_constructed_without_a_session_id(db):
 
 
 def test_build_scope_with_no_session_never_constructs_a_persisted_env(file_db):
-    """reset_test_sessions' own project-wide reset schedules an ActionTask
-    with session_id=None (see TurnService._schedule_task) — build_scope
-    must fall back to a plain, ephemeral Env() for that, never PersistedEnv
-    (which now requires a real session_id — see its own constructor): this
-    used to fall through to PersistedEnv(db, context) with none at all,
-    which would have crashed on its first write (Tracking.session is a
-    real FK) — now it fails fast, right here, if it regresses."""
+    """`task.defer` schedules an ActionTask with session_id=None (see
+    ActionTask.later) — build_scope must fall back to a plain, ephemeral
+    Env() for that, never PersistedEnv (which now requires a real
+    session_id — see its own constructor): this used to fall through to
+    PersistedEnv(db, context) with none at all, which would have crashed
+    on its first write (Tracking.session is a real FK) — now it fails
+    fast, right here, if it regresses."""
     _, project_service, factory = _process(file_db)
     _publish(file_db, project_service, _yml("task.send_mail(user.name, 'welcome')"))
     hydrator = ScopeHydrator(file_db, project_service, factory, None)

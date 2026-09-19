@@ -25,10 +25,10 @@ signals:
 env:
   visits:
     type: number
-    ui-description: "How many times this action has fired."
+    ai-definition: "How many times this action has fired."
   slot:
-    type: choice
-    ui-description: "The appointment slots on offer."
+    type: list
+    ai-definition: "The appointment slots on offer."
 
 states:
   a:

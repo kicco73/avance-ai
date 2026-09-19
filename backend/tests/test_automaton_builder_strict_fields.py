@@ -36,7 +36,6 @@ reactions:
 env:
   counter:
     type: number
-    value: "0"
 {env}
 sources:
   book:

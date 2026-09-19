@@ -40,9 +40,8 @@ def _env_write(key: str, expression: str) -> str:
     return f"        env:\n          {key}: {expression}\n"
 
 
-def _declared(key: str, type: str, value: str | None = None) -> str:
-    value_line = f"    value: {value}\n" if value is not None else ""
-    return f"env:\n  {key}:\n    type: {type}\n{value_line}"
+def _declared(key: str, type: str) -> str:
+    return f"env:\n  {key}:\n    type: {type}\n"
 
 
 def test_env_is_parsed_as_a_key_to_expression_source_mapping_or_none_when_absent_or_empty():
@@ -73,14 +72,14 @@ def test_env_is_parsed_as_a_key_to_expression_source_mapping_or_none_when_absent
     (_env_write("never_declared_anywhere", '"1"'), "", "env key 'never_declared_anywhere' is not declared"),
     (_env_write("broken", '"1 +"'), _declared("broken", "number"), "is not a valid expression"),
     ("        env:\n          - not\n          - a\n          - mapping\n", "", "'env' must be a mapping"),
-    (_env_write("greeting", '"42"'), _declared("greeting", "string", "\"'hello'\""), "is a number, but 'greeting' is declared string"),
-    (_env_write("counter", "\"'not a number'\""), _declared("counter", "number", '"0"'), "is a string, but 'counter' is declared number"),
-    (_env_write("enabled", '"2"'), _declared("enabled", "bool", '"True"'), "is a number, but 'enabled' is declared bool"),
+    (_env_write("greeting", '"42"'), _declared("greeting", "string"), "is a number, but 'greeting' is declared string"),
     (_env_write("counter", "\"'not a number'\""), _declared("counter", "number"), "is a string, but 'counter' is declared number"),
-    (_env_write("slot", "\"'not a list'\""), _declared("slot", "choice"), "is a string, but 'slot' is declared choice"),
+    (_env_write("enabled", '"2"'), _declared("enabled", "bool"), "is a number, but 'enabled' is declared bool"),
+    (_env_write("counter", "\"'not a number'\""), _declared("counter", "number"), "is a string, but 'counter' is declared number"),
+    (_env_write("slot", "\"'not a list'\""), _declared("slot", "list"), "is a string, but 'slot' is declared list"),
 ], ids=[
     "undeclared-read", "undeclared-write", "invalid-expression", "not-a-mapping",
-    "number-to-string", "string-to-number", "number-to-bool", "string-to-number-without-value", "string-to-choice",
+    "number-to-string", "string-to-number", "number-to-bool", "string-to-number-without-value", "string-to-list",
 ])
 def test_build_rejects_undeclared_reads_or_writes_invalid_expressions_non_mappings_and_type_drift(action_yaml, env_section, match):
     """The write side: an action's `env:` field cannot introduce a new key
@@ -96,11 +95,11 @@ def test_a_matching_type_and_a_statically_unknowable_expression_are_both_accepte
     """`env.other` reads another key at runtime — its own kind isn't
     knowable ahead of a real turn, so the check is silently skipped
     rather than guessing wrong."""
-    assert _action_env(_env_write("counter", '"5"'), _declared("counter", "number", '"0"')) == {"counter": "5"}
+    assert _action_env(_env_write("counter", '"5"'), _declared("counter", "number")) == {"counter": "5"}
     assert _action_env(_env_write("anything", "\"'a string now'\""), _declared("anything", "string")) == {"anything": "'a string now'"}
-    assert _action_env(_env_write("slot", "['a', 'b']"), _declared("slot", "choice")) == {"slot": "['a', 'b']"}
+    assert _action_env(_env_write("slot", "['a', 'b']"), _declared("slot", "list")) == {"slot": "['a', 'b']"}
     assert _action_env(
-        _env_write("counter", "env.other"), "env:\n  counter:\n    type: number\n    value: \"0\"\n  other:\n    type: number\n"
+        _env_write("counter", "env.other"), "env:\n  counter:\n    type: number\n  other:\n    type: number\n"
     ) == {"counter": "env.other"}
 
 

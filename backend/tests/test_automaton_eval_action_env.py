@@ -79,7 +79,7 @@ def test_one_broken_key_does_not_prevent_others_from_evaluating():
 
 TYPED_KEYS = [
     EnvKey(name="count", type="number"), EnvKey(name="name", type="string"),
-    EnvKey(name="flag", type="bool"), EnvKey(name="slot", type="choice"),
+    EnvKey(name="flag", type="bool"), EnvKey(name="slot", type="list"),
 ]
 
 
@@ -87,7 +87,7 @@ TYPED_KEYS = [
     ({"count": "3", "name": "'x'", "flag": "True", "slot": "['a', 'b']"}, {"count": 3, "name": "x", "flag": True, "slot": ["a", "b"]}),
     ({"count": "1.5"}, {"count": 1.5}),
     ({"slot": "[]"}, {"slot": []}),
-], ids=["every-type", "float-is-a-number", "empty-choice"])
+], ids=["every-type", "float-is-a-number", "empty-list"])
 def test_a_value_of_the_declared_type_is_written(env, expected):
     assert _automaton(TYPED_KEYS).eval_action_env(_action(env), {}) == (expected, ())
 
@@ -102,7 +102,7 @@ def test_a_value_of_the_declared_type_is_written(env, expected):
     ({"count": "None", "flag": "True"}, {"flag": True}, "count"),
 ], ids=[
     "string-into-number", "bool-into-number", "number-into-string", "number-into-bool",
-    "non-string-option-into-choice", "string-into-choice", "none-into-number",
+    "non-string-option-into-list", "string-into-list", "none-into-number",
 ])
 def test_a_value_outside_the_declared_type_is_discarded_and_logged_while_the_other_keys_are_written(
     caplog, env, expected, logged
@@ -115,4 +115,4 @@ def test_a_value_outside_the_declared_type_is_discarded_and_logged_while_the_oth
     assert len(caplog.records) == 1
     message = caplog.records[0].message
     assert "advance" in message and f"'{logged}'" in message
-    assert {"count": "number", "name": "string", "flag": "bool", "slot": "choice"}[logged] in message
+    assert {"count": "number", "name": "string", "flag": "bool", "slot": "list"}[logged] in message

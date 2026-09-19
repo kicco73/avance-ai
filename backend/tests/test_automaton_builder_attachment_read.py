@@ -26,7 +26,6 @@ init-action:
 env:
   reminder_days:
     type: number
-    value: 3
 states:
   a:
     contextual-prompt: hi
@@ -81,7 +80,6 @@ init-action:
 env:
   notes:
     type: string
-    value: ""
 states:
   a:
     contextual-prompt: hi

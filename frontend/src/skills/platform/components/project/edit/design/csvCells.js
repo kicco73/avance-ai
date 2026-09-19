@@ -66,12 +66,43 @@ function kindOf(value) {
   return CELL_KINDS.find((kind) => kind.accepts(value))
 }
 
-export function csvColumn(field) {
+function escapeHtml(raw) {
+  return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+export function csvColumn(field, { onDelete } = {}) {
   return {
     title: field,
     field,
     formatter: (cell) => document.createTextNode(kindOf(text(cell)).display(text(cell)) || ' '),
     editor: 'adaptable',
-    editorParams: { editorLookup: (cell) => kindOf(text(cell)).editor }
+    editorParams: { editorLookup: (cell) => kindOf(text(cell)).editor },
+    titleFormatter: () => (
+      '<button type="button" class="csv-column-delete-btn" title="Delete this column">×</button>'
+      + `<span class="csv-column-title">${escapeHtml(field)}</span>`
+    ),
+    headerClick: (e, column) => {
+      if (!e.target.closest('.csv-column-delete-btn')) return
+      onDelete?.(column)
+    }
+  }
+}
+
+export const ROW_CONTROL_FIELD = '__row_control'
+
+export function rowControlColumn(onDelete) {
+  return {
+    title: '',
+    field: ROW_CONTROL_FIELD,
+    width: 32,
+    minWidth: 32,
+    hozAlign: 'left',
+    headerSort: false,
+    resizable: false,
+    formatter: () => '<button type="button" class="csv-row-delete-btn" title="Delete this row">×</button>',
+    cellClick: (e, cell) => {
+      if (!e.target.closest('.csv-row-delete-btn')) return
+      onDelete?.(cell.getRow())
+    }
   }
 }

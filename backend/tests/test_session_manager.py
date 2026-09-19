@@ -37,6 +37,9 @@ class _FakeProjectService:
     def get_automaton_and_state(self, project_name, type='live', username=None):
         return _FakeAutomaton(self.state_key), _FakeState(self.state_key)
 
+    def has_ever_run(self, project_id, username, type='live'):
+        return False
+
     def get_published_revision(self, project_name):
         return 1
 

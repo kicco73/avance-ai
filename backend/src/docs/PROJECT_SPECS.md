@@ -127,7 +127,7 @@ project:
 | `ui-label` | no | string | — | The only "name" ever shown to a user; `id` is never displayed. |
 | `ui-description` | no | string | — | Shown in the frontend. |
 | `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §3.2). |
-| `new-session-strategy` | no | `resume` \| `restart` | `resume` | What a **new live session** of a returning user inherits. `resume`: it opens in the state the previous session left, every env key and the model's own `global` memory (§5.3) intact, and nothing fires. `restart`: it opens in `init-action.target` with the env keys and the `global` memory wiped — the declared defaults and `init-action`'s own `env:` apply afresh, and its `task` fires again (§7). Either way, a `local`-scope memory never carries over to a new session regardless: it's per-session by definition (§4). Test and preview sessions always start from `init-action`, whatever this says. |
+| `new-session-strategy` | no | `resume` \| `restart` | `resume` | What a **new live session** of a returning user inherits. `resume`: it opens in the state the previous session left, every env key and the model's own `global` memory (§5.3) intact, and nothing fires — unless the automaton has never run for that user in a live session, which is the automaton starting and fires `init-action` (§7). `restart`: it opens in `init-action.target` with the env keys and the `global` memory wiped — the declared defaults and `init-action`'s own `env:` apply afresh, and its `task` fires again (§7). Either way, a `local`-scope memory never carries over to a new session regardless: it's per-session by definition (§4). Test and preview sessions always start from `init-action`, whatever this says. |
 | `services` | no | mapping (service name → level) | `{}` | What this project asks of each platform service it can reach. §1.2. |
 
 ### 1.2 `project.services:`
@@ -436,7 +436,7 @@ len(env.notes) > 0
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
 | `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select_rows_containing(...)` |
 | `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `task.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
-| `choice.<key>` | `<key>` an env key declared of type `choice` (§5.3): the option just pressed, for the one trigger evaluation the press starts — `""` in every other evaluation and under every other `choice` key. Exactly `choice.<key>`, in `trigger:`, `env:` and `on-exit:` — never in `task:`, which runs later, against a scope of its own | attribute |
+| `choice.<key>` | `<key>` an env key declared of type `list` (§5.3): the option just pressed, for the one trigger evaluation the press starts — `""` in every other evaluation and under every other `list` key. Exactly `choice.<key>`, in `trigger:`, `env:` and `on-exit:` — never in `task:`, which runs later, against a scope of its own | attribute |
 
 A **bare** name is only ever a core metric (§2) — nothing else may appear
 unnamespaced. An installed feature may declare one more namespace of its
@@ -518,8 +518,10 @@ of source kinds: method support is the whole compatibility story.
   way:
   `source.pino.select_rows_in_range('data_partenza', '2026-08-01', '2026-08-31', 'Barcelona')`.
 - `value(*values, key)` — the `key` cell of the *first* row satisfying
-  the same filter as `select_rows_containing`, as a single scalar string;
-  `""` if no row matches, an error *text* if `key` isn't a real column.
+  the same filter as `select_rows_containing`, as a single scalar — a
+  number (`int` or `float`) when the cell reads as one, the raw string
+  otherwise; `""` if no row matches, an error *text* if `key` isn't a
+  real column.
   Scripts and trigger/env: expressions only — never exposed to the model,
   which reads through the `select_rows_*` tools instead.
   `source.pino.value('VY3003', key='flight')` reads one field without
@@ -627,27 +629,27 @@ with two different owners, and the names are load-bearing:
 env:
   reset_counter:
     type: bool
-    ui-description: "Whether the counter was just reset."
-    value: "False"
+    ai-definition: Whether the counter was just reset.
   number_of_steps:
     type: number
-    value: "0"
   pnr:
     type: string
-    ui-description: "The booking's record locator."
     ai-definition: The 6-character record locator the customer gives you; empty until they do.
-    value: ""
   slot:
-    type: choice
-    ui-description: "The appointment slots on offer."
+    type: list
+    ai-definition: The appointment slots on offer.
 ```
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `type` | **yes** | `number` \| `string` \| `bool` \| `choice` | — | What the key holds, declared once: a number (`int` or `float`, never a bool), a string, a bool, or a `choice` — a list of strings, the options a script writes and the person picks from (see **Choice keys** below). A key without `type`, or with any other value, fails the build naming the key and the four admitted values. |
-| `value` | no | string (expression) | the type's own default | The default, applied once (top-to-bottom order) the first time a session opens — a later default may reference an earlier key. Constrained to `type`: a `value` whose kind is statically known (`"0"`, `"'x'"`, `"True"`) and differs from `type` fails the build; a `choice` key takes no `value` at all — its options are written by scripts. Absent, the type's own default applies: `0`, `""`, `False`, `[]`. |
-| `ui-description` | no | string | `None` | Shown in the frontend — never sent to the model. |
-| `ai-definition` | conditionally | string | `None` | Written *for the model*: what this variable means. **Required** (build error) whenever some state lists this key in its own `input`/`output` (§4.3) — same requirement a source exposed to the model gets; optional otherwise. Becomes that field's own description in the prompt's env block / output schema. |
+| `type` | **yes** | `number` \| `string` \| `bool` \| `list` | — | What the key holds, declared once: a number (`int` or `float`, never a bool), a string, a bool, or a `list` — a list of strings, the options a script writes and the person picks from (see **List keys** below). A key without `type`, or with any other value, fails the build naming the key and the four admitted values. |
+| `ai-definition` | conditionally | string | `None` | What this variable means, written *for the model* — and the only description an env key has: the editor shows this one too. **Required** (build error) whenever some state lists this key in its own `input`/`output` (§4.3) — same requirement a source exposed to the model gets; optional otherwise. Becomes that field's own description in the prompt's env block / output schema. |
+
+A key declares what it holds and nothing else: it takes no `value`, and a
+`value` field fails the build like any other unknown one. Every key starts
+at its type's own default — `0`, `""`, `False`, `[]` — applied once, in
+declaration order, the first time a session opens; a key that must start
+at anything else is written by the init-action's own `env:` (§7).
 
 An action's `env:` can only update a key declared here, never invent one
 (fails build validation otherwise). Declaring a key here doesn't by
@@ -655,16 +657,17 @@ itself update it on any turn. Whether the model ever sees or sets a given
 key is decided entirely per state, by that state's own `input`/`output`
 (§4.3) — never a property of the key itself.
 
-**Choice keys.** A `choice` key holds the options on offer — a list of
-strings a script writes (an action's `env:` or `on-exit`, a `value` is
-refused) and nothing ever shows the model: a `choice` key in a state's
-`input`/`output` fails the build, and its `ai-definition` is never read.
+**List keys.** A `list` key holds the options on offer — a list of
+strings a script writes (an action's `env:` or `on-exit`) and nothing
+ever shows the model: a `list` key in a state's
+`input`/`output` fails the build, and its `ai-definition` is read only by
+the editor and as an option button's description.
 In any state whose actions' `trigger`s read `choice.<key>`, the current
 options become buttons, one per option, after the state's own pressable
 actions (see BUS.md, `state.buttons`). Pressing one writes nothing: the
 option is the value of `choice.<key>` for the single trigger evaluation
 the press starts — `""` everywhere else, in every other evaluation and
-under every other `choice` key — and the first action whose trigger
+under every other `list` key — and the first action whose trigger
 answers transitions as a manual action does, its own `env:` and
 `on-exit` reading the same `choice.<key>`. No trigger answering, nothing
 happens. The pattern:
@@ -672,7 +675,7 @@ happens. The pattern:
 ```yaml
 env:
   slot:
-    type: choice
+    type: list
   booked_slot:
     type: string
 states:
@@ -698,7 +701,7 @@ statically known (`"42"` into a `string` key fails; `env.other` is not
 knowable ahead of a turn and passes). At run time, every value an
 action's `env:` or `on-exit` produces is checked against the declared
 type before it is written: `number` takes an `int` or `float` and never
-a bool, `string` a `str`, `bool` a `bool`, `choice` a list whose
+a bool, `string` a `str`, `bool` a `bool`, `list` a list whose
 elements are all strings. A value outside its type is treated exactly
 like a key whose expression failed to evaluate — logged with the key,
 the declared type and the type found, and discarded, while the action's
@@ -885,13 +888,32 @@ there's nothing to defer. Eight methods exist:
   instead, in a looping background player, no dialog at all. Only takes
   effect in webchat — the one frontend that has a dialog/player to show
   it in.
-- `chat.chart(title, series)` — `series` is a list of `{line, value}`
-  dicts. Publishes `output.chart` (`title`, `series`, the session's own
-  `session_id`) on the bus, delivered only to a connection actually
-  showing this conversation — like `chat.notify`, no JS of its own is
-  tunneled; unlike it, this reaches the browser as a real bus message,
-  not a `ui.notification` frame, and renders as a bar chart, one bar per
-  `line`.
+- `chat.chart(title, *series, max_scale=None)` — one
+  `{'line': ..., 'value': ...}` dict per bar, each written as its own
+  argument:
+
+  ```
+  chat.chart('Score',
+    {'line': 'Emotional exhaustion', 'value': env.emotional_exhaustion},
+    {'line': 'Depersonalization', 'value': env.depersonalization},
+    {'line': 'Overall', 'value': env.score},
+    max_scale=100
+  )
+  ```
+
+  Publishes `output.chart` (`title`, `series`, `max_scale`, the
+  session's own `session_id`) on the bus, delivered only to a connection
+  actually showing this conversation — like `chat.notify`, no JS of its
+  own is tunneled; unlike it, this reaches the browser as a real bus
+  message, not a `ui.notification` frame, and renders as a bar chart,
+  one bar per `line`.
+
+  `max_scale` is the value a full bar stands for. Without it the chart
+  scales to its own values — the smallest bar empty, the largest full —
+  which compares the lines against each other and says nothing about how
+  high any of them is. A score out of a known maximum needs the maximum:
+  `max_scale=100` draws 42 as a bar 42% long, and four low scores as
+  four short bars rather than one full one.
 - `chat.progress(title, percentage)` — publishes `output.progress`
   (`title`, `percentage`, the session's own `session_id`) on the bus,
   delivered only to a connection actually showing this conversation —
@@ -1112,24 +1134,30 @@ fires, every declared key that has no value yet is backfilled with its
 own default (§5.3) — a separate, implicit action of its own, so the
 init-action's `env:` may read the defaults and override them.
 
-**When it fires.** Once for a project's first session ever, the first
-time that session opens; and once for every session whose type restarts,
-when that session is created — a test or preview session always, a live
-session when `project.new-session-strategy` is `restart` (§1.1). A live
-session under `resume` inherits the state the previous one left and fires
-nothing.
+**When it fires.** At one moment only: the creation of a session, before
+anything has looked at that session's state. A test or preview session
+always restarts, so it always fires; a live session fires when
+`project.new-session-strategy` is `restart` (§1.1), or — under `resume` —
+when the automaton has never run for *this* user in a *live* session.
+A live session under `resume` that finds such a state inherits it and
+fires nothing.
 
-Both are the same event: the automaton starting, or restarting. What
-they are not is "a session was created" — a live session under `resume`
-is created and starts nothing. And the request that created it does not
-matter either: `session.create` makes one outright, `session.enter` makes
-one whenever it finds no open conversation to enter (see docs/BUS.md),
-and the automaton restarts in both.
+That single event is the automaton starting, or restarting. What it is
+not is "a session was created": a live session under `resume` is created
+and starts nothing. And the request that created it does not matter
+either — `session.create` makes one outright, `session.enter` makes one
+whenever it finds no open conversation to enter (see docs/BUS.md), a
+phone channel makes one to record a reply nobody asked for, and the
+automaton restarts in all of them.
 
-A session already introduced never fires it twice, which is what
-re-entering an open conversation is. A state is only ever entered by an
-action, the initial one included, so the session whose tracking holds no
-transition of its own is exactly the session still owed one.
+Re-entering an open conversation creates nothing, so it fires nothing:
+there is no second introduction to suppress.
+
+**What restarting clears.** The env persisted for that project and user,
+and the model's own `global` memory, are wiped as the first step of the
+same event — because the automaton is starting over, not because the
+strategy is spelled `restart`. A `local`-scope memory needs no wiping: it
+is per session, and a new session's is empty (§4).
 
 ## 8. Validation checklist
 
@@ -1212,8 +1240,11 @@ an action's `actuator`/`on-enter` is its `task`, its `action-prompt` is a
 `task.prompt(...)` call in that `task`, a state's `chat` is
 `chat-enabled`, its `on-enter` is the `task` of every action that reaches
 it, its `ai-memory-strategy` is `ai-memory-scope` (`keep`/`clear` renamed
-to `global`/`local`, §4), an env key's `ai-access`/`ui-label` are gone
-with nothing in their place — and the modernizer rewrites them, in place, wherever an
+to `global`/`local`, §4), an env key's `ai-access`/`ui-label`/`value` are
+gone with nothing in their place, its `ui-description` is its
+`ai-definition` where that is still empty, its type `choice` is `list`
+(§5.3) —
+and the modernizer rewrites them, in place, wherever an
 `index.yml` enters or is opened: on import, when the design view is
 opened (which says what it changed), and when a stored revision fails to
 build, so that what a product serves recovers without anyone visiting.
@@ -1235,7 +1266,7 @@ rather than remove one. The rest of the file is still repaired, and what
 is left is refused with everything else — a person decides it.
 
 Nor does it invent. An env key's `type` (§5.3) has no former spelling to
-rewrite from, and guessing one from `value` would be a choice: a stored
+rewrite from, and guessing one from the key's name would be a choice: a stored
 revision that declares a key without `type` is a broken project, refused
 with the key and the four admitted values named, and handled the way any
 other broken revision is — listed in the design view, fixed by a person.

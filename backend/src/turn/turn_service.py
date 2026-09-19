@@ -72,9 +72,9 @@ class TurnService(object):
 		session_report_hydrator = SessionReportHydrator(db, ai_service)
 		scheduler_service.register_task_type(SessionReportTask.TYPE, session_report_hydrator.hydrate)
 		session_manager.set_session_report_scheduler(SessionReportScheduler(scheduler_service, session_report_hydrator))
+		session_manager.set_automaton_starter(self)
 		self._ownership = SessionOwnership(db)
 		self._insights = SessionInsights(db, metric_service, tracking_service, self._ownership)
-		self._session_facts = SessionFacts(db, project_service)
 		self._user_facts = UserFacts(db)
 
 		self._project_locks = project_locks or ProjectLocks()
@@ -107,19 +107,10 @@ class TurnService(object):
 		)
 		return TrackingEngine(DbTrackingSink(self._db), env, scope_builder), task_namespace
 
-	def _schedule_task(self, automaton: Automaton, action: Action, session_id: int | None, project_id: str) -> None:
+	def _schedule_task(self, automaton: Automaton, action: Action, session_id: int, project_id: str) -> None:
 		if not action.task:
 			return
-		if session_id is not None:
-			tracking_engine, _ = self._tracking_engine_for_session(session_id)
-		else:
-			env = Env()
-			scope_builder = EvaluationScopeBuilder(
-				env, self.metric_service, self._session_facts, self._user_facts,
-				self._db, self._namespace_factory.fake(project_id=project_id),
-				chat_namespace=self._namespace_factory.chat_fake(project_id=project_id),
-			)
-			tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
+		tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		tracking_engine.schedule_task(automaton, action, action.target, ChoiceSelection.NONE, session_id=session_id)
 
 	@property
@@ -236,15 +227,7 @@ class TurnService(object):
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		response = self._session_response(session, current=True)
-		response["_pending_init_action"] = self._init_action_pending(session)
-		return response
-
-	def _init_action_pending(self, session: dict) -> bool:
-		automaton = self.__project_service.get_automaton_for_session(session["id"])
-		starts = self._db.get_current_state(session["project_id"]) is None
-		restarts = get_session_type_strategy(session["type"]).fires_init_action(automaton)
-		return (starts or restarts) and not self._db.was_entered_by_an_action(session["id"])
+		return self._session_response(session, current=True)
 
 	def session_named(self, session_id: int) -> dict:
 		"""That very conversation, for whoever was handed its id rather
@@ -323,25 +306,7 @@ class TurnService(object):
 				)
 			except ValueError as exc:
 				raise TurnServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		response = self._session_response(session, current=True)
-		response["_pending_init_action"] = self._init_action_pending(session)
-		return response
-
-	def fire_pending_init_action(self, session_id: int, project_id: str) -> None:
-		"""Runs a just-created session's own init-action, deferred until
-		after its session.info has already reached the client (see
-		TurnInput._entering) — fired inline here instead, `chat.*`'s own
-		on-exit push (ChatNamespace.push_notification) would reach the
-		frontend's ui.notification handler before session.info did, and
-		its session_id wouldn't match currentSessionId yet: a real
-		notification, silently dropped as if for someone else's
-		conversation. `enter_session`'s own path never has this problem —
-		it never fires init-action synchronously at all, only lazily on
-		the next request, by which point session.info is long since
-		delivered (see _ensure_project_bootstrap)."""
-		automaton = self.__project_service.get_automaton_for_session(session_id)
-		self._backfill_declared_env_keys(automaton, project_id, session_id)
-		self._fire_init_action(automaton, session_id, project_id)
+		return self._session_response(session, current=True)
 
 	def reset_test_sessions(self, project_id: str) -> dict:
 		reset_session_ids = [
@@ -352,7 +317,6 @@ class TurnService(object):
 			EphemeralEnvRegistry().discard(reset_id)
 			self._db.delete_archives_with_prefix(project_id, f"{CACHE_DIR}/sessions/{reset_id}/")
 		automaton, state = self.__project_service.get_automaton_and_state(project_id, type='test')
-		self._schedule_task(automaton, automaton.init_action, None, project_id)
 		return automaton.get_state_payload(state)
 
 	def _list_sessions_by_type(self, project_id: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
@@ -585,9 +549,9 @@ class TurnService(object):
 
 	def _choice_buttons_for(self, session_id: int, state_key: str) -> list[dict]:
 		automaton = self.__project_service.get_automaton_for_session(session_id)
-		descriptions = {env_key.name: env_key.ui_description for env_key in automaton.env_keys}
+		descriptions = {env_key.name: env_key.ai_definition for env_key in automaton.env_keys}
 		options_by_key = self.choice_options_for(session_id)
-		translations = self._choice_translations.pop(session_id, {})
+		translations = self._choice_translations.get(session_id, {})
 		return [
 			{
 				"name": button_name(key, index),
@@ -619,7 +583,7 @@ class TurnService(object):
 
 	def choice_options_for(self, session_id: int) -> dict[str, list[str]]:
 		automaton = self.__project_service.get_automaton_for_session(session_id)
-		declared = {env_key.name for env_key in automaton.env_keys if env_key.type == "choice"}
+		declared = {env_key.name for env_key in automaton.env_keys if env_key.type == "list"}
 		current = self._env_for_session(session_id).action_set()
 		return {
 			key: list(options) for key, options in current.items() if key in declared and isinstance(options, list)
@@ -656,7 +620,9 @@ class TurnService(object):
 	def _project_id_for_session(self, session_id: int) -> str:
 		return self._ownership.require_session(session_id)["project_id"]
 
-	def _backfill_declared_env_keys(self, automaton: Automaton, project_id: str, session_id: int) -> None:
+	def _backfill_declared_env_keys(
+		self, automaton: Automaton, project_id: str, session_id: int, username: str
+	) -> None:
 		action = automaton.env_defaults_action
 		if not action.env:
 			return
@@ -669,14 +635,24 @@ class TurnService(object):
 		for key, expression in missing.items():
 			tracking_engine.apply_action_env(
 				automaton, replace(action, env={key: expression}), {}, ChoiceSelection.NONE, "",
-				username=self._username, project_id=project_id, session_id=session_id,
+				username=username, project_id=project_id, session_id=session_id,
 			)
 
-	def _fire_init_action(self, automaton: Automaton, session_id: int, project_id: str) -> None:
+	def start_automaton(self, strategy: SessionTypeStrategy, session: dict, username: str) -> None:
+		project_id = session["project_id"]
+		fires = strategy.fires_init_action(self.__project_service, project_id, username)
+		for _ in filter(None, [fires]):
+			self._restart_automaton(session, username)
+
+	def _restart_automaton(self, session: dict, username: str) -> None:
+		session_id, project_id = session["id"], session["project_id"]
+		env_for_session(self._db, session).clear()
+		automaton = self.__project_service.get_automaton_for_session(session_id)
+		self._backfill_declared_env_keys(automaton, project_id, session_id, username)
 		tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		tracking_engine.apply_transition(
 			automaton, automaton.states[""], automaton.init_action, None, ChoiceSelection.NONE, session_id,
-			origin='init-action', username=self._username, project_id=project_id,
+			origin='init-action', username=username, project_id=project_id,
 		)
 
 	def _cleanup_orphan_action_env_keys(
@@ -706,11 +682,8 @@ class TurnService(object):
 		project_id = session["project_id"]
 		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
 
-		self._backfill_declared_env_keys(automaton, project_id, session_id)
+		self._backfill_declared_env_keys(automaton, project_id, session_id, self._username)
 		self._cleanup_orphan_action_env_keys(automaton, project_id, session_id, session["type"])
-
-		if self._db.get_current_state(project_id) is None:
-			self._fire_init_action(automaton, session_id, project_id)
 
 		return automaton, state
 

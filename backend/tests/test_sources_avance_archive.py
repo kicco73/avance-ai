@@ -244,12 +244,25 @@ def test_column_returns_every_cell_of_the_matching_rows_as_a_list_the_whole_colu
     assert "VY4000" in driver.column("codice_volo")
 
 
+def test_value_column_and_row_where_read_a_numeric_cell_as_a_number_not_a_string(db):
+    driver, _ = _seeded_driver(db, "seats.csv", "flight,free_seats,gate\nVY1,012,3B\nVY2,9.5,7A\n")
+
+    assert driver.value("VY1", key="free_seats") == 12
+    assert driver.value("VY2", key="free_seats") == 9.5
+    assert driver.value("VY1", key="gate") == "3B"
+
+    assert driver.column("free_seats") == [12, 9.5]
+    assert driver.column("gate") == ["3B", "7A"]
+
+    assert driver.row_where("flight", "=", "VY1") == {"flight": "VY1", "free_seats": 12, "gate": "3B"}
+
+
 def test_row_where_returns_the_first_matching_row_as_a_dict_and_an_empty_dict_for_no_match_or_an_unknown_column_or_operator(db):
     driver, _ = _seeded_driver(db, "casos.csv", 'caso,nombre,texto\n1,Manuel,"- Eres Manuel.\nDos lineas."\n2,Laura,corto\n1,Otro,x\n')
 
-    assert driver.row_where("caso", "=", 1) == {"caso": "1", "nombre": "Manuel", "texto": "- Eres Manuel.\nDos lineas."}
-    assert driver.row_where("caso", ">", 1) == {"caso": "2", "nombre": "Laura", "texto": "corto"}
-    assert driver.row_where("caso", "=", 1, "Otro") == {"caso": "1", "nombre": "Otro", "texto": "x"}
+    assert driver.row_where("caso", "=", 1) == {"caso": 1, "nombre": "Manuel", "texto": "- Eres Manuel.\nDos lineas."}
+    assert driver.row_where("caso", ">", 1) == {"caso": 2, "nombre": "Laura", "texto": "corto"}
+    assert driver.row_where("caso", "=", 1, "Otro") == {"caso": 1, "nombre": "Otro", "texto": "x"}
     assert driver.row_where("caso", "=", 9) == {}
     assert driver.row_where("nope", "=", 1) == {}
     assert driver.row_where("caso", "~", 1) == {}

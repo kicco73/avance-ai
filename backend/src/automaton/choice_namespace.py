@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from automaton.automaton import Action, Automaton, EnvKey, State
 
 NAME = "choice"
-CHOICE_TYPE = "choice"
+LIST_TYPE = "list"
 
 
 def chains(tree: ast.AST) -> list[tuple[str, ...]]:
@@ -43,9 +43,9 @@ def script_chains(script: str) -> list[tuple[str, ...]]:
     return found
 
 
-def choice_key_names(env_keys: "dict[str, EnvKey] | list[EnvKey]") -> set[str]:
+def list_key_names(env_keys: "dict[str, EnvKey] | list[EnvKey]") -> set[str]:
     keys = env_keys.values() if isinstance(env_keys, dict) else env_keys
-    return {env_key.name for env_key in keys if env_key.type == CHOICE_TYPE}
+    return {env_key.name for env_key in keys if env_key.type == LIST_TYPE}
 
 
 class ChoiceNamespace(TriggerNamespace):
@@ -53,7 +53,7 @@ class ChoiceNamespace(TriggerNamespace):
 
     def check_action(self, state: "State", action: "Action", env_keys: "dict[str, EnvKey]") -> None:
         context = f"State {state.key}, action '{action.name}'"
-        declared = choice_key_names(env_keys)
+        declared = list_key_names(env_keys)
         readable = [("trigger", action.trigger, expression_chains)] + [
             (f"env expression for '{key}'", expression, expression_chains)
             for key, expression in (action.env or {}).items()
@@ -87,20 +87,20 @@ class ChoiceNamespace(TriggerNamespace):
         if len(chain) != 2:
             raise ValueError(
                 f"{context}: {field_name} references {'.'.join(chain)} — {NAME}.<key> is the whole of it, "
-                "with <key> an env key declared of type choice."
+                "with <key> an env key declared of type list."
             )
         if chain[1] not in declared:
             raise ValueError(
                 f"{context}: {field_name} references {'.'.join(chain)} — '{chain[1]}' is not an env key "
-                f"declared of type {CHOICE_TYPE}."
+                f"declared of type {LIST_TYPE}."
             )
 
     def scope_for(self, automaton: "Automaton", selection: ChoiceSelection) -> object:
-        return _ChoiceScope(choice_key_names(automaton.env_keys), selection)
+        return _ChoiceScope(list_key_names(automaton.env_keys), selection)
 
     def identifiers(self, automaton: "Automaton") -> dict[str, dict[str, str]]:
         return {NAME: {
-            env_key.name: env_key.ui_description or "" for env_key in automaton.env_keys if env_key.type == CHOICE_TYPE
+            env_key.name: env_key.ai_definition or "" for env_key in automaton.env_keys if env_key.type == LIST_TYPE
         }}
 
 
@@ -111,5 +111,5 @@ class _ChoiceScope:
 
     def __getattr__(self, key: str) -> str:
         if key not in self._declared:
-            raise AttributeError(f"{NAME}.{key}: not an env key declared of type {CHOICE_TYPE}.")
+            raise AttributeError(f"{NAME}.{key}: not an env key declared of type {LIST_TYPE}.")
         return self._selection.option if key == self._selection.key else ""

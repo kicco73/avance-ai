@@ -23,13 +23,14 @@ from .users import UserMixin
 from .user_projects import UserProjectMixin
 from .tracking import TrackingMixin
 from .tasks import TaskMixin
+from .translations import TranslationMixin
 
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
     AiTokenUsage, Archive, CoreSession, Drive, EditHistory, File, Invite, Message,
     Project, Settings, User, StateRemap, SystemWarning, Task, Test,
-    TestAggregateResult, TestObservation, Tracking, UserProject,
+    TestAggregateResult, TestObservation, Tracking, Translation, UserProject,
     database,
 )
 
@@ -55,13 +56,14 @@ class Db(
     ObservabilityMixin,
     AiUsageMixin,
     DriveMixin,
-    TaskMixin):
+    TaskMixin,
+    TranslationMixin):
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
         Project, CoreSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SystemWarning,
-        Settings, UserProject, Invite, AiTokenUsage, Task, Drive,
+        Settings, UserProject, Invite, AiTokenUsage, Task, Drive, Translation,
     )
 
     MIGRATION_STRATEGIES = ('stop', 'upgrade', 'drop')

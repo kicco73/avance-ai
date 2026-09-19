@@ -122,7 +122,7 @@ def test_new_test_session_still_restarts_at_init_every_time(client, app_db):
 
 RESTART_YML = (
     "project:\n  id: proj\n  new-session-strategy: restart\n"
-    "env:\n  counter:\n    type: number\n    value: 0\n"
+    "env:\n  counter:\n    type: number\n"
     "init-action:\n  target: a\n  task: task.send_mail(user.email, 'hi')\n"
     "states:\n"
     "  a:\n"

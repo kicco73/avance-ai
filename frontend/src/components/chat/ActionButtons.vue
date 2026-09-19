@@ -47,7 +47,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
     <div
       ref="trackRef"
       class="action-buttons-track"
-      :class="{ 'is-overflowing': overflowing, 'is-bouncing': bounce }"
+      :class="{ 'is-overflowing': overflowing, 'is-bouncing': bounce, 'is-fitting': !overflowing }"
       @animationend="bounce = false"
     >
       <button
@@ -89,11 +89,17 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
   font-size: 0.85rem;
   cursor: pointer;
   scroll-snap-align: start;
+  white-space: nowrap;
 }
 
 @media (max-width: 640px) {
   .action-buttons {
     padding: 0.5rem 0.75rem;
+  }
+
+  .action-buttons-track.is-fitting .action-btn {
+    flex: 1 1 0;
+    min-width: min-content;
   }
 }
 

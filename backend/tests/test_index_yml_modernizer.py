@@ -131,6 +131,8 @@ env:
     value: "0"
     ai-access: readonly
     ui-label: Counter
+  slot:
+    type: choice
 """
 
 
@@ -149,7 +151,7 @@ def test_every_spelling_the_format_moved_past_is_settled_in_one_visit():
     actions = {action.name: action for state in automaton.states.values() for action in state.actions}
 
     assert automaton.states["a"].chat_enabled is False
-    assert [key.name for key in automaton.env_keys] == ["counter"]
+    assert [(key.name, key.type) for key in automaton.env_keys] == [("counter", "number"), ("slot", "list")]
     assert actions["go"].on_exit == "chat.celebrate()"
     assert actions["go"].task == "task.send_mail(user.email, 'hi')"
     assert actions["help"].task == "task.prompt('Give a hint.')"

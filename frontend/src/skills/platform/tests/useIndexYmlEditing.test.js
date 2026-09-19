@@ -132,7 +132,7 @@ describe('useIndexYmlEditing', () => {
     putSignalField.mockResolvedValue({ name: 'sig' })
     await s.handleSetSignalField('sig', 'definition', 'signal.mood >= 50')
     putEnvKeyField.mockResolvedValue({ name: 'key' })
-    await s.handleSetEnvKeyField('key', 'value', '42')
+    await s.handleSetEnvKeyField('key', 'ai-definition', 'What it holds')
     expect(jumpToDefinition).not.toHaveBeenCalled()
   })
 

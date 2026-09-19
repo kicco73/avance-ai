@@ -79,3 +79,13 @@ class ServerAdminController(BaseController):
         async with self.turn_service.global_exclusive_access():
             deleted = self.project_service.manager.clean_unused_revisions()
         return {"success": True, "deleted": deleted}
+
+    @post("/api/skills/platform/settings/database/clear-translations", role="admin")
+    async def post_clear_translations(self):
+        """Deletes every cached label translation (see docs/BUS.md's
+        `turn.translation`, the table's only writer). Global, not scoped
+        to one project or session — the next turn that needs a label
+        translated simply asks the model again."""
+        async with self.turn_service.global_exclusive_access():
+            deleted = self.db.clear_translations()
+        return {"success": True, "deleted": deleted}

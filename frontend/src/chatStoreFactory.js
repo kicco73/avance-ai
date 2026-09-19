@@ -109,13 +109,15 @@ export function createChatStore({
 
   let awaitingSession = false
 
-  function answersUs(frame) {
+  function isAboutOurConversation(frame) {
     if (frame.session_id != null && frame.session_id === currentSessionId.value) return true
-    return awaitingSession && (frame.project_id == null || frame.project_id === currentProjectId.value)
+    if (!awaitingSession) return false
+    if (frame.session_type != null && frame.session_type !== kind) return false
+    return frame.project_id == null || frame.project_id === currentProjectId.value
   }
 
   busChannel.subscribe('session.info', (frame) => {
-    if (!answersUs(frame)) return
+    if (!isAboutOurConversation(frame)) return
     if (currentSessionId.value != null && frame.session_id !== currentSessionId.value) stopBackgroundAudio()
     if (frame.session_id !== currentSessionId.value && !backgroundAudioUrl.value) {
       const rememberedUrl = recallBackgroundAudio(kind, frame.session_id)
@@ -143,7 +145,7 @@ export function createChatStore({
   })
 
   busChannel.subscribe('session.blocked', (frame) => {
-    if (!answersUs(frame)) return
+    if (!isAboutOurConversation(frame)) return
     stopBackgroundAudio()
     awaitingSession = false
     currentSessionId.value = null
@@ -176,7 +178,7 @@ export function createChatStore({
   })
 
   busChannel.subscribe('output.progress', (frame) => {
-    if (frame.session_id !== currentSessionId.value) return
+    if (!isAboutOurConversation(frame)) return
     if (openExchanges.size > 0) return
     watchReply(frame.session_id).receive(frame)
   })
@@ -212,7 +214,7 @@ export function createChatStore({
 
   busChannel.subscribe('ui.notification', (frame) => {
     if (!frame.task) return
-    if (frame.session_id != null ? frame.session_id !== currentSessionId.value : frame.project_id !== currentProjectId.value) return
+    if (!(frame.session_id == null ? frame.project_id === currentProjectId.value : isAboutOurConversation(frame))) return
     runTaskScript(frame.task, {
       playBackgroundAudio: (url) => {
         playBackgroundAudio(url)
@@ -233,8 +235,8 @@ export function createChatStore({
   })
 
   busChannel.subscribe('output.chart', (frame) => {
-    if (frame.session_id !== currentSessionId.value) return
-    chart.value = { title: frame.title, series: frame.series || [] }
+    if (!isAboutOurConversation(frame)) return
+    chart.value = { title: frame.title, series: frame.series || [], maxScale: frame.max_scale }
   })
 
   function toStoreMessage(m) {

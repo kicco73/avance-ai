@@ -113,7 +113,7 @@ def _declared_in(index_yml: bytes | None) -> _Declared | None:
         return None
     env = raw.get("env") if isinstance(raw.get("env"), dict) else {}
     descriptions = {
-        str(name): str((fields or {}).get("ui-description") or "") if isinstance(fields, dict) else ""
+        str(name): str((fields or {}).get("ai-definition") or "") if isinstance(fields, dict) else ""
         for name, fields in env.items()
     }
     return _Declared(family, descriptions)

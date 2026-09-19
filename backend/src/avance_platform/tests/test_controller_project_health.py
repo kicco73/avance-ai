@@ -151,7 +151,6 @@ states:
 env:
   k:
     type: number
-    value: "1"
     nonsense: 3
 """
 

@@ -69,7 +69,6 @@ states:
 env:
   result:
     type: string
-    value: ""
 """
 
 _ACTION_TEMPLATE = """      - name: {name}

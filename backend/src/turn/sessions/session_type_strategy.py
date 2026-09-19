@@ -9,7 +9,6 @@ from system.web_session import WebSession
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
     from automaton.model import State
-    from tracking.env import Env
     from turn.sessions.session_manager import SessionManager
     from project.project_service import ProjectService
 
@@ -162,16 +161,17 @@ class PreviewSessionStrategy(SessionTypeStrategy):
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return True
 
-    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
-        revision = self.revision_for(project_service, project_id)
-        automaton = project_service.get_automaton(project_id, revision)
-        return automaton.init_action.target
+    def automaton_and_state(
+        self, project_service: "ProjectService", project_id: str, username: str
+    ) -> tuple["Automaton", "State"]:
+        automaton = project_service.get_automaton(project_id, self.revision_for(project_service, project_id))
+        return automaton, automaton.get_state(automaton.init_action.target)
+
+    def policy(self, automaton: "Automaton") -> ResumeNewSession | RestartNewSession:
+        return RESTART
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         return project_service.get_published_revision(project_id)
-
-    def fires_init_action(self, automaton: "Automaton") -> bool:
-        return True
 
 
 class ImportedSessionStrategy(SessionTypeStrategy):
@@ -194,19 +194,21 @@ class ImportedSessionStrategy(SessionTypeStrategy):
     def is_valid_write_target(self, session: dict, active_session: dict | None, channel: str) -> bool:
         return False
 
-    def starting_state(self, project_service: "ProjectService", project_id: str, username: str) -> str:
+    def automaton_and_state(
+        self, project_service: "ProjectService", project_id: str, username: str
+    ) -> tuple["Automaton", "State"]:
         raise NotImplementedError(
             "An imported session's state comes from the imported file, never resolved fresh."
+        )
+
+    def policy(self, automaton: "Automaton") -> ResumeNewSession | RestartNewSession:
+        raise NotImplementedError(
+            "An imported session is never created via create_session — it neither resumes nor restarts."
         )
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         raise NotImplementedError(
             "An imported session's revision is stamped at import time, never resolved fresh."
-        )
-
-    def fires_init_action(self, automaton: "Automaton") -> bool:
-        raise NotImplementedError(
-            "An imported session is never created via create_session — nothing to report."
         )
 
 

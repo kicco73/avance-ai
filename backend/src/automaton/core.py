@@ -17,6 +17,7 @@ top, and automaton.py for the composition itself."""
 from __future__ import annotations
 
 import ast
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -75,6 +76,38 @@ class DeferredExpression(object):
         return f"DeferredExpression({self.source!r})"
 
 
+class LambdaFunction(object):
+    """What a `lambda <params>: ...` in a task line evaluates to: a
+    callable of its own parameters, closing over the scope it was
+    defined against. Unlike DeferredExpression — the zero-parameter
+    shape, which task.defer hibernates — it holds no source to persist:
+    it is called within the script that defined it, and dies with it.
+
+    The body evaluates in EvaluationScope.for_call's own frame, so a
+    parameter shadows nothing outside the call, and a later line reading
+    the same bare name still reads the script's own local."""
+
+    def __init__(self, evaluator: "_TaskEval", node: ast.Lambda) -> None:
+        self._evaluator = evaluator
+        self._body = node.body
+        defaults = [evaluator._eval(default) for default in node.args.defaults]
+        padding = [inspect.Parameter.empty] * (len(node.args.args) - len(defaults))
+        self._signature = inspect.Signature([
+            inspect.Parameter(argument.arg, inspect.Parameter.POSITIONAL_OR_KEYWORD, default=default)
+            for argument, default in zip(node.args.args, [*padding, *defaults])
+        ])
+        self.source: str = ast.unparse(node)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        bound = self._signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        frame = self._evaluator.names.for_call(dict(bound.arguments))
+        return _TaskEval(names=frame)._eval(self._body)
+
+    def __repr__(self) -> str:
+        return f"LambdaFunction({self.source!r})"
+
+
 _TASK_EXTRA_FUNCTIONS: dict[str, Any] = {"zip": zip, "len": len, "range": range}
 _TRIGGER_EXTRA_FUNCTIONS: dict[str, Any] = {"len": len}
 
@@ -99,9 +132,25 @@ class _TaskEval(simpleeval.EvalWithCompoundTypes):
         self.nodes[ast.Lambda] = self._eval_lambda
 
     def _eval_lambda(self, node: ast.Lambda):
-        if node.args.args or node.args.vararg or node.args.kwonlyargs or node.args.kwarg or node.args.posonlyargs:
-            raise simpleeval.FeatureNotAvailable("Sorry, only zero-argument lambdas are supported.")
+        if node.args.vararg or node.args.kwonlyargs or node.args.kwarg or node.args.posonlyargs:
+            raise simpleeval.FeatureNotAvailable(
+                "Sorry, a lambda takes plain positional parameters only — no *args, **kwargs or keyword-only ones."
+            )
+        if node.args.args:
+            return LambdaFunction(self, node)
         return DeferredExpression(self, node.body)
+
+    def _eval_call(self, node: ast.Call):
+        callee = (
+            self._eval(node.func) if isinstance(node.func, ast.Lambda)
+            else self.names.get(getattr(node.func, "id", None))
+        )
+        if not isinstance(callee, LambdaFunction):
+            return super()._eval_call(node)
+        return callee(
+            *(self._eval(argument) for argument in node.args),
+            **dict(self._eval(keyword) for keyword in node.keywords),
+        )
 
 
 class CoreAutomaton(object):

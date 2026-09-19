@@ -13,24 +13,14 @@ project:
 
 env:
   hp:
-    value: "3"
-    ui-description: Player's health points
     ai-definition: The current health points of the player (integer from 0 to 3).
   has_black_key:
-    value: "False"
-    ui-description: Whether the player has the black key
     ai-definition: Boolean flag indicating if the player possesses the black key.
   mirror_seen:
-    value: "False"
-    ui-description: Whether the mirror has been seen
     ai-definition: Boolean flag indicating if the player has uncovered the mirror.
   game_ended:
-    value: "False"
-    ui-description: Whether the game has ended
     ai-definition: Boolean flag indicating if the game has reached an ending state.
   player_name:
-    value: "user.name"
-    ui-description: Player name
     ai-definition: The first name of the player.
 
 signals:

@@ -34,6 +34,16 @@ class EvaluationScope(dict):
         with it — never in the scope the caller goes on to hand to task."""
         return EvaluationScope(self, automaton=self.automaton, state_key=self.state_key, action_name=action_name)
 
+    def for_call(self, arguments: dict[str, Any]) -> "EvaluationScope":
+        """The frame a lambda's body evaluates in: the defining scope
+        with the call's own arguments bound over it, in a copy, so a
+        parameter never outlives the call nor shadows a later line's
+        own name."""
+        return EvaluationScope(
+            {**self, **arguments},
+            automaton=self.automaton, state_key=self.state_key, action_name=self.action_name,
+        )
+
     def for_task(self, action_name: str | None = None) -> "EvaluationScope":
         from automaton.identifier_registry import IdentifierRegistry
         names = IdentifierRegistry.excluding(self, IdentifierRegistry.TASK_SCOPE_EXCLUDES)

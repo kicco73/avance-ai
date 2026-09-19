@@ -52,7 +52,7 @@ STATE_SUGGESTED_FIELDS = STATE_FIELDS - set(LEGACY_STATE_SOURCE_FIELDS) - REMOVE
 
 SIGNAL_FIELDS = {"ui-label", "ui-description", "definition", "attachments"}
 REACTION_FIELDS = {"ui-label", "ui-description", "definition"}
-ENV_KEY_FIELDS = {"type", "ui-description", "value", "ai-definition"}
+ENV_KEY_FIELDS = {"type", "ai-definition"}
 SOURCE_FIELDS = {"ui-label", "ui-description", "url", "ai-definition"}
 TOP_LEVEL_FIELDS = {
     "avance-version", "project", "init-action", "states", "signals", "reactions",
@@ -106,15 +106,10 @@ class AutomatonBuilder(object):
             raise ValueError(
                 f"Env key '{name}': 'type' must be one of {ENV_TYPE_NAMES}, got '{env_type}'."
             )
-        raw_value = raw_env_key.get("value", "")
-        value = raw_value if isinstance(raw_value, str) else str(raw_value)
-        raw_description = raw_env_key.get("ui-description")
         raw_ai_definition = raw_env_key.get("ai-definition")
         return EnvKey(
             name=name,
             type=env_type,
-            value=value.strip(),
-            ui_description=raw_description.strip() if raw_description else None,
             ai_definition=raw_ai_definition.strip() if isinstance(raw_ai_definition, str) and raw_ai_definition.strip() else None,
         )
 
@@ -467,7 +462,6 @@ class AutomatonBuilder(object):
             state_keys_by_ui_label[states[key].ui_label] = key
 
         registry = IdentifierRegistry.build(list(signals.values()), list(env_keys.values()))
-        self._validator.validate_env_key_defaults(env_keys, raw_env_keys, registry, sources)
         namespaces = TriggerNamespaces.collect()
         for key, state in states.items():
             context_key = init_action.name if key == "" else key

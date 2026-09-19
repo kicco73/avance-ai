@@ -21,3 +21,7 @@ export function postWipeAllLiveSessions() {
 export function postCleanUnusedRevisions() {
   return apiFetch(`${API_URL}/skills/platform/settings/database/clean-unused-revisions`, { method: 'POST' })
 }
+
+export function postClearTranslations() {
+  return apiFetch(`${API_URL}/skills/platform/settings/database/clear-translations`, { method: 'POST' })
+}

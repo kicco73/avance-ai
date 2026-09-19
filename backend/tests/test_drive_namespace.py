@@ -254,7 +254,7 @@ def test_drive_is_a_task_only_namespace(db):
 
 
 def test_a_drive_call_with_the_wrong_number_of_arguments_is_a_build_error(db):
-    with pytest.raises(ValueError, match=r"drive.write\(...\) takes 2 argument"):
+    with pytest.raises(ValueError, match=r"drive.write\(...\) missing a required argument"):
         AutomatonBuilder().build({"index.yml": _yml("drive.write('only-one.md')")})
 
     AutomatonBuilder().build({"index.yml": _yml("drive.list()")})

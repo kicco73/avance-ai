@@ -9,7 +9,6 @@ import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import DesignSignalsTab from './DesignSignalsTab.vue'
 import InspectorDriveTab from '../../inspector/InspectorDriveTab.vue'
-import InspectorWebSearchTab from '../../inspector/InspectorWebSearchTab.vue'
 import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
 import EditorStateTab from './EditorStateTab.vue'
@@ -200,8 +199,7 @@ const inspectorTabs = computed(() => {
       { id: 'states', label: 'Info' },
       { id: 'signals', label: 'Signals' },
       { id: 'env', label: 'I/O' },
-      { id: 'drive', label: 'Drive' },
-      { id: 'websearch', label: 'Websearch' }
+      { id: 'drive', label: 'Drive' }
     ]
   }
   if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || mediaRootSelected.value || !isBehaviorNodeSelected.value)) {
@@ -673,12 +671,10 @@ async function handleSetSessionComment(sessionId, comment) {
             <template #tab-drive="{ registerTab }">
               <InspectorDriveTab :ref="registerTab('drive')" :project-id="projectId" />
             </template>
-            <template #tab-websearch="{ registerTab }">
-              <InspectorWebSearchTab :ref="registerTab('websearch')" :session-id="currentSessionId" />
-            </template>
             <template #tab-env="{ registerTab }">
               <InspectorEnvTab
                 :ref="registerTab('env')"
+                :project-id="projectId"
                 :session-id="currentSessionId"
                 :until-message-id="untilMessageId"
                 :editable="envEditable"

@@ -88,12 +88,12 @@ def test_task_accepts_several_task_calls_one_per_line_on_actions_and_the_init_ac
 @pytest.mark.parametrize(("task", "match"), [
     ("celebrate()", r"State a, action 'go'.*references undefined name\(s\): celebrate"),
     ("task.doStuff()", r"references undefined name\(s\): task.doStuff"),
-    ("task.whatsapp('34600000001')", r"task.whatsapp\(\.\.\.\) takes 2 argument\(s\), got 1"),
-    ("task.defer(datetime.datetime(2030, 1, 1))", r"task.defer\(\.\.\.\) takes 2 argument\(s\), got 1"),
+    ("task.whatsapp('34600000001')", r"task.whatsapp\(\.\.\.\) missing a required argument: 'message_md'"),
+    ("task.defer(datetime.datetime(2030, 1, 1))", r"task.defer\(\.\.\.\) missing a required argument: 'when'"),
     ("|\n          task.send_mail(user.email, 'hi')\n          task.doStuff()", r"task line 2.*references undefined name\(s\): task.doStuff"),
     (
         "|\n          task.defer(lambda: task.whatsapp('34600000001'), datetime.datetime(2030, 1, 1))",
-        r"task.whatsapp\(\.\.\.\) takes 2 argument\(s\), got 1",
+        r"task.whatsapp\(\.\.\.\) missing a required argument: 'message_md'",
     ),
 ])
 def test_build_rejects_bare_unknown_or_wrongly_called_task_calls_even_nested_in_a_lambda_reporting_the_line(task, match):
@@ -125,7 +125,6 @@ init-action:
 env:
   reminder_days:
     type: number
-    value: 3
 states:
   a:
     contextual-prompt: hi

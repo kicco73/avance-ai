@@ -5,7 +5,7 @@ import inspect
 from automaton.builder.archive_resolver import ProjectArchives
 from automaton.automaton import EnvKey, Source, State
 from automaton.builder.build_cursor import BuildCursor
-from automaton.choice_namespace import choice_key_names
+from automaton.choice_namespace import list_key_names
 from automaton.core import TASK_FUNCTION_NAMES, TRIGGER_FUNCTION_NAMES
 from automaton.env_types import STORED_ENV_TYPES
 from automaton.file_types import media_doc_id_for
@@ -24,42 +24,6 @@ STATE_SOURCE_FIELDS = (
 class AutomatonValidator:
     def __init__(self, cursor: BuildCursor) -> None:
         self._cursor = cursor
-
-    def validate_env_key_defaults(
-        self, env_keys: dict[str, EnvKey], raw_env_keys, registry: dict[str, dict[str, str]],
-        sources: dict[str, Source],
-    ) -> None:
-        registry_for_values = IdentifierRegistry.for_triggers(registry)
-        all_names = set(env_keys.keys())
-        declared_so_far: set[str] = set()
-        for name, env_key in env_keys.items():
-            self._cursor.at(self._cursor.line_of(raw_env_keys, name), f"env.{name}")
-            if env_key.value and env_key.type == "choice":
-                raise ValueError(
-                    f"env key '{name}': a choice key takes no 'value' — its options are written by scripts."
-                )
-            if env_key.value:
-                value_kind = TriggerExpressionAnalyzer.expression_kind(env_key.value)
-                if value_kind is not None and not STORED_ENV_TYPES[env_key.type].accepts_kind(value_kind):
-                    raise ValueError(
-                        f"env key '{name}' is declared {env_key.type} but its 'value' ('{env_key.value}') "
-                        f"is a {value_kind}."
-                    )
-                try:
-                    referenced = TriggerExpressionAnalyzer.namespace_refs(env_key.value).get("env", set())
-                except SyntaxError:
-                    referenced = set()
-                forward = (referenced & all_names) - declared_so_far
-                if forward:
-                    raise ValueError(
-                        f"env key '{name}': default value references "
-                        f"{', '.join(f'env.{ref}' for ref in sorted(forward))} before it's declared — "
-                        "an env key's own default may only reference an earlier env key, never itself or a later one."
-                    )
-                self.validate_namespaced_expression(
-                    env_key.value, f"env key '{name}': default value", registry_for_values, sources,
-                )
-            declared_so_far.add(name)
 
     @staticmethod
     def supported_methods(source: Source) -> frozenset[str]:
@@ -170,29 +134,30 @@ class AutomatonValidator:
         parameters = list(inspect.signature(method).parameters.values())[1:]
         return "(" + ", ".join(str(parameter).split(":")[0].split("=")[0] for parameter in parameters) + ")"
 
-    @staticmethod
-    def _validate_namespace_call_arity(expression: str, context: str, namespace: str, methods_class: type) -> None:
+    @classmethod
+    def _validate_namespace_call_arity(
+        cls, expression: str, context: str, namespace: str, methods_class: type,
+    ) -> None:
         """Shared by validate_task_arity/validate_chat_arity below: every
-        `<namespace>.<method>(...)` call in `expression` must pass the
-        same number of arguments its Python-side method (on
-        `methods_class`) actually declares — checked generically off
-        `inspect.signature` rather than one hand-written arity table per
-        namespace."""
-        for method_name, arg_count in TriggerExpressionAnalyzer.namespace_calls(expression, namespace):
+        `<namespace>.<method>(...)` call in `expression` must bind to its
+        Python-side method (on `methods_class`) — through inspect's own
+        bind, exactly like validate_source_call_arguments, so a method
+        taking *args and keyword-only arguments (chat.chart) is described
+        by its own signature rather than by a count that cannot express
+        one. The message is inspect's own: it names what is missing."""
+        for method_name, positional, keywords, unpacks in TriggerExpressionAnalyzer.namespace_calls(
+            expression, namespace,
+        ):
             method = getattr(methods_class, method_name, None)
-            if method is None:
+            if method is None or unpacks:
                 continue
-            parameters = list(inspect.signature(method).parameters.values())[1:]
-            required = len([p for p in parameters if p.default is inspect.Parameter.empty])
-            if required <= arg_count <= len(parameters):
-                continue
-            expected = (
-                str(required) if required == len(parameters) else f"between {required} and {len(parameters)}"
-            )
-            raise ValueError(
-                f"{context} ('{expression}'): {namespace}.{method_name}(...) takes {expected} "
-                f"argument(s), got {arg_count}"
-            )
+            try:
+                inspect.signature(method).bind(None, *([None] * positional), **{name: None for name in keywords})
+            except TypeError as exc:
+                raise ValueError(
+                    f"{context} ('{expression}'): {namespace}.{method_name}(...) {exc} — "
+                    f"expected {namespace}.{method_name}{cls._signature_text(method)}"
+                ) from exc
 
     @classmethod
     def validate_task_arity(cls, expression: str, context: str) -> None:
@@ -393,7 +358,7 @@ class AutomatonValidator:
                 )
 
     def validate_state_io(self, state: State, env_keys: dict[str, EnvKey]) -> None:
-        choice_keys = choice_key_names(env_keys)
+        list_keys = list_key_names(env_keys)
         for field_name, names in (("input", state.input), ("output", state.output)):
             for name in names:
                 env_key = env_keys.get(name)
@@ -402,9 +367,9 @@ class AutomatonValidator:
                         f"State '{state.key}': {field_name} '{name}' — 'env.{name}' is not "
                         "declared in the project's own 'env' section."
                     )
-                if name in choice_keys:
+                if name in list_keys:
                     raise ValueError(
-                        f"State '{state.key}': {field_name} '{name}' — a choice key is never rendered to the model."
+                        f"State '{state.key}': {field_name} '{name}' — a list key is never rendered to the model."
                     )
                 if not env_key.ai_definition:
                     raise ValueError(

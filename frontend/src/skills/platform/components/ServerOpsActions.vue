@@ -4,7 +4,8 @@ import ProgressSpinner from '../../../components/ProgressSpinner.vue'
 import { useServerOperations } from '../useServerOperations.js'
 
 const {
-  backupDownload, handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup,
+  backupDownload, handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleClearTranslations,
+  handleDownloadBackup, handleRestoreBackup,
 } = useServerOperations()
 
 async function selectWipeAllLiveSessions() {
@@ -26,6 +27,16 @@ async function selectCleanUnusedRevisions() {
   })
   if (!ok) return
   await handleCleanUnusedRevisions()
+}
+
+async function selectClearTranslations() {
+  const ok = await confirmDialog({
+    title: 'Clear translation cache',
+    body: 'Delete every cached label translation? A translated button will simply be asked for again the next time it is needed.',
+    okLabel: 'Clear'
+  })
+  if (!ok) return
+  await handleClearTranslations()
 }
 </script>
 
@@ -60,6 +71,7 @@ async function selectCleanUnusedRevisions() {
       </label>
       <button type="button" class="services-action-btn services-action-btn-danger" @click="selectWipeAllLiveSessions">Wipe all live sessions</button>
       <button type="button" class="services-action-btn" @click="selectCleanUnusedRevisions">Clean unused revisions</button>
+      <button type="button" class="services-action-btn" @click="selectClearTranslations">Clear translation cache</button>
     </div>
   </div>
 </template>

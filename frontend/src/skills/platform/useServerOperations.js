@@ -1,5 +1,7 @@
 import { ref } from 'vue'
-import { getState, getBackup, postRestoreBackup, postWipeAllLiveSessions, postCleanUnusedRevisions } from './api.js'
+import {
+  getState, getBackup, postRestoreBackup, postWipeAllLiveSessions, postCleanUnusedRevisions, postClearTranslations
+} from './api.js'
 import { confirmDialog, infoDialog } from '../../dialogStore.js'
 import { handleStateChange, clearChatUi } from '../../chatStore.js'
 import { emitProjectsChanged } from '../../projectChangeEvents.js'
@@ -36,6 +38,19 @@ export function useServerOperations() {
     })
   }
 
+  async function handleClearTranslations() {
+    let deleted
+    try {
+      ({ deleted } = await postClearTranslations())
+    } catch {
+      return
+    }
+    await infoDialog({
+      title: 'Clear translation cache',
+      body: deleted > 0 ? `Deleted ${deleted} cached translation${deleted === 1 ? '' : 's'}.` : 'No cached translations found.'
+    })
+  }
+
   const backupDownload = ref(null)
 
   async function handleDownloadBackup() {
@@ -66,5 +81,8 @@ export function useServerOperations() {
     }
   }
 
-  return { backupDownload, handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleDownloadBackup, handleRestoreBackup }
+  return {
+    backupDownload, handleWipeAllLiveSessions, handleCleanUnusedRevisions, handleClearTranslations,
+    handleDownloadBackup, handleRestoreBackup,
+  }
 }

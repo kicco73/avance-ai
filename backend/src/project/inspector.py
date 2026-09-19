@@ -49,6 +49,9 @@ class ProjectInspector:
             state_key = remapped
         return automaton.get_state(state_key)
 
+    def has_ever_run(self, project_id: str, username: str, type: str = 'live') -> bool:
+        return self._db.get_current_state_for_user(project_id, username, type=type) is not None
+
     def get_published_revision(self, project_id: str) -> int:
         published_revision = self._db.get_project_published_revision(project_id)
         if published_revision is None:

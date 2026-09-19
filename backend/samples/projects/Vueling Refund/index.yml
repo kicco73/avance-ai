@@ -211,40 +211,30 @@ signals:
 env:
   customer_record:
     type: string
-    ui-description: "Every ticket sold to this customer's email, as returned by the tickets source (scripts only)."
-    value: ""
+    ai-definition: "Every ticket sold to this customer's email, as returned by the tickets source (scripts only)."
   flight:
     type: string
-    ui-description: "The flight code of the booking under discussion — pre-filled from the tickets sold, correctable by the model."
     ai-definition: |
       The flight code (e.g. VY3003) of the booking the customer is asking about. Pre-filled from
       the tickets sold to their email — a column of one or more rows; if the customer names a
       different flight, set it to the code they give you.
-    value: ""
   flight_date:
     type: string
-    ui-description: "The departure date/time of that flight — pre-filled from the tickets sold, correctable by the model."
     ai-definition: |
       The departure date and time of that flight, as YYYY-MM-DD HH:MM. Pre-filled from the tickets
       sold to the customer's email; if the customer gives a different travel date, set it to the
       one they give you.
-    value: ""
   pnr:
     type: string
-    ui-description: "The 6-character record locator, empty until the customer provides it."
     ai-definition: |
       The booking's 6-character record locator (PNR). Empty until the customer gives it to you —
       write it here as soon as they do; whether it matches our records is verified on our side.
-    value: ""
   customer_email:
     type: string
-    ui-description: "The logged-in customer's email (read-only for the model)."
     ai-definition: The email address the customer is logged in with — the one their tickets are registered to.
-    value: 'user.email'
   _flight_record:
     type: string
-    ui-description: "The flight-records row matching the confirmed flight and date (scripts only)."
-    value: ""
+    ai-definition: "The flight-records row matching the confirmed flight and date (scripts only)."
 sources:
   tickets_sold:
     ui-label: "Tickets sold"

@@ -460,6 +460,83 @@ class RemovedEnvAiAccess(EnvKeyDeprecation, RemovedKey):
     )
 
 
+class RemovedEnvValue(EnvKeyDeprecation, RemovedKey):
+
+    KEY = "value"
+    MESSAGE = (
+        "Env key '{name}': 'value' was removed — a key declares what it holds and starts "
+        "at its type's own default; a different first value is written by the init-action."
+    )
+
+
+class LegacyChoiceEnvType(EnvKeyDeprecation):
+
+    KEY = "type"
+    LEGACY = "choice"
+    NEW = "list"
+    MESSAGE = (
+        "Env key '{name}': type 'choice' is deprecated — the type is called 'list' now, "
+        "and the key builds as undeclared until it is renamed."
+    )
+
+    @property
+    def fix(self) -> str:
+        return f"{self.name}: {self.KEY} {self.LEGACY} → {self.NEW}"
+
+    @classmethod
+    def found_in(cls, raw):
+        return [
+            cls(name, BuildCursor.line_of(entry, cls.KEY))
+            for name, entry in cls.entries(raw)
+            if own_field(entry, cls.KEY) == cls.LEGACY
+        ]
+
+    def mine(self, editor) -> list[MutableMapping]:
+        return [
+            entry for _, entry in self.entries(editor.document())
+            if own_field(entry, self.KEY) == self.LEGACY
+        ]
+
+    def rewrite(self, editor) -> None:
+        for entry in self.mine(editor):
+            entry[self.KEY] = self.NEW
+
+
+class LegacyEnvUiDescription(EnvKeyDeprecation):
+    """An env key had two descriptions: one for the editor and one for
+    the model. One is enough — what the key means is the same sentence
+    either way — so 'ui-description' carries over to 'ai-definition'
+    where that is still empty, and is dropped where it is not."""
+
+    KEY = "ui-description"
+    NEW = "ai-definition"
+    MESSAGE = (
+        "Env key '{name}': 'ui-description' was removed — an env key is described once, "
+        "in 'ai-definition', and nothing reads this."
+    )
+
+    @property
+    def fix(self) -> str:
+        return f"{self.name}: {self.KEY} → {self.NEW}"
+
+    @staticmethod
+    def _carries(entry: MutableMapping) -> bool:
+        description = own_field(entry, LegacyEnvUiDescription.KEY)
+        return (
+            not own_field(entry, LegacyEnvUiDescription.NEW)
+            and isinstance(description, str) and bool(description.strip())
+        )
+
+    def rewrite(self, editor) -> None:
+        for entry in self.mine(editor):
+            description = own_field(entry, self.KEY)
+            if self._carries(entry):
+                editor.rename_key_preserving_comments(entry, self.KEY, self.NEW)
+                entry[self.NEW] = description
+            else:
+                editor.drop_key_preserving_comments(entry, self.KEY)
+
+
 class RemovedEnvUiLabel(EnvKeyDeprecation, RemovedKey):
 
     KEY = "ui-label"
@@ -473,6 +550,7 @@ PROJECT_KINDS = (LegacyTalkEnabled,)
 FIELD_KINDS = (
     LegacyOnEnter, LegacyActuatorField, LegacyActionPrompt, LegacyStateScript,
     LegacyStateChat, LegacyAiMemoryStrategy, RemovedEnvAiAccess, RemovedEnvUiLabel,
+    RemovedEnvValue, LegacyChoiceEnvType, LegacyEnvUiDescription,
 )
 KINDS = PROJECT_KINDS + FIELD_KINDS + (LegacyActuatorCall,)
 

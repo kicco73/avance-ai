@@ -1,11 +1,13 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { clearMemory, deleteEnvValue, getEnv, getOutput, putEnvValue } from '../../api.js'
+import InspectorSourcesList from './InspectorSourcesList.vue'
 import { confirmDialog, customDialog } from '../../../../dialogStore.js'
 import CellMarkdownDialog from '../project/edit/design/CellMarkdownDialog.vue'
 import { DISPLAY_LIMIT } from '../project/edit/design/csvCells.js'
 
 const props = defineProps({
+  projectId: { type: String, required: true },
   sessionId: { type: [Number, String], default: null },
   untilMessageId: { type: [Number, String], default: null },
   editable: { type: Boolean, default: true }
@@ -110,8 +112,10 @@ async function clearAll() {
   }
 }
 
+const sourcesRef = ref(null)
+
 async function refresh() {
-  await Promise.all([loadEnv(), loadOutput()])
+  await Promise.all([loadEnv(), loadOutput(), sourcesRef.value?.loadSources()])
 }
 
 function isTruncated(value) {
@@ -216,6 +220,12 @@ defineExpose({ loadEnv, refresh, resync: refresh })
           >×</button>
         </div>
       </div>
+
+      <InspectorSourcesList
+        ref="sourcesRef"
+        :project-id="projectId"
+        :session-id="sessionId"
+      />
     </template>
   </div>
 </template>

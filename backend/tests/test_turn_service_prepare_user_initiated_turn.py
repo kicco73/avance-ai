@@ -56,6 +56,9 @@ class FakeProjectService:
     def get_active_project_id(self) -> str:
         return PROJECT_ID
 
+    def has_ever_run(self, project_id, username, type='live'):
+        return False
+
     def get_published_revision(self, project_id: str) -> int:
         return 0
 

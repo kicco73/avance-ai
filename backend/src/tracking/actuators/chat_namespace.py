@@ -76,15 +76,24 @@ class ChatNamespace(ABC):
             project_id=self._project_id, body={"task": snippet_text},
         )))
 
-    def chart(self, title: str, series: list[dict]) -> None:
+    def chart(self, title: str, *series: dict, max_scale: float | None = None) -> None:
         """Publishes output.chart the same way push_notification publishes
         ui.notification — best-effort and silent, whether or not the
-        session's socket is watched by anyone."""
+        session's socket is watched by anyone.
+
+        One `{'line': ..., 'value': ...}` per bar, written as its own
+        argument so a chart reads down the page as the bars it draws.
+        `max_scale` is the full-scale value every bar is measured
+        against: without it the chart scales to its own values, so the
+        largest bar is always full — right for comparing lines to each
+        other, wrong for a score out of a known maximum, which is what
+        `max_scale=100` says."""
         if self._factory is None or self._session_id is None:
             return
         _run_sync(bus.publish(Message(
             type=OUTPUT_CHART, username=WebSession().user, session_id=self._session_id,
-            project_id=self._project_id, body={"title": title, "series": series},
+            project_id=self._project_id,
+            body={"title": title, "series": list(series), "max_scale": max_scale},
         )))
 
     def progress(self, title: str, percentage: float) -> None:

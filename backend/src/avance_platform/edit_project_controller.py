@@ -32,7 +32,7 @@ STATE_EDITABLE_FIELDS = {
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit", "env"}
 INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
-ENV_KEY_EDITABLE_FIELDS = {"name", "type", "ui-description", "value", "ai-definition"}
+ENV_KEY_EDITABLE_FIELDS = {"name", "type", "ai-definition"}
 SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description", "ai-definition"}
 PROJECT_EDITABLE_FIELDS = {
     "id", "ui-label", "ui-description", "signal-tracking-on-ai-message", "new-session-strategy", "general-prompt",

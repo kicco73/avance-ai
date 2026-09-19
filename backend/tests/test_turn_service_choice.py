@@ -60,7 +60,7 @@ def _automaton(trigger: str = "choice.slot != ''") -> Automaton:
         general_prompt="", signals=[], general_attachments=(), autotracking_on_ai_message=False,
         project_id=PROJECT_ID,
         env_keys=[
-            EnvKey(name="slot", type="choice", ui_description="The appointment slot."),
+            EnvKey(name="slot", type="list", ai_definition="The appointment slot."),
             EnvKey(name="booked_slot", type="string"),
             EnvKey(name="note", type="string"),
         ],
@@ -162,7 +162,7 @@ async def test_a_press_no_trigger_answers_to_publishes_nothing_and_records_nothi
 
     assert frames == []
     assert _manual_rows(session_id) == []
-    assert "booked_slot" not in _env_for(db, session_id).action_set()
+    assert _env_for(db, session_id).action_set()["booked_slot"] == ""
 
 
 @pytest.mark.parametrize("button", ["choice:slot:5", "choice:nowhere:0"], ids=["index-out-of-range", "key-not-offered"])
@@ -181,7 +181,7 @@ async def test_a_press_naming_no_current_option_is_refused_as_choice_unavailable
 async def test_a_key_the_state_does_not_read_is_refused_even_when_env_holds_options(turn_service_for):
     db = turn_service_for.db
     automaton = _automaton()
-    automaton.env_keys.append(EnvKey(name="unread", type="choice"))
+    automaton.env_keys.append(EnvKey(name="unread", type="list"))
     turn_service = turn_service_for(automaton, _FakeProvider())
     session_id = await _session_with_options(turn_service, db, ["morning"])
     _env_for(db, session_id).update_action_set({"unread": ["x"]})
