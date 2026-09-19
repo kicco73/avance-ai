@@ -53,7 +53,7 @@ describe('the design Signals tab', () => {
     )
 
     expect(host.firstElementChild.firstElementChild.className).toBe('design-signals-strategy')
-    expect(segments(host)).toEqual([{ label: 'Relevant', active: true }, { label: 'All', active: false }])
+    expect(segments(host)).toEqual([{ label: 'Relevant', active: true }, { label: 'All signals', active: false }])
 
     host.querySelectorAll('.segmented-control-option')[1].click()
     expect(setStateField).toHaveBeenCalledWith('signal-tracking-strategy', 'all')

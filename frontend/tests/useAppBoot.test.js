@@ -31,6 +31,7 @@ vi.mock('../src/skills/registry.js', () => ({
   modelSelectors: { value: [] },
   liveChatObservers: { value: [] },
   chatChannel: { value: 'webchat' },
+  triggerNamespaces: { value: [{ name: 'partner', color: '#123456', proxy: false, emptyLabel: null, emptyHint: null }] },
 }))
 vi.mock('../src/skillRoster.js', () => ({
   loadSkillRoster: vi.fn(),
@@ -55,6 +56,7 @@ import { loadSkillRoster } from '../src/skillRoster.js'
 const stateReceivedSpy = vi.fn()
 import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages } from '../src/chatStore.js'
 import { modelSelector } from '../src/modelSelector.js'
+import { namespaceColor } from '../src/triggerEditorSupport.js'
 import { useAppBoot } from '../src/composables/useAppBoot.js'
 
 function mountComposable(setup) {
@@ -148,6 +150,7 @@ describe('useAppBoot', () => {
       expect(clearApiError).toHaveBeenCalled()
       expect(loadMessages).toHaveBeenCalled()
       expect(modelSelector().available).toBe(false)
+      expect(namespaceColor('partner')).toBe('#123456')
     })
 
     it('an absent budget is published as null, and the navigation stack is reset before resolving where an admin lands', async () => {

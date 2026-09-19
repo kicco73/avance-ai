@@ -184,10 +184,10 @@ bundler never notices it was ever a possibility.
 The core renders what the registry gives it and knows nothing about who
 contributed it. Declarative points carry data and components —
 `pushedViews`, `projectActions`, `projectModes`, `servicesTabs`,
-`chatInputControls`, `profileFields`. Where a skill must *act* rather
-than render, the manifest contributes an object with named methods and
-the core calls the method by name, the same shape as the backend Bus —
-never a registered callback.
+`chatInputControls`, `profileFields`, `triggerNamespaces`. Where a skill
+must *act* rather than render, the manifest contributes an object with
+named methods and the core calls the method by name, the same shape as
+the backend Bus — never a registered callback.
 
 An extension point asks a skill only what the skill knows about itself.
 A mode briefly had to declare which chat skin the editor should show

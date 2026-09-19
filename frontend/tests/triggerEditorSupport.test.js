@@ -1,9 +1,20 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { EditorState } from '@codemirror/state'
 import { CompletionContext } from '@codemirror/autocomplete'
+import { installTriggerNamespaces } from '../src/triggerNamespaces.js'
 import {
-  completeIdentifiers, completionInfo, excludingNamespaces, isProxyNamespace, namespaceOf, NAMESPACE_COLORS
+  completeIdentifiers, completionInfo, excludingNamespaces, isProxyNamespace, namespaceOf, namespaceColor
 } from '../src/triggerEditorSupport.js'
+
+const contributed = {
+  name: 'partner',
+  color: '#123456',
+  proxy: false,
+  emptyLabel: '(nothing to reference yet)',
+  emptyHint: 'Declare a partner first.'
+}
+
+beforeEach(() => installTriggerNamespaces([contributed]))
 
 const REGISTRY = {
   signal: { mood: 'How positive the user sounds.' },
@@ -14,11 +25,11 @@ const REGISTRY = {
   metric: { retention: 'Retention score.', activity_consistency: 'Activity consistency score.' }
 }
 
-const REGISTRY_WITH_AUTOMATON = {
+const REGISTRY_WITH_CONTRIBUTED = {
   ...REGISTRY,
-  automaton: {},
-  'automaton.other_project': { state: "The 'other_project' project's own current state." },
-  'automaton.other_project.env': { budget: 'Remaining budget, shared cross-project.' }
+  partner: {},
+  'partner.other_project': { state: "The 'other_project' project's own current state." },
+  'partner.other_project.env': { budget: 'Remaining budget, shared cross-project.' }
 }
 
 const REGISTRY_WITH_SOURCE = {
@@ -101,25 +112,35 @@ describe('completeIdentifiers', () => {
     expect(result.from).toBe(text.length - 'sess'.length)
   })
 
-  it('descends automaton.<project>.env one namespace at a time, offering state and every declared env key as plain identifiers', () => {
-    expect(labelsAt('auto', REGISTRY_WITH_AUTOMATON)).toContain('automaton')
+  it('descends a contributed namespace one level at a time, offering its members as plain identifiers', () => {
+    expect(labelsAt('par', REGISTRY_WITH_CONTRIBUTED)).toContain('partner')
 
-    const [project] = optionsAt('automaton.', REGISTRY_WITH_AUTOMATON)
+    const [project] = optionsAt('partner.', REGISTRY_WITH_CONTRIBUTED)
     expect(project.label).toBe('other_project')
     expect(project.type).toBe('namespace')
     expect(project.apply).toBe('other_project')
 
-    const stateOption = optionAt('automaton.other_project.', 'state', REGISTRY_WITH_AUTOMATON)
+    const stateOption = optionAt('partner.other_project.', 'state', REGISTRY_WITH_CONTRIBUTED)
     expect(stateOption.type).toBe('variable')
     expect(stateOption.apply).toBe('state')
-    const envOption = optionAt('automaton.other_project.', 'env', REGISTRY_WITH_AUTOMATON)
+    const envOption = optionAt('partner.other_project.', 'env', REGISTRY_WITH_CONTRIBUTED)
     expect(envOption.type).toBe('namespace')
     expect(envOption.apply).toBe('env')
 
-    const [budget] = optionsAt('automaton.other_project.env.', REGISTRY_WITH_AUTOMATON)
+    const [budget] = optionsAt('partner.other_project.env.', REGISTRY_WITH_CONTRIBUTED)
     expect(budget.label).toBe('budget')
     expect(budget.type).toBe('variable')
     expect(budget.apply).toBe('budget')
+  })
+
+  it('offers a contributed namespace its own empty hint when it has nothing to declare', () => {
+    const empty = { ...REGISTRY, partner: {} }
+    const [only] = optionsAt('partner.', empty)
+    expect(only.label).toBe('(nothing to reference yet)')
+    expect(only.info().querySelector('.cm-trigger-completion-info-description').textContent)
+      .toBe('Declare a partner first.')
+
+    expect(completeIdentifiers(contextAt('signal.unknown.'), empty)).toBeNull()
   })
 
   it('offers every declared source as a child namespace, then that source\'s own methods call-style', () => {
@@ -160,7 +181,7 @@ describe('isProxyNamespace', () => {
       expect(isProxyNamespace(namespace)).toBe(true)
     }
     for (const namespace of [
-      'signal', 'env', 'user', 'automaton', 'automaton.other_project', 'automaton.other_project.env', 'datetime.timezone'
+      'signal', 'env', 'user', 'partner', 'partner.other_project', 'partner.other_project.env', 'datetime.timezone'
     ]) {
       expect(isProxyNamespace(namespace)).toBe(false)
     }
@@ -178,11 +199,11 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
     expect(namespaceOf('datetime.timezone.utc')).toBe('datetime.timezone')
     expect(namespaceOf('datetime.datetime')).toBe('datetime')
     expect(namespaceOf('datetime.timedelta')).toBe('datetime')
-    expect(namespaceOf('automaton.other_project.state')).toBe('automaton')
-    expect(namespaceOf('automaton.other_project.env.budget')).toBe('automaton')
+    expect(namespaceOf('partner.other_project.state')).toBe('partner')
+    expect(namespaceOf('partner.other_project.env.budget')).toBe('partner')
 
-    for (const namespace of ['signal', 'env', 'session', 'session.metric', 'user', 'source', 'task', 'chat', 'metric', 'automaton', 'datetime', 'datetime.timezone']) {
-      expect(NAMESPACE_COLORS[namespace]).toMatch(/^#[0-9a-f]{6}$/)
+    for (const namespace of ['signal', 'env', 'session', 'session.metric', 'user', 'source', 'task', 'chat', 'metric', 'partner', 'datetime', 'datetime.timezone']) {
+      expect(namespaceColor(namespace)).toMatch(/^#[0-9a-f]{6}$/)
     }
   })
 })

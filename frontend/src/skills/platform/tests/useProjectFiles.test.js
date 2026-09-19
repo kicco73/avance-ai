@@ -178,7 +178,7 @@ describe('useProjectFiles', () => {
       expect(putProjectFile).not.toHaveBeenCalled()
     })
 
-    it('routes a text file to behaviour/ and an image to aspect/ as binary, then reloads, selects it and resets the input', async () => {
+    it('routes a text file to behaviour/ and an image to media/ as binary, then reloads, selects it and resets the input', async () => {
       const s = mount()
       s.currentFileName.value = 'index.yml'
       getProjectFiles.mockResolvedValue({ files: ['index.yml', 'behaviour/notes.md'] })
@@ -193,11 +193,11 @@ describe('useProjectFiles', () => {
 
       const image = fakeFile('logo.png')
       await s.handleUploadFile(uploadEvent([image]))
-      expect(putProjectFileBinary).toHaveBeenCalledWith('proj', 'aspect/logo.png', image)
+      expect(putProjectFileBinary).toHaveBeenCalledWith('proj', 'media/logo.png', image)
 
       const audio = fakeFile('title.mp3', { size: 6 * 1024 * 1024 })
       await s.handleUploadFile(uploadEvent([audio]))
-      expect(putProjectFileBinary).toHaveBeenCalledWith('proj', 'aspect/title.mp3', audio)
+      expect(putProjectFileBinary).toHaveBeenCalledWith('proj', 'media/title.mp3', audio)
     })
   })
 
@@ -257,13 +257,13 @@ describe('useProjectFiles', () => {
       expect(confirmDialog).not.toHaveBeenCalled()
       expect(deleteProjectFile).not.toHaveBeenCalled()
 
-      await s.handleDeleteFile('aspect/logo.png')
+      await s.handleDeleteFile('media/logo.png')
       expect(confirmDialog).not.toHaveBeenCalled()
-      expect(deleteProjectFile).toHaveBeenCalledWith('proj', 'aspect/logo.png')
+      expect(deleteProjectFile).toHaveBeenCalledWith('proj', 'media/logo.png')
 
-      await s.handleDeleteFile('aspect/title.mp3')
+      await s.handleDeleteFile('media/title.mp3')
       expect(confirmDialog).not.toHaveBeenCalled()
-      expect(deleteProjectFile).toHaveBeenCalledWith('proj', 'aspect/title.mp3')
+      expect(deleteProjectFile).toHaveBeenCalledWith('proj', 'media/title.mp3')
 
       confirmDialog.mockResolvedValue(false)
       await s.handleDeleteFile('behaviour/notes.md')
@@ -273,6 +273,7 @@ describe('useProjectFiles', () => {
     it('switches back to index.yml only when the open file went away, cascaded theme assets included', async () => {
       confirmDialog.mockResolvedValue(true)
 
+      getProjectFiles.mockResolvedValue({ files: ['index.yml', 'behaviour/other.md'] })
       const other = mount()
       other.currentFileName.value = 'behaviour/other.md'
       await other.handleDeleteFile('behaviour/notes.md')
@@ -286,10 +287,11 @@ describe('useProjectFiles', () => {
       expect(open.currentFileName.value).toBe('index.yml')
       open.unmount?.()
 
-      getProjectFiles.mockResolvedValue({ files: ['index.yml', 'index.css', 'aspect/logo.png'] })
+      getProjectFiles.mockResolvedValue({ files: ['index.yml', 'index.css', 'media/logo.png'] })
       const cascaded = mount()
       await cascaded.loadFiles()
-      cascaded.currentFileName.value = 'aspect/logo.png'
+      cascaded.currentFileName.value = 'media/logo.png'
+      getProjectFiles.mockResolvedValue({ files: ['index.yml'] })
       await cascaded.handleDeleteFile('index.css')
       expect(cascaded.currentFileName.value).toBe('index.yml')
     })

@@ -6,8 +6,9 @@ import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
 import { consumeInviteCode, peekInviteCode } from '../shareLink.js'
 import { loadSkillRoster } from '../skillRoster.js'
-import { chatChannel, liveChatObservers, messageListeners, modelSelectors, stateListeners } from '../skills/registry.js'
+import { chatChannel, liveChatObservers, messageListeners, modelSelectors, stateListeners, triggerNamespaces } from '../skills/registry.js'
 import { observeMessages } from '../messageNotifier.js'
+import { installTriggerNamespaces } from '../triggerNamespaces.js'
 import { installModelSelector, modelSelector } from '../modelSelector.js'
 import { installChatChannel } from '../liveChatChannel.js'
 import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, observeLiveChat } from '../chatStore.js'
@@ -42,6 +43,7 @@ export function useAppBoot(
       installModelSelector(modelSelectors.value)
       installChatChannel(chatChannel.value)
       observeLiveChat(liveChatObservers.value)
+      installTriggerNamespaces(triggerNamespaces.value)
       publishState(newState)
       return 'ready'
     } catch (err) {

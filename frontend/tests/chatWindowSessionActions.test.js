@@ -16,6 +16,10 @@ vi.mock('../src/api.js', () => ({
   postAiModelSelection: vi.fn(),
   postTruncateSession: vi.fn(),
   getProjects: vi.fn().mockResolvedValue({ projects: [{ id: 'proj', ui_label: 'Proj' }], active: 'proj' }),
+  getSubscribedProjects: vi.fn().mockResolvedValue({
+    projects: [{ id: 'proj', ui_label: 'Proj' }, { id: 'other', ui_label: 'Other' }],
+    active: 'proj'
+  }),
   projectFileContentUrl: vi.fn(() => '/skin.css')
 }))
 
@@ -86,7 +90,7 @@ describe('ChatView.vue: the applications menu carries New/Close session, with no
   })
 
   it('marks the active project with a ✓, matched by id (not name — the backend row carries no such field)', async () => {
-    api.getProjects.mockResolvedValue({
+    api.getSubscribedProjects.mockResolvedValue({
       projects: [{ id: 'proj', ui_label: 'Proj' }, { id: 'other', ui_label: 'Other' }],
       active: 'proj'
     })

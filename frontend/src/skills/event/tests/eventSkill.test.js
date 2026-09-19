@@ -79,3 +79,24 @@ describe('a wake-up pushed for another project reaches the live conversation', (
     expect(notificationSubscriptions()).toHaveLength(subscribedBefore + 1)
   })
 })
+
+describe('the event namespace, as the trigger editor sees it', () => {
+  it('colors event.*, reads its members as values and explains an empty family', async () => {
+    const { namespaceColor, isProxyNamespace, namespaceOf, completeIdentifiers } =
+      await import('../../../triggerEditorSupport.js')
+    const { installTriggerNamespaces } = await import('../../../triggerNamespaces.js')
+    const { triggerNamespaces } = await import('../index.js')
+    installTriggerNamespaces(triggerNamespaces)
+    const { EditorState } = await import('@codemirror/state')
+    const { CompletionContext } = await import('@codemirror/autocomplete')
+
+    expect(namespaceColor('event')).toMatch(/^#[0-9a-f]{6}$/)
+    expect(isProxyNamespace('event')).toBe(false)
+    expect(isProxyNamespace('event.other_project')).toBe(false)
+    expect(namespaceOf('event.other_project.env.budget')).toBe('event')
+
+    const state = EditorState.create({ doc: 'event.' })
+    const [hint] = completeIdentifiers(new CompletionContext(state, 6, false), { event: {} }).options
+    expect(hint.label).toBe('(no sibling project shares this family)')
+  })
+})

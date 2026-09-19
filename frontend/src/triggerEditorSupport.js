@@ -1,4 +1,5 @@
 import { snippetCompletion } from '@codemirror/autocomplete'
+import { contributedTriggerNamespaces } from './triggerNamespaces.js'
 
 const CALL_PARAMS = {
   'task.send_mail': ['to', 'body_md'],
@@ -13,10 +14,7 @@ const CALL_PARAMS = {
   'drive.delete': ['path']
 }
 
-const EVENT_EMPTY_HINT =
-  "No other project declares the same project.family — set it in this project's and a sibling's index.yml to reference event.<id>."
-
-export const NAMESPACE_COLORS = {
+const CORE_NAMESPACE_COLORS = {
   signal: '#1565c0',
   env: '#00838f',
   session: '#6a1b9a',
@@ -27,7 +25,6 @@ export const NAMESPACE_COLORS = {
   chat: '#f9a825',
   drive: '#4527a0',
   metric: '#2e7d32',
-  event: '#455a64',
   choice: '#5d4037',
   datetime: '#00695c',
   'datetime.timezone': '#00897b'
@@ -39,16 +36,52 @@ export function excludingNamespaces(registry, excluded) {
   return Object.fromEntries(Object.entries(registry).filter(([ns]) => !isExcluded(ns)))
 }
 
-const VALUE_NAMESPACES = new Set(['signal', 'env', 'user', 'event', 'choice', 'datetime.timezone'])
+const VALUE_NAMESPACES = new Set(['signal', 'env', 'user', 'choice', 'datetime.timezone'])
 
-export function isProxyNamespace(namespace) {
-  return !VALUE_NAMESPACES.has(namespace) && !namespace.startsWith('event.')
+const CORE_PATTERN_SOURCE = 'signal|env|session(?:\\.metric)?|user|source|task|chat|drive|metric|choice|datetime(?:\\.timezone)?'
+
+class CoreNamespace {
+  constructor(name) {
+    this._name = name
+  }
+
+  get color() {
+    return CORE_NAMESPACE_COLORS[this._name] ?? null
+  }
+
+  get proxy() {
+    return !VALUE_NAMESPACES.has(this._name)
+  }
+
+  get emptyHint() {
+    return null
+  }
+
+  get emptyLabel() {
+    return null
+  }
 }
 
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|session(?:\\.metric)?|user|source|task|chat|drive|metric|event|choice|datetime(?:\\.timezone)?)\\.[A-Za-z_]\\w*'
+function namespaceNamed(namespace) {
+  const root = namespace.split('.')[0]
+  return contributedTriggerNamespaces().find((contributed) => contributed.name === root) ?? new CoreNamespace(namespace)
+}
+
+export function namespaceColor(namespace) {
+  return namespaceNamed(namespace).color
+}
+
+export function isProxyNamespace(namespace) {
+  return namespaceNamed(namespace).proxy
+}
+
+export function referencePatternSource() {
+  const contributed = contributedTriggerNamespaces().map((namespace) => namespace.name)
+  return `\\b(${[CORE_PATTERN_SOURCE, ...contributed].join('|')})\\.[A-Za-z_]\\w*`
+}
 
 export function namespaceOf(referenceText) {
-  const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)
+  const match = new RegExp(`^${referencePatternSource()}`).exec(referenceText)
   return match ? match[1] : null
 }
 
@@ -119,14 +152,16 @@ export function completeIdentifiers(context, registry) {
       options.push({ label: child, type: 'namespace', apply: child })
     }
     if (!options.length) {
-      if (namespace !== 'event') return null
+      const contributed = namespaceNamed(namespace)
+      const hint = contributed.emptyHint
+      if (!hint) return null
       return {
         from,
         options: [{
-          label: '(no sibling project shares this family)',
+          label: contributed.emptyLabel,
           type: 'text',
           apply: () => {},
-          info: () => completionInfo('event', EVENT_EMPTY_HINT, 'namespace')
+          info: () => completionInfo(namespace, hint, 'namespace')
         }]
       }
     }

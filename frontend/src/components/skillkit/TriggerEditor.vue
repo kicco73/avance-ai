@@ -22,7 +22,7 @@ import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
 import { identifierRegistry, refreshIdentifierRegistry } from '../../identifierRegistry.js'
-import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeIdentifiers as completeIdentifiersFor, excludingNamespaces } from '../../triggerEditorSupport.js'
+import { namespaceColor, referencePatternSource, completeIdentifiers as completeIdentifiersFor, excludingNamespaces } from '../../triggerEditorSupport.js'
 
 const model = defineModel({ type: String, default: '' })
 const props = defineProps({
@@ -40,26 +40,27 @@ function completeIdentifiers(context) {
   return completeIdentifiersFor(context, excludingNamespaces(identifierRegistry.value, props.excludeNamespaces))
 }
 
-const namespaceMatcher = new MatchDecorator({
-  regexp: new RegExp(REFERENCE_PATTERN_SOURCE, 'g'),
-  decoration: (match) => {
-    const color = NAMESPACE_COLORS[match[1]]
-    return color ? Decoration.mark({ attributes: { style: `color: ${color}` } }) : Decoration.none
-  }
-})
-
-const namespaceHighlighter = ViewPlugin.fromClass(
-  class {
-    constructor(cmView) {
-      this.decorations = namespaceMatcher.createDeco(cmView)
+function namespaceHighlighter() {
+  const matcher = new MatchDecorator({
+    regexp: new RegExp(referencePatternSource(), 'g'),
+    decoration: (match) => {
+      const color = namespaceColor(match[1])
+      return color ? Decoration.mark({ attributes: { style: `color: ${color}` } }) : Decoration.none
     }
+  })
+  return ViewPlugin.fromClass(
+    class {
+      constructor(cmView) {
+        this.decorations = matcher.createDeco(cmView)
+      }
 
-    update(update) {
-      this.decorations = namespaceMatcher.updateDeco(update, this.decorations)
-    }
-  },
-  { decorations: (instance) => instance.decorations }
-)
+      update(update) {
+        this.decorations = matcher.updateDeco(update, this.decorations)
+      }
+    },
+    { decorations: (instance) => instance.decorations }
+  )
+}
 
 const editorSetup = [
   highlightSpecialChars(),
@@ -97,7 +98,7 @@ function createEditor() {
       props.large ? keymap.of([indentWithTab]) : [],
       EditorView.lineWrapping,
       autocompletion({ override: [completeIdentifiers] }),
-      namespaceHighlighter,
+      namespaceHighlighter(),
       tooltips({ parent: props.tooltipParent ?? document.body }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) model.value = update.state.doc.toString()

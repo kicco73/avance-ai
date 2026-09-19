@@ -85,10 +85,14 @@ describe('the input row', () => {
     preferences.audioEnabled.value = false
   })
 
-  it('leaves them on while the chat is open', () => {
-    const app = show({ disabled: false, sample: true })
+  it('leaves them on while the chat is open', async () => {
+    const { publishServices } = await import('../src/skillServices.js')
+    publishServices(Object.fromEntries(chatInputControls.value.map((c) => [c.id.split('-')[0], true])))
+
+    const app = show({ disabled: false })
 
     const controls = [...container.querySelectorAll('.chat-input-control')]
+    expect(controls.length).toBe(chatInputControls.value.length)
     expect(controls.filter((el) => el.disabled)).toEqual([])
 
     app.unmount()
