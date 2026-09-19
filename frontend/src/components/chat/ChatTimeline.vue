@@ -1,6 +1,7 @@
 <script setup>
-import { nextTick, ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
+import { BottomAnchor } from './bottomAnchor.js'
 import { messageHasAnnotatedSignals } from '../../testTimeline.js'
 
 const props = defineProps({
@@ -26,14 +27,15 @@ function actionLabel(transition) {
 const emit = defineEmits(['select-message', 'select-transition', 'react'])
 
 const rootEl = ref(null)
+const contentEl = ref(null)
+const anchor = new BottomAnchor()
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (rootEl.value) rootEl.value.scrollTop = rootEl.value.scrollHeight
-  })
-}
+watch([rootEl, contentEl], ([scroller, content]) => {
+  anchor.detach()
+  if (scroller && content && props.autoScroll) anchor.attach(scroller, content)
+})
 
-watch(() => props.timeline, () => { if (props.autoScroll) scrollToBottom() })
+onBeforeUnmount(() => anchor.detach())
 
 function toBubbleMessage(m) {
   return { ...m, audioText: m.audio_text }
@@ -53,7 +55,8 @@ function isSelfLoop(transition) {
 </script>
 
 <template>
-  <div class="chat-timeline" ref="rootEl">
+  <div class="chat-timeline" ref="rootEl" @scroll="anchor.onScroll()">
+    <div class="chat-timeline-content" ref="contentEl">
     <template
       v-for="entry in timeline"
       :key="entry.kind + '-' + (entry.kind === 'message' ? (entry.message.key ?? entry.message.id) : entry.transition.id)"
@@ -116,6 +119,7 @@ function isSelfLoop(transition) {
         >✓</span>
       </div>
     </template>
+    </div>
   </div>
 </template>
 
@@ -124,6 +128,13 @@ function isSelfLoop(transition) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-timeline-content {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }

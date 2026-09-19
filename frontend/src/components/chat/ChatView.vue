@@ -20,6 +20,7 @@ import {
 } from '../../chatStoreFactory.js'
 import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
 import { customDialog, infoDialog } from '../../dialogStore.js'
+import { BottomAnchor } from './bottomAnchor.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
@@ -71,6 +72,7 @@ const canBackToManageProjects = computed(() => props.role === 'admin' || props.r
 const backLabel = computed(() => props.role === 'customer' ? 'Back to App store' : 'Back to Manage projects')
 
 const scrollEl = ref(null)
+const contentEl = ref(null)
 const chatInputRef = ref(null)
 const rootEl = ref(null)
 
@@ -144,32 +146,20 @@ function resend(i) {
   handleResend(i)
 }
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (scrollEl.value) {
-      scrollEl.value.scrollTop = scrollEl.value.scrollHeight
-    }
-  })
-}
-
-const NEAR_BOTTOM_THRESHOLD_PX = 80
-const userNearBottom = ref(true)
+const anchor = new BottomAnchor()
 
 function onMessagesScroll() {
-  const el = scrollEl.value
-  if (!el) return
-  userNearBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_THRESHOLD_PX
+  anchor.onScroll()
 }
 
-watch(currentSessionId, () => { userNearBottom.value = true })
+watch([scrollEl, contentEl], ([scroller, content]) => {
+  anchor.detach()
+  if (scroller && content) anchor.attach(scroller, content)
+})
 
-watch(
-  messages,
-  () => {
-    if (userNearBottom.value) scrollToBottom()
-  },
-  { deep: true }
-)
+watch(currentSessionId, () => { nextTick(() => anchor.jump()) })
+
+onBeforeUnmount(() => anchor.detach())
 
 watch(chatLoading, async (isLoading, wasLoading) => {
   if (isLoading || !wasLoading || chatDisabled.value) return
@@ -251,6 +241,7 @@ watch(
     </div>
 
     <div class="messages chat-body" ref="scrollEl" @scroll="onMessagesScroll">
+      <div class="messages-content" ref="contentEl">
       <slot name="timeline">
         <MessageBubble
           v-for="(msg, i) in messages"
@@ -263,6 +254,7 @@ watch(
           @react="handleReact(msg.messageId, $event)"
         />
       </slot>
+      </div>
     </div>
 
     <p
@@ -345,8 +337,15 @@ watch(
   padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
   overscroll-behavior-y: contain;
+}
+
+.messages-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .chat-ended-notice {
