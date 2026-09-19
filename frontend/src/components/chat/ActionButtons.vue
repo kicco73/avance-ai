@@ -152,8 +152,10 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
   color: #4a6fa5;
 }
 
-.action-btn:hover:not(:disabled) {
-  background: #4a6fa5;
-  color: white;
+@media (hover: hover) {
+  .action-btn:hover:not(:disabled) {
+    background: #4a6fa5;
+    color: white;
+  }
 }
 </style>

@@ -82,8 +82,10 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   cursor: default;
 }
 
-.chat-input-control:hover:not(:disabled) {
-  background: #f0f0f0;
+@media (hover: hover) {
+  .chat-input-control:hover:not(:disabled) {
+    background: #f0f0f0;
+  }
 }
 
 @media (hover: none) and (pointer: coarse) {
