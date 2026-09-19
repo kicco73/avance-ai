@@ -4,7 +4,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
-import ChatSupersededOverlay from './ChatSupersededOverlay.vue'
 import ChatWaitingPanel from './ChatWaitingPanel.vue'
 import ChartDialog from './ChartDialog.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
@@ -20,7 +19,7 @@ import {
   chatConnectionState,
 } from '../../chatStoreFactory.js'
 import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
-import { customDialog } from '../../dialogStore.js'
+import { customDialog, infoDialog } from '../../dialogStore.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
@@ -82,6 +81,15 @@ defineExpose({
 const chatConnected = computed(() => chatConnectionState.value === 'open')
 
 const chatSuperseded = computed(() => chatConnectionState.value === 'superseded')
+
+watch(chatSuperseded, (superseded) => {
+  if (!superseded) return
+  infoDialog({
+    title: 'Chat moved to another client',
+    body: 'This conversation has been opened in another window or device, which now controls the channel. You can no longer send or receive messages from here.',
+    okLabel: 'OK'
+  })
+})
 
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat_enabled || !selectedSessionActive.value)
 
@@ -297,7 +305,6 @@ watch(
     </div>
 
     <ChatWaitingPanel v-if="!historyLoaded" />
-    <ChatSupersededOverlay v-else-if="chatSuperseded" />
     </template>
     </div>
   </div>
