@@ -255,7 +255,7 @@ const {
   max-width: 70%;
 }
 
-@media (max-width: 640px) {
+@container chat-window (max-width: 640px) {
   .message-row {
     max-width: 88%;
   }

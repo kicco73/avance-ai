@@ -100,7 +100,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
   white-space: nowrap;
 }
 
-@media (max-width: 640px) {
+@container chat-window (max-width: 640px) {
   .action-buttons {
     padding: 0.5rem 0.75rem;
   }

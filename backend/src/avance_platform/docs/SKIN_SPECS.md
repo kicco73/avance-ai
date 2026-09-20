@@ -214,9 +214,20 @@ in the file explorer) is a live split view:
   changes nothing, with the specific error shown.
 
 The **Run** tab (a real embedded test conversation, not the mock above)
-has its own "Apply aspect" checkbox — off by default, remembered across
-visits — so you can compare the skinned and bare (default) look side by
-side using a real conversation instead of the mock one.
+always applies the saved `index.css`, the same as the live chat does — there
+is no toggle to view it unskinned. It renders with the same bubble layout as
+every other chat in the app (no separate debug timeline); clicking a bubble
+selects it, driving the Inspector the same way clicking a state or a
+transition elsewhere does.
+
+An "Aspect" menu next to Restart switches the viewport the conversation
+renders at — a different thing from the `index.css` "Aspect" panel above,
+same name, two different knobs: Dynamic (fills the panel, today's default),
+Web (800×600), or Mobile vertical/horizontal (iPhone 14 Pro dimensions,
+393×852). Picking one of the three fixed sizes reveals a camera button that
+captures a JPEG of the conversation at that size and saves it into the
+project's `media/` as `snapshot-<aspect>-<n>.jpg`, `<n>` counting up per
+aspect; the file explorer picks up the new entry as soon as it's saved.
 
 The live production chat always applies the saved `index.css` as soon as
 it exists — there is no separate publish step beyond Save.

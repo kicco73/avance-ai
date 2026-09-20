@@ -18,17 +18,18 @@ import {
   spokenTextEnabled,
   chatConnectionState,
 } from '../../chatStoreFactory.js'
-import { applyAspect, manualApplyAspectPreference, onLiveSkinApplied } from '../../chatSkin.js'
+import { onLiveSkinApplied } from '../../chatSkin.js'
 import { customDialog, infoDialog } from '../../dialogStore.js'
 import { BottomAnchor } from './bottomAnchor.js'
 import { SceneFade } from './sceneFade.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
-  themeMode: { type: String, default: 'auto' },
   store: { type: Object, default: () => liveStore },
   role: { type: String, default: null },
-  profile: { type: Object, default: null }
+  profile: { type: Object, default: null },
+  selectable: { type: Boolean, default: false },
+  selectedMessageId: { type: [Number, String], default: null }
 })
 
 const {
@@ -67,7 +68,7 @@ watch(chart, (next) => {
   dismissChart()
 })
 
-const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout'])
+const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout', 'select-message'])
 
 const canBackToManageProjects = computed(() => props.role === 'admin' || props.role === 'customer')
 const backLabel = computed(() => props.role === 'customer' ? 'Back to App store' : 'Back to Manage projects')
@@ -123,16 +124,11 @@ onMounted(() => {
   document.addEventListener('visibilitychange', onVisibilityChange)
   document.addEventListener('focusin', onDocumentFocusChange)
   document.addEventListener('click', onDocumentFocusChange, true)
-  if (props.themeMode === 'manual') applyAspect.value = manualApplyAspectPreference.value
 })
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   document.removeEventListener('focusin', onDocumentFocusChange)
   document.removeEventListener('click', onDocumentFocusChange, true)
-  if (props.themeMode === 'manual') {
-    manualApplyAspectPreference.value = applyAspect.value
-    applyAspect.value = true
-  }
   pauseBackgroundAudio()
 })
 
@@ -267,16 +263,35 @@ watch(
     <div class="messages chat-body" ref="scrollEl" @scroll="onMessagesScroll">
       <div class="messages-content" ref="contentEl">
       <slot name="timeline">
-        <MessageBubble
-          v-for="(msg, i) in messages"
-          :key="msg.id"
-          :message="msg"
-          :spoken-text-enabled="spokenTextEnabled"
-          :reactions="state?.reactions || []"
-          show-timestamp
-          @resend="resend(i)"
-          @react="handleReact(msg.messageId, $event)"
-        />
+        <template v-for="(msg, i) in messages" :key="msg.id">
+          <div
+            v-if="selectable"
+            class="chat-message-row"
+            :class="[msg.role === 'user' ? 'chat-message-row-user' : 'chat-message-row-assistant', { 'chat-message-row-selected': selectedMessageId === msg.id }]"
+            @click="emit('select-message', msg)"
+          >
+            <span class="chat-message-row-actions" @click.stop>
+              <slot name="message-actions" :message="msg" />
+            </span>
+            <MessageBubble
+              :message="msg"
+              :spoken-text-enabled="spokenTextEnabled"
+              :reactions="state?.reactions || []"
+              show-timestamp
+              @resend="resend(i)"
+              @react="handleReact(msg.messageId, $event)"
+            />
+          </div>
+          <MessageBubble
+            v-else
+            :message="msg"
+            :spoken-text-enabled="spokenTextEnabled"
+            :reactions="state?.reactions || []"
+            show-timestamp
+            @resend="resend(i)"
+            @react="handleReact(msg.messageId, $event)"
+          />
+        </template>
       </slot>
       </div>
     </div>
@@ -344,6 +359,8 @@ watch(
   min-height: 0;
   min-width: 0;
   animation: skin-scene-in 0.25s ease;
+  container-name: chat-window;
+  container-type: inline-size;
 }
 
 @keyframes skin-scene-in {
@@ -382,6 +399,35 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.chat-message-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.chat-message-row:hover {
+  background: #f7f9fc;
+}
+
+.chat-message-row-selected {
+  background: #e3ebf7;
+}
+
+.chat-message-row-user {
+  justify-content: flex-end;
+}
+
+.chat-message-row-assistant {
+  justify-content: flex-start;
+}
+
+.chat-message-row-actions {
+  display: contents;
 }
 
 .chat-ended-notice {

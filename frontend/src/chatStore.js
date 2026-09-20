@@ -6,7 +6,7 @@ export {
   audioEnabled, spokenTextEnabled, inputTokenBudgetPerTurn, totalTokenBudgetPerSession,
   setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, toggleSpokenText,
 } from './chatStoreFactory.js'
-export { applyAspect, invalidateSkin } from './chatSkin.js'
+export { invalidateSkin } from './chatSkin.js'
 
 export const liveStore = createChatStore({
   kind: 'live',

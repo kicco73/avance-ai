@@ -37,7 +37,6 @@ export function useProjectFiles(projectId, emit) {
   })
   const currentFileIsMarkdown = computed(() => /\.(md|txt)$/i.test(currentFileName.value ?? ''))
   const isBehaviorNodeSelected = computed(() => currentFileName.value === 'index.yml')
-  const hasTheme = computed(() => files.value.includes('index.css'))
   const hasLegalTerms = computed(() => files.value.includes(LEGAL_TERMS_FILE_NAME))
   const mediaRootSelected = ref(false)
   const attachmentsRootSelected = ref(false)
@@ -355,7 +354,7 @@ export function useProjectFiles(projectId, emit) {
   return {
     filesLoading, files, currentFileName, uploading, creatingFile, deletingFile, renamingFile,
     designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
-    currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
+    currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected,
     mediaRootSelected, selectMediaRoot,
     attachmentsRootSelected, selectAttachmentsRoot,
     activeEditorIsDirty, activeEditor,

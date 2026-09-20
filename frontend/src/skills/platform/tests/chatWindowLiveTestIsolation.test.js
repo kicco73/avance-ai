@@ -56,7 +56,7 @@ describe('the live chat and the "Run" test chat are genuinely independent stores
     const testContainer = document.createElement('div')
     document.body.appendChild(testContainer)
     const testApp = createApp({
-      render: () => h(ChatWindow, { hideSessionsPanel: true, themeMode: 'manual', store: testChatStore.testStore })
+      render: () => h(ChatWindow, { hideSessionsPanel: true, store: testChatStore.testStore })
     })
     testApp.mount(testContainer)
 

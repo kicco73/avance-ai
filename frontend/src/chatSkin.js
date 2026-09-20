@@ -3,9 +3,6 @@ import { projectFileContentUrl } from './api.js'
 import { resolveCssAssetUrls } from './cssAssetUrls.js'
 import { scopeSkinToChat } from './chatSkinScope.js'
 
-export const applyAspect = ref(true)
-
-export const manualApplyAspectPreference = ref(false)
 export const skinVersion = ref(0)
 
 export function invalidateSkin() {
@@ -119,10 +116,6 @@ function scheduleSkinLoad() {
 
 async function loadSkin() {
   const source = currentSource()
-  if (!applyAspect.value) {
-    clearSkin()
-    return
-  }
   const key = source.key()
   let css
   try {
@@ -130,7 +123,7 @@ async function loadSkin() {
   } catch {
     return
   }
-  if (!applyAspect.value || currentSource() !== source || source.key() !== key) return
+  if (currentSource() !== source || source.key() !== key) return
   if (css === null) {
     clearSkin()
     return
@@ -141,4 +134,4 @@ async function loadSkin() {
   }
 }
 
-watch([activeChatMode, skinVersion, applyAspect], scheduleSkinLoad, { immediate: true })
+watch([activeChatMode, skinVersion], scheduleSkinLoad, { immediate: true })

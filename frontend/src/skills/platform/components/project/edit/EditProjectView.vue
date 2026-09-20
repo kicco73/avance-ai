@@ -54,7 +54,7 @@ const emit = defineEmits(['saved', 'renamed', 'back', 'home', 'profile', 'logout
 const {
   filesLoading, files, currentFileName, uploading, creatingFile, deletingFile, renamingFile,
   designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
-  currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
+  currentFileIsMedia, currentFileIsMarkdown, isBehaviorNodeSelected,
   mediaRootSelected, selectMediaRoot,
   attachmentsRootSelected, selectAttachmentsRoot,
   activeEditorIsDirty, activeEditor,
@@ -179,13 +179,13 @@ const selectedStateData = computed(() => {
 const runCurrentSession = computed(() => runSessions.value.find((s) => s.id === currentSessionId.value) ?? null)
 
 const {
-  validStateKeys, availableStates, buildProblems, stateLabelFor, actionLabelFor, refreshCatalog,
+  validStateKeys, availableStates, buildProblems, refreshCatalog,
 } = useProjectCatalog(props.projectId)
 
 const {
-  signalsLog, selected, runChatRef, timeline,
+  selected, runChatRef, timeline,
   refreshSignalsLog, refreshSessionStartState, isStateGone,
-  selectMessage, selectTransition, highlightedStateKey, firedActionEdge, untilMessageId, envEditable,
+  selectMessage, highlightedStateKey, firedActionEdge, untilMessageId, envEditable,
   effectiveSignalValues, restartAndPrefill, restartAndResend,
 } = useLiveRunTimeline(props.projectId, mode, validStateKeys)
 
@@ -530,16 +530,12 @@ async function handleSetSessionComment(sessionId, comment) {
           v-if="runOpen"
           ref="runChatRef"
           :timeline="timeline"
-          :signals-log="signalsLog"
           :selected="selected"
-          :has-theme="hasTheme"
-          :resolve-state-label="stateLabelFor"
-          :resolve-action-label="actionLabelFor"
           :is-state-gone="isStateGone"
           @select-message="selectMessage"
-          @select-transition="selectTransition"
           @restart-prefill="restartAndPrefill"
           @restart-resend="restartAndResend"
+          @media-saved="loadFiles"
         />
 
         <component v-if="activeMode.panel" :is="activeMode.panel" :workspace="workspace" />

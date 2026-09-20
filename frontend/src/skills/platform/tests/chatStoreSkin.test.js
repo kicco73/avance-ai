@@ -102,19 +102,6 @@ describe("chatSkin.js's shared index.css skin loader, driven by the live store",
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(0))
   })
 
-  it('applyAspect off removes the skin and short-circuits before the fetch; turning it back on resumes loading', async () => {
-    await loadRed()
-
-    chatSkin.applyAspect.value = false
-    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(0))
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-
-    fetchMock.mockResolvedValue({ ok: true, text: async () => css('green') })
-    chatSkin.applyAspect.value = true
-    await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
-    expect(currentSkinStyleTags()[0].textContent).toContain(css('green'))
-  })
-
   it('switching project+session (e.g. leaving then re-entering Test) fetches the new one', async () => {
     await loadRed()
 
