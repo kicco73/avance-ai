@@ -37,14 +37,14 @@ export function chooseDialog({ title, body, options }) {
   return enqueue({ kind: 'choose', title, body, options })
 }
 
-export function infoDialog({ title = '', body, okLabel = null, markdown = false, scopeEl = null }) {
-  return enqueue({ kind: 'info', title, body, okLabel, markdown, scopeEl })
+export function infoDialog({ title = '', body, okLabel = null, markdown = false }) {
+  return enqueue({ kind: 'info', title, body, okLabel, markdown })
 }
 
 export function aboutDialog({ version }) {
   return enqueue({ kind: 'about', version })
 }
 
-export function customDialog({ component, props = {}, wide = false, scopeEl = null }) {
-  return enqueue({ kind: 'custom', component: markRaw(component), props, wide, scopeEl })
+export function customDialog({ component, props = {}, wide = false }) {
+  return enqueue({ kind: 'custom', component: markRaw(component), props, wide })
 }

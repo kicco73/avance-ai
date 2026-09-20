@@ -7,28 +7,23 @@ import { resolveApiUrl } from './api/core.js'
 
 const MediaDialog = defineAsyncComponent(() => import('./components/MediaDialog.vue'))
 
-function show(body_md, scopeEl) {
-  infoDialog({ body: body_md, markdown: true, scopeEl })
+function show(body_md) {
+  infoDialog({ body: body_md, markdown: true })
 }
 
-function show_media(url, { playBackgroundAudio, scopeEl }) {
+function show_media(url, { playBackgroundAudio }) {
   const resolvedUrl = resolveApiUrl(url)
   if (mediaKindFromUrl(resolvedUrl) === 'audio') {
     playBackgroundAudio(resolvedUrl)
     return
   }
-  customDialog({ component: MediaDialog, props: { url: resolvedUrl }, wide: true, scopeEl })
+  customDialog({ component: MediaDialog, props: { url: resolvedUrl }, wide: true })
 }
 
-export function runTaskScript(script, { playBackgroundAudio, scopeEl = null } = {}) {
+export function runTaskScript(script, { playBackgroundAudio } = {}) {
   if (!script) return
   try {
-    const taskLocals = {
-      celebrate: (duration) => celebrate(duration, scopeEl),
-      notify: (title, body) => notify(title, body, scopeEl),
-      show: (body_md) => show(body_md, scopeEl),
-      show_media: (url) => show_media(url, { playBackgroundAudio, scopeEl }),
-    }
+    const taskLocals = { celebrate, notify, show, show_media: (url) => show_media(url, { playBackgroundAudio }) }
     const names = Object.keys(taskLocals)
     const values = names.map((name) => taskLocals[name])
     const run = new Function(...names, script)

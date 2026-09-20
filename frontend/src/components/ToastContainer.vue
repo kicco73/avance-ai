@@ -1,19 +1,12 @@
 <script setup>
-import { computed } from 'vue'
 import { toasts, dismissToast } from '../toastStore.js'
 import { renderMarkdown } from '../markdown.js'
-
-const props = defineProps({
-  scopeEl: { type: Object, default: null }
-})
-
-const visibleToasts = computed(() => toasts.value.filter((t) => (t.scopeEl ?? null) === props.scopeEl))
 </script>
 
 <template>
-  <div class="toast-container" :class="{ 'toast-container-scoped': scopeEl }">
+  <div class="toast-container">
     <TransitionGroup name="toast">
-      <div v-for="toast in visibleToasts" :key="toast.id" class="toast-card">
+      <div v-for="toast in toasts" :key="toast.id" class="toast-card">
         <div class="toast-header">
           <span class="toast-title">{{ toast.title }}</span>
           <button class="toast-close" title="Dismiss" @click="dismissToast(toast.id)">×</button>
@@ -36,11 +29,6 @@ const visibleToasts = computed(() => toasts.value.filter((t) => (t.scopeEl ?? nu
   width: 320px;
   max-width: calc(100vw - 2rem);
   pointer-events: none;
-}
-
-.toast-container-scoped {
-  position: absolute;
-  max-width: calc(100% - 2rem);
 }
 
 .toast-card {

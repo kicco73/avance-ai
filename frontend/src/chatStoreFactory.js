@@ -17,7 +17,6 @@ import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
 import { runTaskScript } from './taskActions.js'
-import { effectsScopeFor } from './effectsScope.js'
 import { createBackgroundAudio } from './backgroundAudio.js'
 import { rememberBackgroundAudio, recallBackgroundAudio, forgetBackgroundAudio } from './backgroundAudioSessionMemory.js'
 
@@ -221,7 +220,6 @@ export function createChatStore({
         playBackgroundAudio(url)
         rememberBackgroundAudio(kind, frame.session_id ?? currentSessionId.value, url)
       },
-      scopeEl: effectsScopeFor(kind),
     })
   })
 
@@ -671,7 +669,6 @@ export function createChatStore({
   }
 
   return {
-    kind,
     abandonOpenReplies,
     state, currentSessionId, selectedSessionActive, sessionEndReason, sessionChannel, conversationElsewhere,
     blockedReason, blockedDetail,

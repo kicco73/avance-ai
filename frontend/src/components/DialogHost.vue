@@ -40,9 +40,8 @@ watch(activeDialog, async (dialog) => {
   if (!dialog) return
   promptValue.value = TEXT_INPUT_KINDS.includes(dialog.kind) ? (dialog.initialValue ?? '') : ''
   await nextTick()
-  if (dialog.scopeEl) dialogEl.value?.show()
-  else dialogEl.value?.showModal()
-  dialogEl.value.style.width = dialog.markdown && !dialog.scopeEl ? `${measuredDocWidth()}px` : ''
+  dialogEl.value?.showModal()
+  dialogEl.value.style.width = dialog.markdown ? `${measuredDocWidth()}px` : ''
   if (TEXT_INPUT_KINDS.includes(dialog.kind)) inputEl.value?.focus()
   requestAnimationFrame(() => { cardVisible.value = true })
 })
@@ -88,18 +87,13 @@ function chooseOption(id) {
 </script>
 
 <template>
-  <Teleport :to="activeDialog?.scopeEl ?? 'body'">
-  <div
-    class="app-dim"
-    aria-hidden="true"
-    :class="{ 'app-dim-active': activeDialog, 'app-dim-scoped': activeDialog?.scopeEl }"
-  ></div>
+  <div class="app-dim" aria-hidden="true" :class="{ 'app-dim-active': activeDialog }"></div>
 
   <dialog
     v-if="activeDialog"
     ref="dialogEl"
     class="app-dialog"
-    :class="{ 'app-dialog-wide': activeDialog.wide, 'app-dialog-doc': activeDialog.markdown, 'app-dialog-scoped': activeDialog.scopeEl }"
+    :class="{ 'app-dialog-wide': activeDialog.wide, 'app-dialog-doc': activeDialog.markdown }"
     @cancel="onCancel"
     @close="onNativeClose"
     @click="onBackdropClick"
@@ -191,7 +185,6 @@ function chooseOption(id) {
       </div>
     </div>
   </dialog>
-  </Teleport>
 </template>
 
 <style scoped>
@@ -211,11 +204,6 @@ function chooseOption(id) {
   background: rgba(0, 0, 0, 0.35);
 }
 
-.app-dim-scoped {
-  position: absolute;
-  bottom: 0;
-}
-
 .app-dialog {
   padding: 0;
   border: none;
@@ -224,38 +212,6 @@ function chooseOption(id) {
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
   max-width: 420px;
   width: calc(100vw - 2rem);
-}
-
-.app-dialog-scoped {
-  position: absolute;
-  inset: 1rem;
-  margin: 0;
-  width: auto;
-  height: auto;
-  max-width: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
-  z-index: 2001;
-}
-
-.app-dialog-scoped .dialog-card {
-  width: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  overflow: auto;
-  box-sizing: border-box;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
-}
-
-.app-dialog-scoped.app-dialog-wide,
-.app-dialog-scoped.app-dialog-doc {
-  min-width: 0;
-  max-width: none;
 }
 
 .app-dialog-wide {

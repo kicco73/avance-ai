@@ -41,13 +41,13 @@ describe('runTaskScript', () => {
 
   it('calls notify(title, body) with the script\'s own arguments', () => {
     taskActions.runTaskScript("notify('Nice!', 'You reached **state B**.')")
-    expect(toastStore.notify).toHaveBeenCalledWith('Nice!', 'You reached **state B**.', null)
+    expect(toastStore.notify).toHaveBeenCalledWith('Nice!', 'You reached **state B**.')
   })
 
   it('runs multiple statements in one script', () => {
     taskActions.runTaskScript("celebrate(); notify('Nice!', 'Done')")
     expect(confetti.celebrate).toHaveBeenCalledTimes(1)
-    expect(toastStore.notify).toHaveBeenCalledWith('Nice!', 'Done', null)
+    expect(toastStore.notify).toHaveBeenCalledWith('Nice!', 'Done')
   })
 
   it('catches a script referencing an unknown identifier instead of throwing', () => {
