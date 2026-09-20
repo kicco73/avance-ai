@@ -54,10 +54,20 @@ function selectorList(cssText) {
 
 const ROOT_MATCHABLE = /^[.#[:]/
 
-function scopedSelector(selector) {
-  return selectorList(selector)
+const HOVER = /:hover\b/
+
+function scopedSelector(selectors) {
+  return selectors
     .flatMap((one) => (ROOT_MATCHABLE.test(one) ? [one, `:scope${one}`] : [one]))
     .join(', ')
+}
+
+function styleRule(selectors, body) {
+  return selectors.length ? [`${scopedSelector(selectors)} {${body}}`] : []
+}
+
+function hoverRule(selectors, body) {
+  return selectors.length ? [`@media (hover: hover) {\n${scopedSelector(selectors)} {${body}}\n}`] : []
 }
 
 function scopeRule(rule) {
@@ -67,7 +77,11 @@ function scopeRule(rule) {
   const body = rule.slice(braceAt + 1, rule.lastIndexOf('}'))
   if (NESTING_AT_RULE.test(head)) return `${head} {\n${scopeRules(body)}\n}`
   if (head.startsWith('@')) return rule
-  return `${scopedSelector(head)} {${body}}`
+  const selectors = selectorList(head)
+  return [
+    ...styleRule(selectors.filter((one) => !HOVER.test(one)), body),
+    ...hoverRule(selectors.filter((one) => HOVER.test(one)), body)
+  ].join('\n')
 }
 
 function scopeRules(cssText) {

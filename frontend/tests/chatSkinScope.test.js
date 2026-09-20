@@ -43,3 +43,30 @@ describe('scopeSkinToChat hoists what must stay document-level out of @scope', (
     expect(scoped).toContain(':scope.chat-header')
   })
 })
+
+describe('scopeSkinToChat keeps :hover for devices that can hover', () => {
+  it('moves a :hover rule under @media (hover: hover)', () => {
+    const applied = scopeSkinToChat('.action-btn:hover:not(:disabled) { background: red; }')
+
+    const media = applied.indexOf('@media (hover: hover)')
+    expect(media).toBeGreaterThan(applied.indexOf('@scope'))
+    expect(applied.slice(media)).toContain(':scope.action-btn:hover:not(:disabled) {')
+  })
+
+  it('leaves the non-hover selectors of a shared list outside the media query', () => {
+    const applied = scopeSkinToChat('.action-btn:focus, .action-btn:hover { background: red; }')
+
+    const media = applied.indexOf('@media (hover: hover)')
+    expect(applied.slice(0, media)).toContain('.action-btn:focus')
+    expect(applied.slice(0, media)).not.toContain(':hover')
+    expect(applied.slice(media)).toContain('.action-btn:hover')
+    expect(applied.slice(media)).not.toContain(':focus')
+  })
+
+  it('gates a :hover rule written inside a state block', () => {
+    const applied = scopeSkinToChat('@media (max-width: 640px) { .state-crisis .action-btn:hover { color: red; } }')
+
+    expect(applied).toContain('@media (hover: hover)')
+    expect(applied.indexOf('@media (hover: hover)')).toBeGreaterThan(applied.indexOf('@media (max-width: 640px)'))
+  })
+})
