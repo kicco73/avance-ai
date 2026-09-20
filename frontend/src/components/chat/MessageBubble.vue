@@ -425,7 +425,10 @@ const {
   margin-top: 0.3rem;
 }
 
-.tool-status-fade-enter-active,
+/* XXX leave only. A `.tool-status-fade-enter-active` opacity transition
+   leaves the bubble white with no text on WebKit iOS 26 when a stream
+   chunk lands within the 250ms of the previous one (bisected on device,
+   2026-09-20). Do not add the enter side back. */
 .tool-status-fade-leave-active {
   transition: opacity 0.25s ease;
 }
@@ -493,7 +496,6 @@ const {
   }
 }
 
-.tool-status-fade-enter-from,
 .tool-status-fade-leave-to {
   opacity: 0;
 }
