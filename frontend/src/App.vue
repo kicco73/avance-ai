@@ -28,7 +28,7 @@ const landingProjectId = ref(null)
 const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 const chatWindowRef = ref(null)
-const dialogOpen = computed(() => !!activeDialog.value)
+const dialogOpen = computed(() => !!activeDialog.value && !activeDialog.value.scopeEl)
 const ServicesView = defineAsyncComponent(() => import('./components/services/ServicesView.vue'))
 const CORE_OVERLAYS = [
   { view: 'services', component: ServicesView },

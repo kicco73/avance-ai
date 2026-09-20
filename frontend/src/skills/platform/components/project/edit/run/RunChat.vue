@@ -4,11 +4,13 @@ import html2canvas from 'html2canvas'
 import ChatView from '../../../../../../components/chat/ChatView.vue'
 import RestartFromHereButton from '../../../../../../components/chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../../../../components/chat/SessionsPanel.vue'
+import ToastContainer from '../../../../../../components/ToastContainer.vue'
 import AspectMenu from './AspectMenu.vue'
 import { aspectFor } from './aspects.js'
 import { getHistory, deleteSession, getProjectFiles, putProjectFileBinary } from '../../../../api.js'
 import { totalTokenBudgetPerSession } from '../../../../../../chatStoreFactory.js'
-import { infoDialog } from '../../../../../../dialogStore.js'
+import { activeDialog, infoDialog } from '../../../../../../dialogStore.js'
+import { registerEffectsScope } from '../../../../../../effectsScope.js'
 import { testStore } from '../../../../testChatStore.js'
 import { useTokensBar } from '../../../../../../composables/useTokensBar.js'
 import { useFloatingTooltip } from '../../../../../../useFloatingTooltip.js'
@@ -76,6 +78,7 @@ const aspect = ref('dynamic')
 const currentAspect = computed(() => aspectFor(aspect.value))
 const stageEl = ref(null)
 const capturingSnapshot = ref(false)
+const scopedDialogOpen = computed(() => !!stageEl.value && activeDialog.value?.scopeEl === stageEl.value)
 
 const stageWrapEl = ref(null)
 const availableStageSize = ref({ width: 0, height: 0 })
@@ -189,17 +192,21 @@ function stopSessionExplorerDrag() {
   draggingSessionExplorer = false
 }
 
+let unregisterEffectsScope = null
+
 onMounted(() => {
   window.addEventListener('mousemove', onSessionExplorerDrag)
   window.addEventListener('mouseup', stopSessionExplorerDrag)
   updateAvailableStageSize()
   stageResizeObserver = new ResizeObserver(updateAvailableStageSize)
   if (stageWrapEl.value) stageResizeObserver.observe(stageWrapEl.value)
+  if (stageEl.value) unregisterEffectsScope = registerEffectsScope('test', stageEl.value)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onSessionExplorerDrag)
   window.removeEventListener('mouseup', stopSessionExplorerDrag)
   stageResizeObserver?.disconnect()
+  unregisterEffectsScope?.()
 })
 </script>
 
@@ -283,6 +290,8 @@ onBeforeUnmount(() => {
             <div ref="stageEl" class="edit-project-chat-frame">
               <ChatView
                 ref="chatViewRef"
+                class="run-chat-view"
+                :class="{ 'run-chat-view-dialog-open': scopedDialogOpen }"
                 hide-sessions-panel
                 :store="testStore"
                 selectable
@@ -298,6 +307,7 @@ onBeforeUnmount(() => {
                   />
                 </template>
               </ChatView>
+              <ToastContainer :scope-el="stageEl" />
             </div>
           </div>
         </div>
@@ -337,7 +347,11 @@ onBeforeUnmount(() => {
 .edit-project-chat-viewport { display: flex; flex: 1; min-height: 0; min-width: 0; }
 .edit-project-chat-stage-constrained .edit-project-chat-viewport { flex: none; border-radius: 10px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
 .edit-project-chat-scaler { display: flex; flex: 1; min-height: 0; min-width: 0; transform-origin: top left; }
-.edit-project-chat-frame { flex: 1; min-height: 0; min-width: 0; display: flex; background: white; }
+.edit-project-chat-stage-constrained .edit-project-chat-scaler { flex: none; }
+.edit-project-chat-frame { position: relative; flex: 1; min-height: 0; min-width: 0; display: flex; background: white; }
+
+.run-chat-view { transform: none; filter: none; transition: transform 0.2s ease-in-out, filter 0.2s ease-in-out; }
+.run-chat-view-dialog-open { transform: scale(0.9); filter: blur(3px); }
 
 .run-tokens-bar { display: flex; align-items: center; gap: 0.4rem; min-width: 160px; }
 .run-tokens-icon { flex-shrink: 0; display: flex; color: #4a6fa5; }

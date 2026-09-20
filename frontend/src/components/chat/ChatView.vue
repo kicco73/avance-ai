@@ -20,6 +20,7 @@ import {
 } from '../../chatStoreFactory.js'
 import { onLiveSkinApplied } from '../../chatSkin.js'
 import { customDialog, infoDialog } from '../../dialogStore.js'
+import { effectsScopeFor } from '../../effectsScope.js'
 import { BottomAnchor } from './bottomAnchor.js'
 import { SceneFade } from './sceneFade.js'
 
@@ -64,7 +65,12 @@ const {
 
 watch(chart, (next) => {
   if (!next) return
-  customDialog({ component: ChartDialog, props: { title: next.title, series: next.series, maxScale: next.maxScale } })
+  customDialog({
+    component: ChartDialog,
+    props: { title: next.title, series: next.series, maxScale: next.maxScale },
+    wide: true,
+    scopeEl: effectsScopeFor(props.store.kind)
+  })
   dismissChart()
 })
 

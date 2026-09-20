@@ -60,7 +60,7 @@ function widthFor(value) {
 
 <style scoped>
 .chart-dialog {
-  min-width: min(360px, 80vw);
+  min-width: min(360px, 100%);
 }
 
 .chart-dialog-title {

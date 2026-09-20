@@ -10,8 +10,8 @@ export function dismissToast(id) {
   if (idx !== -1) toasts.value.splice(idx, 1)
 }
 
-export function notify(title, body) {
+export function notify(title, body, scopeEl = null) {
   const id = ++nextId
-  toasts.value.push({ id, title, body })
+  toasts.value.push({ id, title, body, scopeEl })
   setTimeout(() => dismissToast(id), AUTO_DISMISS_MS)
 }
