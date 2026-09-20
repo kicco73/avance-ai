@@ -20,18 +20,12 @@ class IndexYml:
     def text(self) -> str:
         return self._original
 
-    async def save_through(self, project_files, project_id: str) -> None:
-        return None
-
 
 class ModernizedIndexYml(IndexYml):
 
     @property
     def text(self) -> str:
         return self._modernized
-
-    async def save_through(self, project_files, project_id: str) -> None:
-        await project_files.save_repaired_index_yml(project_id, self._modernized)
 
 
 _OUTCOMES = {False: IndexYml, True: ModernizedIndexYml}

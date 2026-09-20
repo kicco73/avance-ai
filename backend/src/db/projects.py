@@ -144,6 +144,20 @@ class ProjectMixin:
             )
         }
 
+    def get_archive_contents(self, project_id: str, revision: int, names: list[str]) -> dict:
+        """Same as get_archives, restricted to `names` — for a reader that
+        knows from the file names which contents it will read, so the
+        rest (media, audio, PDFs) never leaves the database."""
+        if not names:
+            return {}
+        return {
+            row.archive_name: row.content
+            for row in Archive.select(Archive.archive_name, File.content).join(File).where(
+                (Archive.project == project_id) & (Archive.revision == revision)
+                & (Archive.archive_name.in_(names))
+            )
+        }
+
     def get_archive_hashes(self, project_id: str, revision: int | None = None) -> dict:
         """Same keys as get_archives, but the content-addressed File hash
         in place of the content itself — for callers that only need to

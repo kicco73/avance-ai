@@ -11,7 +11,6 @@ from automaton.automaton_builder import AutomatonBuilder
 from automaton.file_types import ProjectFileTypes
 from automaton.build_error import AutomatonBuildError
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
-from automaton.index_yml_modernizer import IndexYmlModernizer
 from db import ContentRestored, Db, FileRenamed
 from system import doc_catalog
 from system.logging_factory import LoggerFactory
@@ -404,52 +403,6 @@ class ProjectEditor:
         if LEGAL_TERMS_FILE_NAME in self._db.list_archives(project_id):
             raise ValueError(f"'{LEGAL_TERMS_FILE_NAME}' already exists.")
         return await self.put_project_file(project_id, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, None)
-
-    async def save_repaired_index_yml(self, project_id: str, text: str) -> None:
-        """A repair may leave a project broken, as long as it leaves it
-        *less* broken. The ordinary save refuses anything that does not
-        build, which is right for what a person typed and wrong here: a
-        file refused for a spelling only a person can settle would keep
-        every spelling something *can* settle unfixable with it, and the
-        author would have to do by hand what is waiting to be done for
-        them. Fewer problems than the file already had is the whole
-        test — a repair never adds one."""
-        try:
-            await self.put_project_file(project_id, "index.yml", text, None)
-        except AutomatonBuildError as exc:
-            self._store_unless_worse(project_id, text, exc)
-
-    def _store_unless_worse(self, project_id: str, text: str, refusal: AutomatonBuildError) -> None:
-        """Every problem left must be one the file already had. A repair
-        that only settled warnings leaves the same refusals behind and is
-        still worth storing — the author reads a shorter list, and what
-        is left is the part that was always theirs to decide."""
-        archives = ArchiveLayout.decode_text(self._db.get_archives(project_id))
-        if not self._problems_of(archives, text) <= self._problems_of(archives, archives["index.yml"]):
-            raise refusal
-        self._db.save_project_file(
-            WebSession().user, project_id, "index.yml", text.encode("utf-8"),
-            ProjectFileTypes.of("index.yml").content_type,
-        )
-        self._automaton_loader.invalidate_cache(project_id)
-        PROJECT_FILE_CACHE.forget_project(project_id)
-
-    @staticmethod
-    def _problems_of(archives: dict, index_yml: str) -> set[str]:
-        try:
-            AutomatonBuilder().build({**archives, "index.yml": index_yml})
-        except AutomatonBuildError as exc:
-            return {problem["message"] for problem in exc.problems}
-        except Exception as exc:  # noqa: BLE001 — whatever else it is, it is one problem and it is new
-            return {str(exc)}
-        return set()
-
-    async def modernize_index_yml(self, project_id: str) -> dict:
-        index_yml = IndexYmlModernizer().modernize(
-            self.get_project_file(project_id, "index.yml")["content"]
-        )
-        await index_yml.save_through(self, project_id)
-        return {"fixed": list(index_yml.fixes)}
 
     async def _edit_index_yml_returning_project_id(self, project_id: str, operation):
         current = self.get_project_file(project_id, "index.yml")["content"]

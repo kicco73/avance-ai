@@ -13,7 +13,6 @@ import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorStateIOTab from '../../inspector/InspectorStateIOTab.vue'
 import EditorStateTab from './EditorStateTab.vue'
 import ActionsOrderDialog from '../../inspector/ActionsOrderDialog.vue'
-import IndexYmlFixesDialog from './IndexYmlFixesDialog.vue'
 import SessionDetailCard from '../../../../../components/skillkit/SessionDetailCard.vue'
 import ModelMenu from '../../ModelMenu.vue'
 import ProfileMenu from '../../../../../components/ProfileMenu.vue'
@@ -27,7 +26,7 @@ import { useIndexYmlEditing } from '../../../useIndexYmlEditing.js'
 import { useProjectCatalog } from '../../../useProjectCatalog.js'
 import { useLiveRunTimeline } from '../../../useLiveRunTimeline.js'
 import { useStateTabTokens } from '../../../../../composables/useStateTabTokens.js'
-import { putSessionTitle, putSessionComment, postModernizeIndexYml } from '../../../api.js'
+import { putSessionTitle, putSessionComment } from '../../../api.js'
 import { onProjectChanged } from '../../../../../projectChangeEvents.js'
 import { projectModes } from '../../../../registry.js'
 import { setApiWarning } from '../../../../../errorStore.js'
@@ -407,14 +406,7 @@ function reportPause() {
   setApiWarning(info.paused_reason || `Project '${props.projectId}' is currently paused.`)
 }
 
-function modernizeIndexYml() {
-  return postModernizeIndexYml(props.projectId)
-    .then((result) => result.fixed)
-    .catch(() => [])
-}
-
 onMounted(async () => {
-  const fixed = await modernizeIndexYml()
   loadFiles()
   loadSources()
   loadTestChatModels()
@@ -429,7 +421,6 @@ onMounted(async () => {
     await nextTick()
     indexYmlEditorRef.value?.showBuildError(props.buildError.line)
   }
-  if (fixed.length) await customDialog({ component: IndexYmlFixesDialog, props: { fixes: fixed } })
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize)

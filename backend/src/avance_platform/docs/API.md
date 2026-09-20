@@ -74,31 +74,18 @@ catalogue call that looks redundant.
 It sets a field, which is what PUT is for. Not everything that was not
 converted to POST was overlooked.
 
-## `POST .../index-yml/modernize` is the editor's, not the builder's
+## There is no `POST .../index-yml/modernize`
 
-`index.yml` can be written in a spelling the format has moved past but
-still reads exactly — `project.talk-enabled` for `services: {talk: …}`.
-Something has to rewrite those, and every place that already had the file
-in its hands was the wrong one.
-
-The builder was the obvious candidate and is the worst: it is the one
-thing in the product that never edits what it is given, and a project is
-built on every load, every health check, every session — turning that
-into a write would mean a read path that saves, at a revision an author
-may not even be looking at. The loader, the uploader and the save path
-each had the same problem in a smaller way: whichever one ran first
-would have silently changed a file, and told nobody.
-
-So the rewrite is a route of the editor, and "Edit project" posts to it
-on open. The author is present by construction; they get a dialog saying
-what changed, and the banner they were about to read has one fewer
-warning in it. What the fixer does not know how to rewrite it leaves
-alone, still warned about — the two halves are read from the same list
-(`automaton/deprecations.py`), so neither can drift from the other.
-
-This is also why the route is the skill's and not the core's: a build
-without this package has no editor, nobody to show a dialog to, and no
-business rewriting anyone's project.
+There was one, and "Edit project" awaited it on open before loading
+anything else. It was redundant: the builder refuses every spelling it
+does not read, so a legacy `index.yml` fails to build, and a revision
+that fails to build is already rewritten in place by the loader
+(`project/archive/stored_index_yml.py`) on the first load of the mount.
+The route could never find anything the loader had not settled, and
+its only visible effect was a dialog listing the fixes — paid for with a
+POST on the critical path of a read-only view, plus the full
+`projectChanged` refresh cascade that every `projectFetch` triggers.
+Where an `index.yml` is rewritten is `PROJECT_SPECS.md` §8.2.
 
 ## Open question
 

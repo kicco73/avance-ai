@@ -1245,9 +1245,10 @@ gone with nothing in their place, its `ui-description` is its
 `ai-definition` where that is still empty, its type `choice` is `list`
 (§5.3) —
 and the modernizer rewrites them, in place, wherever an
-`index.yml` enters or is opened: on import, when the design view is
-opened (which says what it changed), and when a stored revision fails to
-build, so that what a product serves recovers without anyone visiting.
+`index.yml` enters or is built: on import, and when a stored revision
+fails to build, so that what a product serves recovers without anyone
+visiting. The design view has no call of its own for it: opening a
+project loads it, and a load is where a stale spelling is settled.
 
 It runs in rounds until a round finds nothing, because one rewrite
 uncovers the next: a script moved off a state onto the actions that reach

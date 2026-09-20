@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
+from automaton.file_types import ProjectFileTypes
 from db import Db
 from events import ProjectRevisionBuildFailed, publish
 from system.logging_factory import LoggerFactory
@@ -56,7 +57,7 @@ class BasicAutomatonLoader(object):
         if not self.is_safe_project_name(project_id):
             raise ValueError(f"Invalid project id: '{project_id}'.")
 
-        archives = self._db.get_archives(project_id, revision=revision)
+        archives = self._text_archives(project_id, revision)
 
         if not archives:
             raise  FileNotFoundError(f"Project '{project_id}' does not exist.")
@@ -70,6 +71,13 @@ class BasicAutomatonLoader(object):
             automaton = self._repaired(project_id, revision, decoded, refusal)
         automaton.set_storage_location(revision)
         return automaton
+
+    def _text_archives(self, project_id: str, revision: int) -> dict[str, bytes]:
+        names = list(self._db.get_archive_hashes(project_id, revision=revision))
+        contents = self._db.get_archive_contents(
+            project_id, revision, [name for name in names if ProjectFileTypes.of(name).text],
+        )
+        return {name: contents.get(name, b"") for name in names}
 
     def _repaired(self, project_id: str, revision: int, decoded: dict, refusal):
         try:

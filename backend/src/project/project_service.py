@@ -233,9 +233,6 @@ class ProjectService(object):
     async def set_project_field(self, project_id: str, field: str, value) -> dict:
         return await self.editor.set_project_field(project_id, field, value)
 
-    async def modernize_index_yml(self, project_id: str) -> dict:
-        return await self.editor.modernize_index_yml(project_id)
-
     async def set_service_level(
         self, project_id: str, service: str, level: str
     ) -> ProjectPayload:

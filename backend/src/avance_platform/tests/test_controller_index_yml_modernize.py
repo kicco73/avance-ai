@@ -1,11 +1,6 @@
-"""POST /api/skills/platform/projects/{project_id}/index-yml/modernize —
-what "Edit project" calls on open. It rewrites every deprecated spelling
-today's format states exactly (automaton/deprecations.py), saves the
-file, and answers what it changed so the view can say so. A build made
-before it ran still reports those spellings as warnings, which is how
-the two halves stay in step: what the fixer rewrites is what stops being
-warned about, and what it does not know stays warned about.
-"""
+"""A legacy index.yml is rewritten where it enters the system (upload)
+and where a stored revision fails to build (AutomatonLoader via
+StoredIndexYml); the design view has no call of its own for it."""
 from __future__ import annotations
 
 import pytest
@@ -42,9 +37,6 @@ def _index_yml(client, project_id: str) -> str:
 
 
 def test_a_legacy_file_is_rewritten_on_the_way_in_and_builds(client):
-    """An import is a file entering the system, and a build refuses every
-    spelling the format moved past — so the repair happens there too, or
-    no project written before today could be imported at all."""
     project_id = _upload(client, LEGACY_YML)
 
     assert "talk-enabled" not in _index_yml(client, project_id)
@@ -52,23 +44,10 @@ def test_a_legacy_file_is_rewritten_on_the_way_in_and_builds(client):
     assert client.get(f"/api/skills/platform/projects/{project_id}/graph").status_code == 200
 
 
-def test_opening_a_project_that_is_already_current_reports_nothing(client):
-    project_id = _upload(client, LEGACY_YML)
-
-    response = client.post(f"/api/skills/platform/projects/{project_id}/index-yml/modernize")
-
-    assert response.status_code == 200, response.text
-    assert response.json()["fixed"] == []
-
-
-def test_opening_a_project_with_nothing_to_fix_changes_nothing(client, hello_project):
-    before = _index_yml(client, hello_project)
-
+def test_there_is_no_modernize_route(client, hello_project):
     response = client.post(f"/api/skills/platform/projects/{hello_project}/index-yml/modernize")
 
-    assert response.status_code == 200
-    assert response.json()["fixed"] == []
-    assert _index_yml(client, hello_project) == before
+    assert response.status_code in (404, 405)
 
 
 def test_the_project_keeps_saying_what_it_said(client):

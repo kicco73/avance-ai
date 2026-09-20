@@ -310,21 +310,6 @@ class EditProjectController(BaseController):
             project_id, field, req.value
         )
 
-    @post("/api/skills/platform/projects/{project_id}/index-yml/modernize", role="admin")
-    async def post_modernize_index_yml(self, project_id: str):
-        """What "Edit project" does on open: rewrites every deprecated
-        spelling of index.yml that today's format states exactly (see
-        PROJECT_SPECS.md §8), saves it, and answers {fixed: [...]} so the
-        view can say what it changed. A spelling nothing knows how to
-        rewrite is left where it is, still warned about by the build.
-
-        No ensure_project_not_broken, unlike its neighbours: a project
-        whose only fault is a spelling this knows how to rewrite is
-        exactly the one that needs it, and the save validates anyway — a
-        rewrite that does not build is refused there and nothing is
-        stored."""
-        return await self.project_service.modernize_index_yml(project_id)
-
     @put("/api/skills/platform/projects/{project_id}/services/{service}", role="admin")
     async def put_service_level(self, project_id: str, service: str, req: SetServiceLevelRequest):
         self.project_service.ensure_project_not_broken(project_id)
