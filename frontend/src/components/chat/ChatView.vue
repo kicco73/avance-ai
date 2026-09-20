@@ -18,9 +18,10 @@ import {
   spokenTextEnabled,
   chatConnectionState,
 } from '../../chatStoreFactory.js'
-import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
+import { applyAspect, manualApplyAspectPreference, onLiveSkinApplied } from '../../chatSkin.js'
 import { customDialog, infoDialog } from '../../dialogStore.js'
 import { BottomAnchor } from './bottomAnchor.js'
+import { SceneFade } from './sceneFade.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
@@ -75,6 +76,7 @@ const scrollEl = ref(null)
 const contentEl = ref(null)
 const chatInputRef = ref(null)
 const rootEl = ref(null)
+const shellEl = ref(null)
 
 defineExpose({
   focus: () => chatInputRef.value?.focus()
@@ -179,11 +181,32 @@ async function onAction(actionName) {
   focusInput()
 }
 
+const sceneFade = new SceneFade()
+
+function replayScene() {
+  sceneFade.replay()
+}
+
+watch(shellEl, (el) => sceneFade.attach(el))
+
+let unregisterSkinFade = null
+
+onMounted(() => {
+  unregisterSkinFade = onLiveSkinApplied(replayScene)
+})
+
+onBeforeUnmount(() => {
+  unregisterSkinFade?.()
+  sceneFade.detach()
+})
+
 const prevStateKey = ref(null)
 watch(
   () => state.value?.key,
-  (newKey, oldKey) => {
+  async (newKey, oldKey) => {
     if (oldKey != null) prevStateKey.value = oldKey
+    await nextTick()
+    replayScene()
   }
 )
 
@@ -193,6 +216,7 @@ watch(
   <div class="chat-window-outer" ref="rootEl">
   <div
     class="chat-window-shell"
+    ref="shellEl"
     :class="state?.key ? `state-${state.key}` : null"
     :data-state="state?.key ?? null"
     :data-prev-state="prevStateKey"
@@ -319,6 +343,19 @@ watch(
   flex: 1;
   min-height: 0;
   min-width: 0;
+  animation: skin-scene-in 0.25s ease;
+}
+
+@keyframes skin-scene-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-window-shell {
+    animation: none;
+  }
 }
 
 .chat-window {

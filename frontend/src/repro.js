@@ -9,7 +9,8 @@ const q = new URLSearchParams(location.search)
 const skin = q.get('skin') !== '0'
 if (skin) {
   const style = document.createElement('style')
-  style.textContent = scopeSkinToChat('.chat-header, .chat-body, .chat-footer {\nbackground: linear-gradient(135deg, #3d1f00, #b84d00, #0055ff);\n}')
+  const raw = '.chat-header, .chat-body, .chat-footer {\nbackground: linear-gradient(135deg, #3d1f00, #b84d00, #0055ff);\n}'
+  style.textContent = CSS.supports('selector(:scope)') && q.get('unscoped') !== '1' ? scopeSkinToChat(raw) : raw
   document.head.appendChild(style)
 }
 const css = document.createElement('style')
@@ -32,6 +33,7 @@ const App = defineComponent({
     const messages = ref([])
     const actions = ref([{ name: 'a', ui_button: 'Uno' }, { name: 'b', ui_button: 'Due' }])
     const disabled = ref(false)
+    const stateKey = ref('a')
     const scrollEl = ref(null), contentEl = ref(null)
     const anchor = new BottomAnchor()
     for (let i = 0; i < 12; i++) messages.value.push({ id: ++nextId, role: i % 2 ? 'assistant' : 'user', content: `Messaggio numero ${i} abbastanza lungo da riempire lo schermo del telefono e forzare lo scroll.`, timestamp: new Date().toISOString() })
@@ -45,12 +47,14 @@ const App = defineComponent({
       for (let i = 1; i <= words.length; i++) { patch(id, { content: words.slice(0, i).join(' '), pending: false, awaitingReply: false }); await wait(90) }
       await wait(300)
       patch(id, { content: words.join(' '), messageId: 'm' + id, pending: false, awaitingReply: false, progressPercentage: null })
+      await nextTick(); patch(id, { toolCalls: [] })
+      stateKey.value = stateKey.value === 'a' ? 'b' : 'a'
       actions.value = [{ name: 'c', ui_button: 'Tre' }, { name: 'd', ui_button: 'Quattro' }, { name: 'e', ui_button: 'Cinque' }]
       disabled.value = false
       document.title = 'done'
     }
     onMounted(() => { anchor.attach(scrollEl.value, contentEl.value); setTimeout(turn, 1000) })
-    return () => h('div', { class: 'live-chat-window' }, [h('div', { class: 'chat-window-outer' }, [h('div', { class: 'chat-window-shell' }, [h('div', { class: 'chat-window' }, [
+    return () => h('div', { class: 'live-chat-window' }, [h('div', { class: 'chat-window-outer' }, [h('div', { class: ['chat-window-shell', 'state-' + stateKey.value] }, [h('div', { class: 'chat-window' }, [
       h('div', { class: 'chat-header' }, 'header'),
       h('div', { class: 'messages chat-body', ref: scrollEl, onScroll: () => anchor.onScroll() }, [h('div', { class: 'messages-content', ref: contentEl },
         messages.value.map((msg) => h(MessageBubble, { key: msg.id, message: msg, reactions: [{ key: 'up', ui_label: '👍' }], showTimestamp: true })))]),
