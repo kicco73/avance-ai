@@ -53,8 +53,8 @@ async function toDataUri(blob) {
   })
 }
 
-async function inlineCrossOriginBackgrounds(clonedDocument) {
-  const candidates = []
+function markCrossOriginBackgrounds() {
+  const marked = []
   for (const el of document.querySelectorAll('*')) {
     const url = backgroundImageUrl(el)
     if (!url || url.startsWith('data:')) continue
@@ -65,28 +65,27 @@ async function inlineCrossOriginBackgrounds(clonedDocument) {
       continue
     }
     if (absolute.origin === window.location.origin) continue
-    candidates.push({ el, href: absolute.href })
+    el.dataset.snapshotBgId = String(marked.length)
+    marked.push({ el, href: absolute.href })
   }
-  if (!candidates.length) return
-  candidates.forEach(({ el }, i) => { el.dataset.snapshotBgId = String(i) })
-  try {
-    const cache = new Map()
-    for (const { el, href } of candidates) {
-      if (!cache.has(href)) {
-        try {
-          const res = await fetch(href, { credentials: 'include' })
-          cache.set(href, await toDataUri(await res.blob()))
-        } catch {
-          cache.set(href, null)
-        }
+  return marked
+}
+
+async function inlineCrossOriginBackgrounds(clonedDocument, marked) {
+  const cache = new Map()
+  for (const { el, href } of marked) {
+    if (!cache.has(href)) {
+      try {
+        const res = await fetch(href, { credentials: 'include' })
+        cache.set(href, await toDataUri(await res.blob()))
+      } catch {
+        cache.set(href, null)
       }
-      const dataUri = cache.get(href)
-      if (!dataUri) continue
-      const clonedEl = clonedDocument.querySelector(`[data-snapshot-bg-id="${el.dataset.snapshotBgId}"]`)
-      if (clonedEl) clonedEl.style.backgroundImage = `url("${dataUri}")`
     }
-  } finally {
-    for (const { el } of candidates) delete el.dataset.snapshotBgId
+    const dataUri = cache.get(href)
+    if (!dataUri) continue
+    const clonedEl = clonedDocument.querySelector(`[data-snapshot-bg-id="${el.dataset.snapshotBgId}"]`)
+    if (clonedEl) clonedEl.style.backgroundImage = `url("${dataUri}")`
   }
 }
 
@@ -105,18 +104,23 @@ function pinModalDialog(clonedDocument) {
 }
 
 async function captureSnapshot() {
-  const canvas = await html2canvas(document.body, {
-    backgroundColor: '#ffffff',
-    onclone: async (clonedDocument) => {
-      for (const shell of clonedDocument.querySelectorAll('.chat-window-shell')) {
-        shell.style.animation = 'none'
-      }
-      pinModalDialog(clonedDocument)
-      await inlineCrossOriginBackgrounds(clonedDocument)
-    },
-  })
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
-  window.parent.postMessage({ source: 'run-chat-embed', type: 'snapshot-captured', blob }, window.location.origin)
+  const marked = markCrossOriginBackgrounds()
+  try {
+    const canvas = await html2canvas(document.body, {
+      backgroundColor: '#ffffff',
+      onclone: async (clonedDocument) => {
+        for (const shell of clonedDocument.querySelectorAll('.chat-window-shell')) {
+          shell.style.animation = 'none'
+        }
+        pinModalDialog(clonedDocument)
+        await inlineCrossOriginBackgrounds(clonedDocument, marked)
+      },
+    })
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+    window.parent.postMessage({ source: 'run-chat-embed', type: 'snapshot-captured', blob }, window.location.origin)
+  } finally {
+    for (const { el } of marked) delete el.dataset.snapshotBgId
+  }
 }
 
 function onParentMessage(event) {
