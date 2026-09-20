@@ -43,7 +43,7 @@ export function setTotalTokenBudgetPerSession(value) {
 
 export function createChatStore({
   kind, channel = null, getSessionsList, resetSession = null,
-  confirmNewSession = true, useActuatorsToggle = false,
+  confirmNewSession = true, useActuatorsToggle = false, visualEffects = true,
 }) {
   const state = ref(null)
   const currentSessionId = ref(null)
@@ -213,6 +213,7 @@ export function createChatStore({
   })
 
   busChannel.subscribe('ui.notification', (frame) => {
+    if (!visualEffects) return
     if (!frame.task) return
     if (!(frame.session_id == null ? frame.project_id === currentProjectId.value : isAboutOurConversation(frame))) return
     runTaskScript(frame.task, {

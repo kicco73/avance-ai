@@ -1,8 +1,5 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import html2canvas from 'html2canvas'
-import ChatView from '../../../../../../components/chat/ChatView.vue'
-import RestartFromHereButton from '../../../../../../components/chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../../../../components/chat/SessionsPanel.vue'
 import AspectMenu from './AspectMenu.vue'
 import { aspectFor } from './aspects.js'
@@ -44,15 +41,10 @@ const {
 
 const props = defineProps({
   timeline: { type: Array, required: true },
-  selected: { type: Object, default: null },
   isStateGone: { type: Function, required: true }
 })
 
 const emit = defineEmits(['select-message', 'restart-prefill', 'restart-resend', 'media-saved'])
-
-const selectedMessageId = computed(() => (
-  props.selected?.kind === 'message' ? (props.selected.message.key ?? null) : null
-))
 
 function timelineMessageFor(rawMessage) {
   return props.timeline.find((entry) => entry.kind === 'message' && entry.message.key === rawMessage.id)?.message ?? rawMessage
@@ -62,14 +54,43 @@ function onSelectMessage(rawMessage) {
   emit('select-message', timelineMessageFor(rawMessage))
 }
 
+let pendingSnapshotResolve = null
+
+function onEmbedMessage(event) {
+  if (event.origin !== window.location.origin) return
+  const data = event.data
+  if (!data || data.source !== 'run-chat-embed') return
+  if (data.type === 'snapshot-captured') {
+    pendingSnapshotResolve?.(data.blob)
+    pendingSnapshotResolve = null
+    return
+  }
+  const rawMessage = testStore.messages.value.find((m) => m.messageId === data.messageId)
+  if (!rawMessage) return
+  if (data.type === 'select-message') {
+    onSelectMessage(rawMessage)
+  } else if (data.type === 'restart-resend' || data.type === 'restart-prefill') {
+    if (props.isStateGone(timelineMessageFor(rawMessage))) return
+    emit(data.type, rawMessage)
+  }
+}
+
 const sessionExplorerOpen = ref(false)
 const sessionExplorerWidth = ref(240)
 const deletingSessionId = ref(null)
 let draggingSessionExplorer = false
 
-const chatViewRef = ref(null)
+const chatIframeEl = ref(null)
 defineExpose({
-  focus: () => chatViewRef.value?.focus()
+  focus: () => chatIframeEl.value?.focus()
+})
+
+const iframeSrc = computed(() => {
+  if (!currentProjectId.value || !currentSessionId.value) return null
+  const params = new URLSearchParams({
+    embed: 'test-chat', project: currentProjectId.value, session: currentSessionId.value
+  })
+  return `${window.location.origin}${window.location.pathname}?${params}`
 })
 
 const aspect = ref('dynamic')
@@ -127,11 +148,20 @@ function nextSnapshotNumber(files, prefix) {
 }
 
 async function captureSnapshot() {
-  if (capturingSnapshot.value || !stageEl.value) return
+  if (capturingSnapshot.value || !chatIframeEl.value) return
   capturingSnapshot.value = true
   try {
-    const canvas = await html2canvas(stageEl.value, { backgroundColor: '#ffffff' })
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+    const blob = await new Promise((resolve) => {
+      pendingSnapshotResolve = resolve
+      chatIframeEl.value.contentWindow.postMessage(
+        { source: 'run-chat-parent', type: 'capture-snapshot' }, window.location.origin
+      )
+      setTimeout(() => {
+        if (pendingSnapshotResolve === resolve) pendingSnapshotResolve = null
+        resolve(null)
+      }, 10000)
+    })
+    if (!blob) return
     const projectId = currentProjectId.value
     const { files } = await getProjectFiles(projectId)
     const prefix = `media/snapshot-${aspect.value}-`
@@ -192,6 +222,7 @@ function stopSessionExplorerDrag() {
 onMounted(() => {
   window.addEventListener('mousemove', onSessionExplorerDrag)
   window.addEventListener('mouseup', stopSessionExplorerDrag)
+  window.addEventListener('message', onEmbedMessage)
   updateAvailableStageSize()
   stageResizeObserver = new ResizeObserver(updateAvailableStageSize)
   if (stageWrapEl.value) stageResizeObserver.observe(stageWrapEl.value)
@@ -199,6 +230,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onSessionExplorerDrag)
   window.removeEventListener('mouseup', stopSessionExplorerDrag)
+  window.removeEventListener('message', onEmbedMessage)
   stageResizeObserver?.disconnect()
 })
 </script>
@@ -281,23 +313,14 @@ onBeforeUnmount(() => {
         <div class="edit-project-chat-viewport" :style="stageViewportStyle">
           <div class="edit-project-chat-scaler" :style="stageScalerStyle">
             <div ref="stageEl" class="edit-project-chat-frame">
-              <ChatView
-                ref="chatViewRef"
-                hide-sessions-panel
-                :store="testStore"
-                selectable
-                :selected-message-id="selectedMessageId"
-                @select-message="onSelectMessage"
-              >
-                <template #message-actions="{ message }">
-                  <RestartFromHereButton
-                    v-if="message.role === 'user'"
-                    :disabled="isStateGone(timelineMessageFor(message))"
-                    @click="emit('restart-resend', message)"
-                    @double-click="emit('restart-prefill', message)"
-                  />
-                </template>
-              </ChatView>
+              <iframe
+                v-if="iframeSrc"
+                ref="chatIframeEl"
+                :src="iframeSrc"
+                class="edit-project-chat-iframe"
+                title="Live test chat"
+              ></iframe>
+              <div v-else class="edit-project-chat-frame-empty">No active session</div>
             </div>
           </div>
         </div>
@@ -337,7 +360,10 @@ onBeforeUnmount(() => {
 .edit-project-chat-viewport { display: flex; flex: 1; min-height: 0; min-width: 0; }
 .edit-project-chat-stage-constrained .edit-project-chat-viewport { flex: none; border-radius: 10px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
 .edit-project-chat-scaler { display: flex; flex: 1; min-height: 0; min-width: 0; transform-origin: top left; }
+.edit-project-chat-stage-constrained .edit-project-chat-scaler { flex: none; }
 .edit-project-chat-frame { flex: 1; min-height: 0; min-width: 0; display: flex; background: white; }
+.edit-project-chat-iframe { display: block; width: 100%; height: 100%; border: 0; }
+.edit-project-chat-frame-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: #999; font-size: 0.85rem; }
 
 .run-tokens-bar { display: flex; align-items: center; gap: 0.4rem; min-width: 160px; }
 .run-tokens-icon { flex-shrink: 0; display: flex; color: #4a6fa5; }

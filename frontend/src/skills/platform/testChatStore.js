@@ -20,6 +20,7 @@ export const testStore = createChatStore({
   resetSession: () => postResetTestSessions(testStore.currentProjectId.value),
   confirmNewSession: false,
   useActuatorsToggle: true,
+  visualEffects: window.self !== window.top,
 })
 
 export const {

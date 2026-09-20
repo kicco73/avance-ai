@@ -26,6 +26,7 @@ export const shareChannels = contributionsOf('shareChannels')
 export const roleHomes = contributionsOf('roleHomes')
 export const modelSelectors = contributionsOf('modelSelectors')
 export const triggerNamespaces = contributionsOf('triggerNamespaces')
+export const embedViews = contributionsOf('embedViews')
 
 export const chatChannel = computed(() => manifests
   .filter((manifest) => isSkillInstalled(manifest.key))

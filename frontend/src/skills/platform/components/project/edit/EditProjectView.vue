@@ -530,7 +530,6 @@ async function handleSetSessionComment(sessionId, comment) {
           v-if="runOpen"
           ref="runChatRef"
           :timeline="timeline"
-          :selected="selected"
           :is-state-gone="isStateGone"
           @select-message="selectMessage"
           @restart-prefill="restartAndPrefill"

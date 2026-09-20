@@ -111,7 +111,6 @@ function widthFor(value) {
 
 .chart-bar-value {
   flex-shrink: 0;
-  min-width: 2.5rem;
   text-align: right;
   font-size: 0.8rem;
   color: #555;

@@ -19,10 +19,15 @@ import { useChatFlipTransition } from './composables/useChatFlipTransition.js'
 import { useViewStack } from './composables/useViewStack.js'
 import { useServerAdminActions } from './composables/useServerAdminActions.js'
 import { peekInviteCode } from './shareLink.js'
-import { pushedViews, roleHomes } from './skills/registry.js'
+import { peekEmbedRequest } from './embedParams.js'
+import { pushedViews, roleHomes, embedViews } from './skills/registry.js'
 import { activeChatSkin, holdSkin } from './chatSkin.js'
 
 const hasSharedInvite = !!peekInviteCode()
+const embedRequest = peekEmbedRequest()
+const embedView = computed(() => (
+  embedRequest ? embedViews.value.find((view) => view.key === embedRequest.key) ?? null : null
+))
 
 const landingProjectId = ref(null)
 const currentUserProfile = ref(null)
@@ -143,7 +148,9 @@ function preventGestureZoom(event) {
   event.preventDefault()
 }
 
-onMounted(startBootSequence)
+onMounted(() => {
+  if (!embedRequest) startBootSequence()
+})
 onMounted(() => {
   document.addEventListener('touchmove', preventMultiTouchZoom, { passive: false })
   document.addEventListener('gesturestart', preventGestureZoom)
@@ -158,6 +165,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <component v-if="embedView" :is="embedView.component" :project-id="embedRequest.projectId" :session-id="embedRequest.sessionId" />
+
+  <template v-else>
   <div class="app-backdrop" aria-hidden="true"></div>
 
   <ToastContainer />
@@ -261,6 +271,7 @@ onBeforeUnmount(() => {
       <ProfileView v-if="showProfile" @close="closeProfile" />
     </Transition>
   </div>
+  </template>
 </template>
 
 <style scoped>

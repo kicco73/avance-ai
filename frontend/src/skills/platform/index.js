@@ -8,6 +8,7 @@ const LabelProjectView = defineAsyncComponent(() => import('./components/project
 const EditProjectView = defineAsyncComponent(() => import('./components/project/edit/EditProjectView.vue'))
 const ManageUsersView = defineAsyncComponent(() => import('./components/settings/ManageUsersView.vue'))
 const AppStoreView = defineAsyncComponent(() => import('./components/appStore/AppStoreView.vue'))
+const EmbedTestChat = defineAsyncComponent(() => import('./components/project/edit/run/EmbedTestChat.vue'))
 
 export const key = 'platform'
 
@@ -27,3 +28,5 @@ export const pushedViews = [
 export const servicesTabActions = [{ id: 'platform-server-ops', tab: 'database', component: ServerOpsActions }]
 
 export const modelSelectors = [liveModelStore]
+
+export const embedViews = [{ key: 'test-chat', component: EmbedTestChat }]
