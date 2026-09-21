@@ -43,3 +43,15 @@ export function postTruncateSession(sessionId, timestamp) {
     body: JSON.stringify({ timestamp })
   })
 }
+
+export function getSessionRating(sessionId) {
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/rating`)
+}
+
+export function postSessionRating(sessionId, rating) {
+  return apiFetch(`${API_URL}/core/sessions/${encodeURIComponent(sessionId)}/rating`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating })
+  })
+}

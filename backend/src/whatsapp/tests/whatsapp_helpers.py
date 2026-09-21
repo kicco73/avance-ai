@@ -147,7 +147,7 @@ class _FakeAuthService:
             raise self.unexpected_error
         project_name = self.valid_codes.get(invite_code)
         if project_name is None:
-            raise PermissionError("This invite link is invalid.")
+            raise PermissionError("This invite code is unknown.")
         self._db.users[phone_number] = {"id": phone_number, "email": None, "role": "user"}
         return project_name
 

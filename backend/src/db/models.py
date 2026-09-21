@@ -391,6 +391,24 @@ class Settings(BaseModel):
     class Meta:
         table_name = 'Settings'
 
+class AppRating(BaseModel):
+    """How the user rated one closed session's revision of the app —
+    thumb up/down, stored as 5/1 (see AppRatingRequest). One vote per
+    (user, project, revision): a later vote on the same revision
+    overwrites the earlier one rather than adding a row."""
+    id = AutoField()
+    user = ForeignKeyField(User, field='id', column_name='user_id', backref='app_ratings', on_delete='CASCADE')
+    user_id: str
+    project = ForeignKeyField(Project, field='id', column_name='project_id', backref='app_ratings', on_delete='CASCADE')
+    project_id: str
+    revision = IntegerField(null=False)
+    rating = IntegerField(null=False)
+    timestamp = DateTimeField(default=datetime.utcnow)
+
+    class Meta:
+        table_name = 'AppRating'
+        indexes = ((('user', 'project', 'revision'), True),)
+
 class Task(BaseModel):
     """A hibernated scheduled task (see scheduler/task.py and
     scheduler/persisted_scheduler.py) — this table *is* the persisted

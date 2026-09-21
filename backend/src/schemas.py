@@ -79,6 +79,10 @@ class TruncateSessionRequest(BaseModel):
     timestamp: str
 
 
+class RateSessionRequest(BaseModel):
+    rating: Literal[1, 5]
+
+
 class SetUserRoleRequest(BaseModel):
     role: Literal["user", "customer", "supervisor", "admin"]
 

@@ -16,6 +16,7 @@ from .messages import MessageMixin
 from .migration import SchemaMigrator
 from .observability import ObservabilityMixin
 from .projects import ProjectMixin
+from .ratings import RatingMixin
 from .sessions import SessionMixin
 from .drive import DriveMixin
 from .settings import SettingsMixin
@@ -28,7 +29,7 @@ from .translations import TranslationMixin
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    AiTokenUsage, Archive, CoreSession, Drive, EditHistory, File, Invite, Message,
+    AiTokenUsage, AppRating, Archive, CoreSession, Drive, EditHistory, File, Invite, Message,
     Project, Settings, User, StateRemap, SystemWarning, Task, Test,
     TestAggregateResult, TestObservation, Tracking, Translation, UserProject,
     database,
@@ -57,13 +58,14 @@ class Db(
     AiUsageMixin,
     DriveMixin,
     TaskMixin,
-    TranslationMixin):
+    TranslationMixin,
+    RatingMixin):
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
         Project, CoreSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SystemWarning,
-        Settings, UserProject, Invite, AiTokenUsage, Task, Drive, Translation,
+        Settings, UserProject, Invite, AiTokenUsage, Task, Drive, Translation, AppRating,
     )
 
     MIGRATION_STRATEGIES = ('stop', 'upgrade', 'drop')

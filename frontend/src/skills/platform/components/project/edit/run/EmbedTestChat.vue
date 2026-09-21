@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import html2canvas from 'html2canvas'
 import ChatView from '../../../../../../components/chat/ChatView.vue'
 import RestartFromHereButton from '../../../../../../components/chat/RestartFromHereButton.vue'
@@ -9,7 +9,6 @@ import DialogHost from '../../../../../../components/DialogHost.vue'
 import SplashScreen from '../../../../../../components/SplashScreen.vue'
 import LoginView from '../../../../../../components/LoginView.vue'
 import { needsLogin } from '../../../../../../authStore.js'
-import { busChannel } from '../../../../../../busChannel.js'
 import { activeChatMode } from '../../../../../../chatSkin.js'
 import { useAppBoot } from '../../../../../../composables/useAppBoot.js'
 import { testStore } from '../../../../testChatStore.js'
@@ -129,19 +128,19 @@ function onParentMessage(event) {
   if (event.data.type === 'capture-snapshot') captureSnapshot()
 }
 
-let unsubscribeConnectionState = null
+let stopSessionWatch = null
 
 onMounted(() => {
   activeChatMode.value = 'test'
   testStore.setProject(props.projectId)
-  unsubscribeConnectionState = busChannel.onConnectionState((state) => {
-    if (state === 'open') testStore.selectSession({ id: props.sessionId })
+  stopSessionWatch = watch(testStore.currentSessionId, (id) => {
+    if (id != null && String(id) !== props.sessionId) testStore.selectSession({ id: props.sessionId })
   })
   window.addEventListener('message', onParentMessage)
   startBootSequence()
 })
 onBeforeUnmount(() => {
-  unsubscribeConnectionState?.()
+  stopSessionWatch?.()
   window.removeEventListener('message', onParentMessage)
   testStore.clearChatUi()
 })

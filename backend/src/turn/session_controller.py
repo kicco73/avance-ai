@@ -20,7 +20,7 @@ from __future__ import annotations
 
 
 from controllers.base_controller import BaseController, delete, get, post, put
-from schemas import ActuatorsRequest, TruncateSessionRequest
+from schemas import ActuatorsRequest, RateSessionRequest, TruncateSessionRequest
 from project.project_service import ProjectService
 from turn.turn_service import TurnService
 
@@ -66,3 +66,11 @@ class SessionController(BaseController):
     def put_actuators(self, session_id: int, req: ActuatorsRequest):
         self.turn_service.set_actuators_enabled(session_id, req.enabled)
         return {"enabled": self.turn_service.is_actuators_enabled(session_id)}
+
+    @get("/api/core/sessions/{session_id}/rating")
+    def get_session_rating(self, session_id: int):
+        return {"rating": self.turn_service.get_session_rating(session_id)}
+
+    @post("/api/core/sessions/{session_id}/rating")
+    def post_session_rating(self, session_id: int, req: RateSessionRequest):
+        return {"rating": self.turn_service.rate_session(session_id, req.rating)}

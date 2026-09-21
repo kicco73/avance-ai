@@ -5,6 +5,7 @@ import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
 import ChatWaitingPanel from './ChatWaitingPanel.vue'
+import SessionRating from './SessionRating.vue'
 import ChartDialog from './ChartDialog.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
@@ -86,6 +87,11 @@ defineExpose({
 const chatConnected = computed(() => chatConnectionState.value === 'open')
 
 const chatSuperseded = computed(() => chatConnectionState.value === 'superseded')
+
+const showSessionRating = computed(() => (
+  !chatSuperseded.value && sessionEndReason.value === 'final-state' && currentSessionId.value != null
+))
+const sessionRatingActive = ref(false)
 
 watch(chatSuperseded, (superseded) => {
   if (!superseded) return
@@ -304,7 +310,7 @@ watch(
     </p>
 
     <p
-      v-else-if="!chatSuperseded && chatDisabledReason"
+      v-else-if="!chatSuperseded && chatDisabledReason && !(showSessionRating && sessionRatingActive)"
       class="chat-ended-notice"
     >
       {{ chatDisabledReason }}
@@ -315,6 +321,12 @@ watch(
         @click="handleNewSession"
       >Continue here</button>
     </p>
+
+    <SessionRating
+      v-if="showSessionRating"
+      :session-id="currentSessionId"
+      @update:active="sessionRatingActive = $event"
+    />
 
     <div class="chat-footer">
       <ActionButtons

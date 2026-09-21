@@ -60,6 +60,10 @@ GET|PUT /api/core/sessions/{id}/actuators   the inspector
 POST   /api/core/sessions/{id}/truncate     "restart from here", which keeps a
                                             prefix that closing and recreating
                                             would lose
+GET|POST /api/core/sessions/{id}/rating     the user's thumb up/down for the
+                                            session's own (project, revision),
+                                            keyed by that pair so a later
+                                            revision asks again
 DELETE /api/core/sessions/{id}
 ```
 

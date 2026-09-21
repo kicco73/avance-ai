@@ -83,9 +83,11 @@ class InviteManager:
         with a reason a caller can surface directly to the person trying
         to register. Returns the Invite row on success, for redeem()
         below to record against."""
-        invite = self._db.get_invite_by_code(code) if code else None
+        if not code:
+            raise PermissionError("This registration requires an invite link.")
+        invite = self._db.get_invite_by_code(code)
         if invite is None:
-            raise PermissionError("This invite link is invalid.")
+            raise PermissionError("This invite code is unknown.")
         self._ensure_within_budget(invite)
         return invite
 

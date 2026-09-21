@@ -126,7 +126,7 @@ class TestValidateAndRedeemInviteForRegistration:
         _expired_invite(db, "EXPIR1", project)
         _maxed_invite(db, "MAXED1", project)
 
-        for code, match in [(None, "invalid"), ("NOSUCH", "invalid"), ("EXPIR1", "expired"), ("MAXED1", "maximum")]:
+        for code, match in [(None, "requires an invite"), ("NOSUCH", "unknown"), ("EXPIR1", "expired"), ("MAXED1", "maximum")]:
             with pytest.raises(PermissionError, match=match):
                 project_service.validate_invite_for_registration(code)
 

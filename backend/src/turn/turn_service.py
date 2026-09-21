@@ -367,6 +367,15 @@ class TurnService(object):
 			self.__session_manager.close_session(session, "final-state")
 		EphemeralEnvRegistry().discard(session_id)
 
+	def get_session_rating(self, session_id: int) -> int | None:
+		session = self._ownership.require_own_session(session_id)
+		return self._db.get_app_rating(session["username"], session["project_id"], session["project_revision"])
+
+	def rate_session(self, session_id: int, rating: int) -> int:
+		session = self._ownership.require_own_session(session_id)
+		self._db.set_app_rating(session["username"], session["project_id"], session["project_revision"], rating)
+		return rating
+
 	def _reloaded_session_payload(self, session_id: int) -> dict:
 		session = self._db.get_chat_session(session_id)
 		assert session is not None

@@ -134,7 +134,7 @@ async def test_an_unlinked_number_an_unregistered_account_and_an_unreadable_mess
     env = Env()
     await env.arrives(_payload(sender=UNKNOWN_NUMBER, text="NOTACODE"))
     assert env.turns.calls == []
-    assert env.api.sent == [(UNKNOWN_NUMBER, "This invite link is invalid.")]
+    assert env.api.sent == [(UNKNOWN_NUMBER, "This invite code is unknown.")]
 
     env = Env()
     env.db.users[LINKED_NUMBER]["role"] = None
