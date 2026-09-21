@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getMetrics, getProjectGraph, getProjects, getUserLatestSignals, getUsers, putUserRole } from '../../api.js'
+import { deleteUserData, getMetrics, getProjectGraph, getProjects, getUserLatestSignals, getUsers, putUserRole } from '../../api.js'
 import { confirmDialog } from '../../../../dialogStore.js'
 import { roleSatisfies } from '../../../../roles.js'
 import DocInfoButton from '../../../../components/DocInfoButton.vue'
@@ -73,6 +73,23 @@ async function handleChangeRole(role) {
     const updated = await putUserRole(user.id, role)
     const index = rows.value.findIndex((row) => row.id === user.id)
     if (index !== -1) rows.value[index] = updated
+  } catch {
+  }
+}
+
+async function handleDeleteAllData() {
+  const user = selectedUser.value
+  if (!user) return
+  const ok = await confirmDialog({
+    title: 'Delete account',
+    body: `Permanently delete all data for ${user.name ?? user.email}? This cannot be undone.`,
+    okLabel: 'Delete all data'
+  })
+  if (!ok) return
+  try {
+    await deleteUserData(user.id)
+    rows.value = rows.value.filter((row) => row.id !== user.id)
+    if (selectedUserId.value === user.id) selectedUserId.value = null
   } catch {
   }
 }
@@ -225,6 +242,7 @@ defineExpose({ refresh: load })
               :can-edit-role="canEditRole"
               @change-role="handleChangeRole"
               @home-screen="emit('home-screen', selectedUser.role)"
+              @delete-all-data="handleDeleteAllData"
             />
             <div v-if="lastSessionStateNode" class="inspector-signal-block manage-users-state-card">
               <div class="inspector-signal-readonly">

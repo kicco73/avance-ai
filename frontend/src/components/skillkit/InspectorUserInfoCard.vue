@@ -7,7 +7,7 @@ const props = defineProps({
   canEditRole: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['change-role', 'home-screen'])
+const emit = defineEmits(['change-role', 'home-screen', 'delete-all-data'])
 
 const ROLES = ['user', 'customer', 'supervisor', 'admin']
 
@@ -90,7 +90,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <button v-if="large" type="button" class="user-info-home-screen-btn" @click="emit('home-screen')">Home screen</button>
+      <div v-if="large" class="user-info-actions">
+        <button type="button" class="user-info-home-screen-btn" @click="emit('home-screen')">Home screen</button>
+        <button type="button" class="user-info-delete-data-btn" @click="emit('delete-all-data')">Delete account</button>
+      </div>
     </div>
   </div>
 </template>
@@ -201,20 +204,40 @@ onBeforeUnmount(() => {
   text-align: left;
 }
 
-.user-info-home-screen-btn {
+.user-info-actions {
   margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.user-info-home-screen-btn,
+.user-info-delete-data-btn {
   padding: 0.45rem 1.1rem;
   border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
 }
 
+.user-info-home-screen-btn {
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+}
+
 .user-info-home-screen-btn:hover {
   background: #4a6fa5;
+  color: white;
+}
+
+.user-info-delete-data-btn {
+  border: 1px solid #b3392c;
+  background: white;
+  color: #b3392c;
+}
+
+.user-info-delete-data-btn:hover {
+  background: #b3392c;
   color: white;
 }
 

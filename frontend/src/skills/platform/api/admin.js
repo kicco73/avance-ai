@@ -20,6 +20,10 @@ export function putUserRole(userId, role) {
   })
 }
 
+export function deleteUserData(userId) {
+  return apiFetch(`${API_URL}/skills/platform/users/${encodeURIComponent(userId)}/data`, { method: 'DELETE' })
+}
+
 export function putProjectPause(projectId) {
   return apiFetch(`${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/pause`, { method: 'POST' })
 }

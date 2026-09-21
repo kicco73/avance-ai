@@ -210,6 +210,21 @@ onBeforeUnmount(() => {
           />
 
           <Transition :name="slideTransitionName">
+            <component
+              v-if="overlayView"
+              :is="overlayView.component"
+              :key="`${pushedView}-${pushedViewContext.projectId}-${pushedViewContext.sessionId}`"
+              :project-id="pushedViewContext.projectId"
+              :session-id="pushedViewContext.sessionId"
+              :build-error="pushedViewContext.buildError"
+              :current-user-role="currentUserRole"
+              :profile="currentUserProfile"
+              :view-stack="viewStack"
+              v-on="overlayListeners"
+            />
+          </Transition>
+
+          <Transition :name="slideTransitionName">
             <LiveChatWindow
               v-if="homePreviewRole === 'user'"
               role="admin"
@@ -229,21 +244,6 @@ onBeforeUnmount(() => {
               :profile="currentUserProfile"
               :view-stack="viewStack"
               v-on="homePreviewListeners"
-            />
-          </Transition>
-
-          <Transition :name="slideTransitionName">
-            <component
-              v-if="overlayView"
-              :is="overlayView.component"
-              :key="`${pushedView}-${pushedViewContext.projectId}-${pushedViewContext.sessionId}`"
-              :project-id="pushedViewContext.projectId"
-              :session-id="pushedViewContext.sessionId"
-              :build-error="pushedViewContext.buildError"
-              :current-user-role="currentUserRole"
-              :profile="currentUserProfile"
-              :view-stack="viewStack"
-              v-on="overlayListeners"
             />
           </Transition>
         </div>

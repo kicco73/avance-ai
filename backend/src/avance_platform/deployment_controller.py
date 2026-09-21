@@ -19,7 +19,7 @@ from __future__ import annotations
 
 
 from auth.auth_service import AuthService
-from controllers.base_controller import BaseController, get, post, put
+from controllers.base_controller import BaseController, delete, get, post, put
 from schemas import AiModelSelectionRequest, SetUserRoleRequest
 from turn.turn_service import TurnService
 
@@ -57,3 +57,12 @@ class DeploymentController(BaseController):
     @put("/api/skills/platform/users/{user_id}/role", role="admin")
     def put_user_role(self, user_id: str, req: SetUserRoleRequest):
         return self.auth_service.set_user_role(user_id, req.role)
+
+    @delete("/api/skills/platform/users/{user_id}/data", role="admin")
+    def delete_user_data(self, user_id: str):
+        """ManageUsersView.vue's "Delete all data" — the admin-triggered
+        counterpart to ProfileView.vue's "Erase all my data": same
+        AuthService.erase_account, targeting a user_id the admin picked
+        instead of WebSession().user."""
+        self.auth_service.erase_account(user_id)
+        return {"success": True}
