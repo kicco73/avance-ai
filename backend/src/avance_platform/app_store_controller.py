@@ -40,6 +40,10 @@ class AppStoreController(BaseController):
             raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
         return {"trials_left": trials_left}
 
+    @get("/api/skills/platform/app-store/apps/{app_id}/skills")
+    def get_app_skills(self, app_id: str):
+        return {"skills": self.platform_service.get_app_skills(app_id)}
+
     @get("/api/skills/platform/app-store/apps/{app_id}/preview-transcript")
     def get_app_preview_transcript(self, app_id: str):
         return {"messages": self.platform_service.get_app_store_preview_messages(app_id)}

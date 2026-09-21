@@ -271,6 +271,26 @@ class PlatformService(object):
             indexed.setdefault(match.group("aspect").lower(), []).append((int(match.group("index")), name))
         return {aspect: [name for _, name in sorted(entries)] for aspect, entries in indexed.items()}
 
+    def get_app_skills(self, project_id: str) -> list[dict]:
+        """The declarable skills the published revision of `project_id`
+        cannot run without — WhatsApp, speech, mail and the rest — as
+        `skills.installed()` labels them. This is what the store has to
+        say about an app: what it is made of. It is asked for one app at
+        a time rather than folded into the listing, because working it
+        out reads that revision's whole archive set."""
+        from project.archive.layout import ArchiveLayout
+        from system import skills
+
+        revision = self.project_service.get_published_revision(project_id)
+        automaton = self.project_service.get_automaton(project_id, revision)
+        sources = ArchiveLayout.decode_text(self.db.get_archives(project_id, revision=revision))
+        required = set(skills.required_for(automaton, sources))
+        return [
+            {"key": entry["key"], "ui_label": entry["ui_label"], "ui_description": entry["ui_description"]}
+            for entry in skills.declarable()
+            if entry["package"] in required
+        ]
+
     def start_trial_session(self, username: str, project_id: str) -> int:
         """Spend one of this user's test sessions on `project_id` and
         return how many are left after it. Raises PermissionError once

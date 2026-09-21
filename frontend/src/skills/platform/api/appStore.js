@@ -23,6 +23,10 @@ export function postTrialSession(appId) {
   return apiFetch(`${API_URL}/skills/platform/app-store/apps/${encodeURIComponent(appId)}/trial`, { method: 'POST' })
 }
 
+export function getAppSkills(appId) {
+  return apiFetch(`${API_URL}/skills/platform/app-store/apps/${encodeURIComponent(appId)}/skills`)
+}
+
 export function getAppPreviewTranscript(appId) {
   return apiFetch(`${API_URL}/skills/platform/app-store/apps/${encodeURIComponent(appId)}/preview-transcript`)
 }

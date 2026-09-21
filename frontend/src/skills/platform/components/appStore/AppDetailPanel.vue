@@ -4,12 +4,11 @@ import ChatView from '../../../../components/chat/ChatView.vue'
 import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppSnapshotGallery from './AppSnapshotGallery.vue'
 import AppStoreFrozenPreview from './AppStoreFrozenPreview.vue'
-import { postInstallApp, deleteInstallApp, postTrialSession, appStoreFileContentUrl } from '../../api.js'
+import { postInstallApp, deleteInstallApp, postTrialSession, getAppSkills, appStoreFileContentUrl } from '../../api.js'
 import { confirmDialog } from '../../../../dialogStore.js'
 import { holdSkin } from '../../../../chatSkin.js'
 import { AppSkinSource } from '../../appSkinSource.js'
 import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession, endPreviewSession } from '../../appStorePreviewStore.js'
-import { renderMarkdown } from '../../../../markdown.js'
 import { usePreviewExpiry } from '../../../../composables/usePreviewExpiry.js'
 import avanceLogoUrl from '../../../../assets/avance-logo.png'
 
@@ -31,6 +30,18 @@ const iconFailed = ref(false)
 
 const trialsLeft = ref(props.app.trials_left ?? 0)
 watch(() => props.app.trials_left, (left) => { trialsLeft.value = left ?? 0 })
+
+const appSkills = ref([])
+
+watch(() => props.app.id, async (appId) => {
+  appSkills.value = []
+  if (!appId) return
+  try {
+    const { skills } = await getAppSkills(appId)
+    if (props.app.id === appId) appSkills.value = skills
+  } catch {
+  }
+}, { immediate: true })
 
 const hasSnapshots = computed(() => Object.values(props.app.snapshot_files ?? {}).some((files) => files?.length))
 const canTry = computed(() => trialsLeft.value > 0)
@@ -299,10 +310,16 @@ onBeforeUnmount(async () => {
 
     <div class="app-detail-rail">
       <p class="app-store-preview-desc">{{ app.ui_description }}</p>
-      <hr class="app-detail-rail-divider" />
-      <h3 class="app-detail-rail-heading">Summary</h3>
-      <div v-if="app.ai_summary" class="app-store-preview-summary" v-html="renderMarkdown(app.ai_summary)"></div>
-      <p v-else class="app-store-preview-summary-empty">No summary available yet.</p>
+      <template v-if="appSkills.length">
+        <hr class="app-detail-rail-divider" />
+        <h3 class="app-detail-rail-heading">App skills</h3>
+        <ul class="app-detail-skills">
+          <li v-for="skill in appSkills" :key="skill.key" class="app-detail-skill">
+            <span class="app-detail-skill-label">{{ skill.ui_label }}</span>
+            <span v-if="skill.ui_description" class="app-detail-skill-desc">{{ skill.ui_description }}</span>
+          </li>
+        </ul>
+      </template>
       <hr class="app-detail-rail-divider" />
       <dl class="app-detail-meta">
         <div class="app-detail-meta-row">
@@ -502,18 +519,33 @@ onBeforeUnmount(async () => {
   white-space: pre-wrap;
 }
 
-.app-store-preview-summary {
-  color: #555;
-  font-size: 0.9rem;
-  line-height: 1.5;
+.app-detail-skills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.app-store-preview-summary-empty {
-  margin: 0;
-  color: #999;
-  font-size: 0.85rem;
-  font-style: italic;
+.app-detail-skill {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
 }
+
+.app-detail-skill-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.app-detail-skill-desc {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #777;
+}
+
 
 .app-store-preview-menu {
   position: relative;
