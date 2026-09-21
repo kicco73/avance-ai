@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { appStoreFileContentUrl } from '../../api.js'
 
 const props = defineProps({
@@ -14,6 +14,8 @@ const ASPECT_LABELS = {
 }
 
 const ASPECT_ORDER = ['web', 'mobile-vertical', 'mobile-horizontal']
+
+const DRAG_THRESHOLD_PX = 40
 
 function isCoarsePointer() {
   return typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true
@@ -40,6 +42,7 @@ const aspects = computed(() => {
 
 const selectedAspect = ref(null)
 const selectedIndex = ref(0)
+const trackEl = ref(null)
 
 watch(aspects, (list) => {
   if (!list.length) {
@@ -49,10 +52,12 @@ watch(aspects, (list) => {
   if (!list.includes(selectedAspect.value)) selectedAspect.value = preferredAspect(list)
 }, { immediate: true })
 
-watch(selectedAspect, () => { selectedIndex.value = 0 })
+watch(selectedAspect, () => {
+  selectedIndex.value = 0
+  nextTick(() => { if (trackEl.value) trackEl.value.scrollLeft = 0 })
+})
 
 const files = computed(() => (selectedAspect.value ? props.snapshotFiles[selectedAspect.value] ?? [] : []))
-const currentFile = computed(() => files.value[selectedIndex.value] ?? null)
 
 function aspectLabel(aspect) {
   return ASPECT_LABELS[aspect] ?? aspect
@@ -62,7 +67,62 @@ function snapshotUrl(fileName) {
   return appStoreFileContentUrl(props.appId, fileName)
 }
 
-defineExpose({ hasSnapshots: computed(() => aspects.value.length > 0) })
+function goTo(index) {
+  const track = trackEl.value
+  const clamped = Math.min(Math.max(0, index), files.value.length - 1)
+  selectedIndex.value = clamped
+  if (track) track.scrollTo({ left: clamped * track.clientWidth, behavior: 'smooth' })
+}
+
+const dragging = ref(false)
+let dragPointerId = null
+let dragStartX = 0
+let dragStartScrollLeft = 0
+let dragMoved = false
+
+function onPointerDown(event) {
+  const track = trackEl.value
+  if (!track || files.value.length < 2 || event.button === 2) return
+  dragging.value = true
+  dragMoved = false
+  dragPointerId = event.pointerId
+  dragStartX = event.clientX
+  dragStartScrollLeft = track.scrollLeft
+  track.setPointerCapture?.(event.pointerId)
+}
+
+function onPointerMove(event) {
+  if (!dragging.value || event.pointerId !== dragPointerId) return
+  const track = trackEl.value
+  if (!track) return
+  const delta = event.clientX - dragStartX
+  if (Math.abs(delta) > 3) dragMoved = true
+  track.scrollLeft = dragStartScrollLeft - delta
+}
+
+function endDrag(event) {
+  if (!dragging.value || (event && event.pointerId !== dragPointerId)) return
+  const track = trackEl.value
+  dragging.value = false
+  dragPointerId = null
+  if (!track) return
+  track.releasePointerCapture?.(event?.pointerId)
+  const travelled = track.scrollLeft - dragStartScrollLeft
+  const from = Math.round(dragStartScrollLeft / track.clientWidth)
+  if (!dragMoved) return goTo(from)
+  if (Math.abs(travelled) < DRAG_THRESHOLD_PX) return goTo(from)
+  goTo(from + (travelled > 0 ? 1 : -1))
+}
+
+function onKeydown(event) {
+  if (event.key === 'ArrowRight') {
+    event.preventDefault()
+    goTo(selectedIndex.value + 1)
+  } else if (event.key === 'ArrowLeft') {
+    event.preventDefault()
+    goTo(selectedIndex.value - 1)
+  }
+}
 </script>
 
 <template>
@@ -78,25 +138,38 @@ defineExpose({ hasSnapshots: computed(() => aspects.value.length > 0) })
           @click="selectedAspect = aspect"
         >{{ aspectLabel(aspect) }}</button>
       </div>
-      <span class="app-snapshot-gallery-count">{{ files.length }} snapshot{{ files.length === 1 ? '' : 's' }}</span>
     </div>
 
-    <div class="app-snapshot-gallery-stage">
-      <img v-if="currentFile" :src="snapshotUrl(currentFile)" class="app-snapshot-gallery-image" alt="" />
+    <div
+      ref="trackEl"
+      class="app-snapshot-gallery-track"
+      :class="{ 'app-snapshot-gallery-track-dragging': dragging, 'app-snapshot-gallery-track-single': files.length < 2 }"
+      role="group"
+      :aria-label="`Snapshot ${selectedIndex + 1} of ${files.length}`"
+      tabindex="0"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="endDrag"
+      @pointercancel="endDrag"
+      @keydown="onKeydown"
+      @dragstart.prevent
+    >
+      <div v-for="file in files" :key="file" class="app-snapshot-gallery-slide">
+        <img :src="snapshotUrl(file)" class="app-snapshot-gallery-image" alt="" draggable="false" />
+      </div>
     </div>
 
-    <div v-if="files.length > 1" class="app-snapshot-gallery-thumbs">
+    <div v-if="files.length > 1" class="app-snapshot-gallery-dots">
       <button
         v-for="(file, index) in files"
         :key="file"
         type="button"
-        class="app-snapshot-gallery-thumb"
-        :class="{ 'app-snapshot-gallery-thumb-active': index === selectedIndex }"
+        class="app-snapshot-gallery-dot"
+        :class="{ 'app-snapshot-gallery-dot-active': index === selectedIndex }"
         :aria-label="`Snapshot ${index + 1}`"
-        @click="selectedIndex = index"
-      >
-        <img :src="snapshotUrl(file)" alt="" />
-      </button>
+        :aria-current="index === selectedIndex ? 'true' : undefined"
+        @click="goTo(index)"
+      ></button>
     </div>
   </div>
 </template>
@@ -143,22 +216,44 @@ defineExpose({ hasSnapshots: computed(() => aspects.value.length > 0) })
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
 }
 
-.app-snapshot-gallery-count {
-  color: #999;
-  font-size: 0.72rem;
-}
-
-.app-snapshot-gallery-stage {
+.app-snapshot-gallery-track {
   flex: 1;
   min-height: 0;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  background: #f2f2f7;
+  border: 1px solid #e5e5ea;
+  border-radius: 8px;
+  cursor: grab;
+  touch-action: pan-y;
+  outline-offset: 2px;
+}
+
+.app-snapshot-gallery-track::-webkit-scrollbar {
+  display: none;
+}
+
+.app-snapshot-gallery-track-dragging {
+  cursor: grabbing;
+  scroll-snap-type: none;
+}
+
+.app-snapshot-gallery-track-single {
+  cursor: default;
+}
+
+.app-snapshot-gallery-slide {
+  flex: 0 0 100%;
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding: 0.9rem;
   box-sizing: border-box;
-  background: #f2f2f7;
-  border: 1px solid #e5e5ea;
-  border-radius: 8px;
+  scroll-snap-align: center;
 }
 
 .app-snapshot-gallery-image {
@@ -167,35 +262,43 @@ defineExpose({ hasSnapshots: computed(() => aspects.value.length > 0) })
   object-fit: contain;
   border-radius: 6px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
-.app-snapshot-gallery-thumbs {
+.app-snapshot-gallery-dots {
   flex-shrink: 0;
   display: flex;
-  gap: 0.5rem;
-  overflow-x: auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
 }
 
-.app-snapshot-gallery-thumb {
-  flex-shrink: 0;
-  width: 64px;
-  height: 48px;
+/* A 8px dot with a 24px hit area: the visible mark is the ::before,
+   the button itself is what a finger has to land on. */
+.app-snapshot-gallery-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  background: white;
-  overflow: hidden;
+  border: none;
+  background: none;
   cursor: pointer;
 }
 
-.app-snapshot-gallery-thumb-active {
-  border: 2px solid #4a6fa5;
+.app-snapshot-gallery-dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c8ccd4;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
-.app-snapshot-gallery-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.app-snapshot-gallery-dot-active::before {
+  background: #4a6fa5;
+  transform: scale(1.25);
 }
 </style>

@@ -213,6 +213,7 @@ onBeforeUnmount(() => {
             <component
               v-if="overlayView"
               :is="overlayView.component"
+              class="view-pushed"
               :key="`${pushedView}-${pushedViewContext.projectId}-${pushedViewContext.sessionId}`"
               :project-id="pushedViewContext.projectId"
               :session-id="pushedViewContext.sessionId"
@@ -347,6 +348,18 @@ onBeforeUnmount(() => {
 .view-slide-back-enter-active,
 .view-slide-back-leave-active {
   transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* A pushed view and the role home underneath it are both fixed at
+   z-index 100 (AppStoreView, ManageProjectsView), so the pushed one only
+   stayed on top while a transition class raised it. The elevation belongs
+   to the pushed view itself, for as long as it is mounted. !important is
+   required: this class lands on the pushed component's own root element
+   alongside that component's own scoped z-index rule (e.g. AppStoreView's
+   .app-store-overlay), which has equal selector specificity, so without it
+   whichever stylesheet the bundler happens to insert later wins the tie. */
+.view-pushed {
+  z-index: 101 !important;
 }
 
 .view-slide-forward-enter-active,
