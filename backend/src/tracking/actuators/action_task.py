@@ -62,6 +62,7 @@ from jobs import CancelableJob
 from system.logging_factory import LoggerFactory
 from scheduler import Task
 from system.web_session import WebSession
+from turn.turn_transaction import TurnTransaction
 
 if TYPE_CHECKING:
     from ai import AiService
@@ -318,7 +319,7 @@ class ScopeHydrator(object):
             task_namespace = task_namespace.with_session(firing_session_id)
             chat_namespace = chat_namespace.with_session(firing_session_id)
         firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
-        env = env_for_session(self._db, firing_session) if firing_session is not None else Env()
+        env = env_for_session(TurnTransaction(self._db, firing_session["id"]), firing_session) if firing_session is not None else Env()
         builder = EvaluationScopeBuilder(
             env, MetricService(self._db, context),
             SessionFacts(self._db, context), UserFacts(self._db), self._db,

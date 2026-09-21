@@ -118,7 +118,7 @@ class AiService(object):
 	@classmethod
 	def for_live(
 		cls, ai_service_config: list[AIServiceConfig], db: Db | None = None,
-		input_token_budget_per_turn: int | None = None,
+		input_token_budget_per_turn: int | None = None, deadline: StreamDeadline | None = None,
 	) -> "AiService":
 		"""Builds the live-chat cascade from only the entries whose own
 		`modes` includes "live" (defaults to both live and test — see
@@ -135,26 +135,26 @@ class AiService(object):
 		the cascade auto_provider itself actually cycles through, via
 		auto_config_indices — see _auto_eligible_indices."""
 		return cls._for_mode(
-			ai_service_config, "live", AutoLiveLLMProvider, db, input_token_budget_per_turn,
+			ai_service_config, "live", AutoLiveLLMProvider, db, input_token_budget_per_turn, deadline,
 		)
 
 	@classmethod
 	def for_test(
 		cls, ai_service_config: list[AIServiceConfig], db: Db | None = None,
-		input_token_budget_per_turn: int | None = None,
+		input_token_budget_per_turn: int | None = None, deadline: StreamDeadline | None = None,
 	) -> "AiService":
 		"""The test-panel/batch-run cascade — see for_live's own docstring
 		for why this stays fully independent of it, and for what "no-auto"
 		does here too."""
 		return cls._for_mode(
-			ai_service_config, "test", AutoTestLLMProvider, db, input_token_budget_per_turn,
+			ai_service_config, "test", AutoTestLLMProvider, db, input_token_budget_per_turn, deadline,
 		)
 
 	@classmethod
 	def _for_mode(
 		cls, ai_service_config: list[AIServiceConfig], mode: str,
 		auto_provider_class: type[AutoLiveLLMProvider], db: Db | None,
-		input_token_budget_per_turn: int | None,
+		input_token_budget_per_turn: int | None, deadline: StreamDeadline | None = None,
 	) -> "AiService":
 		mode_config = cls._filter_by_mode(ai_service_config, mode)
 		labeled = cls._build_labeled_providers(mode_config)
@@ -164,7 +164,7 @@ class AiService(object):
 		return cls(
 			auto_provider_class(auto_labeled), selectable_providers=selectable, configs=mode_config,
 			auto_config_indices=auto_config_indices, db=db,
-			input_token_budget_per_turn=input_token_budget_per_turn,
+			input_token_budget_per_turn=input_token_budget_per_turn, deadline=deadline,
 		)
 
 	@staticmethod

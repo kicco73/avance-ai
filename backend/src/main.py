@@ -40,7 +40,7 @@ from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 
-__version__ = "2.5.8"
+__version__ = "2.5.9"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -84,9 +84,11 @@ def create_app() -> FastAPI:
 
         ai_live_service = AiService.for_live(
             config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
+            deadline=config.stream_deadline,
         )
         ai_test_service = AiService.for_test(
             config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
+            deadline=config.stream_deadline,
         )
 
         progress_broadcaster = Broadcaster(ai_test_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
@@ -121,6 +123,7 @@ def create_app() -> FastAPI:
         turn_service = TurnService(
             db, ai_live_service, ai_test_service, project_service, session_manager,
             tracking_service, metric_service, scheduler_service, namespace_factory, project_locks,
+            reply_silence_seconds=config.reply_silence_seconds,
         )
         TurnInput(turn_service, db).register()
         bus.contribute(POINT_TRIGGER_NAMESPACES, lambda namespaces: namespaces.declare(ChoiceNamespace()))

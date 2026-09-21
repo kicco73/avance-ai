@@ -193,6 +193,34 @@ secrets). Top-level sections:
   than the whole bound is served without being kept. Entries are dropped
   by the bound, and explicitly whenever a project is saved, renamed or
   deleted.
+- **`turn-service.first-chunk-seconds`**, **`next-chunk-seconds`**,
+  **`silent-round-seconds`** — optional, default to `5`, `10` and `30`.
+  How long the model may stay silent before the call is given up (see
+  `ai/stream_deadline.py`): a stall is an `AIServiceProviderUnavailableError`,
+  so the cascade moves to the next provider for the next request, the
+  call is cancelled so nothing lands late, and the exchange ends with
+  `output.error` — never in silence (production session 55, 2026-09-21,
+  waited 13 minutes on a provider that never sent a byte). The three
+  bound three different silences. *First chunk*: nothing has arrived
+  since the request was sent; the eight complete replies of that session
+  took 1.1–2.9 s, so a provider that has not started after 5 s is not
+  going to. *Next chunk*: nothing has arrived since the last byte of a
+  reply under way — reset on every byte, so a long reply is never cut for
+  its length. *Silent round*: a round the model spends deciding on a
+  tool call, which arrives whole and yields nothing until it ends, so the
+  whole generation is the silence; 4096 `max-output-tokens` at ≥150
+  tokens/s is about 27 s. Counted on the server's own clock, so
+  `tests/test_stalled_reply_ends_in_time.py` replays that session on a
+  clock it moves itself (`docs/TESTS.md`, "Time a test moves itself").
+- **`turn-service.reply-silence-seconds`** — optional, defaults to `45`.
+  How long the *browser* may hear nothing during an exchange before it
+  tells the person the reply was lost (`frontend/src/chatExchange.js`).
+  Published to every chat client on `session.info` rather than built
+  into the bundle, and checked at boot to exceed `silent-round-seconds`:
+  a browser that gave up sooner would abandon a reply the server is
+  still allowed to be writing. The default is that 30 s plus 15 s for
+  the tool call a silent round ends in, which the server does not bound.
+  All four are shown read-only in Settings › Manage services › Chat.
 - **`project-service.compiled-automaton`** — optional, defaults to
   `false`. With it on, a project's *published* revision is served from a
   compiled package under `build-service.apps-dir` whenever one matches

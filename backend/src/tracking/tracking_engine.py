@@ -5,11 +5,11 @@ from typing import Protocol
 
 from automaton.automaton import Action, Automaton, State
 from automaton.choice import ChoiceSelection
-from db.db import Db
 from db.models import TestObservation
 from system.logging_factory import LoggerFactory
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
+from turn.turn_transaction import RowHandle, TurnDbInterface, row_id
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -20,8 +20,8 @@ class TrackingSink(Protocol):
     while a test-replay sink can satisfy this independently."""
 
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: int | None = None, output_values: dict | None = None,
-    ) -> int:
+        self, values: dict, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
+    ) -> RowHandle:
         ...
 
     def save_transition(
@@ -32,10 +32,10 @@ class TrackingSink(Protocol):
         session_id: int,
         transition_log_level: str,
         signal_values: dict | None = None,
-        message_id: int | None = None,
+        message_id: RowHandle | None = None,
         origin: str | None = None,
         output_values: dict | None = None,
-    ) -> int:
+    ) -> RowHandle:
         ...
 
     def clear_local_memory(self, session_id: int) -> None:
@@ -45,12 +45,12 @@ class TrackingSink(Protocol):
 class DbTrackingSink:
     """TrackingSink backed by the real Db — production's own sink."""
 
-    def __init__(self, db: Db) -> None:
+    def __init__(self, db: TurnDbInterface) -> None:
         self._db = db
 
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: int | None = None, output_values: dict | None = None,
-    ) -> int:
+        self, values: dict, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
+    ) -> RowHandle:
         return self._db.save_signal_snapshot(values, session_id, message_id, output_values=output_values)
 
     def save_transition(
@@ -61,10 +61,10 @@ class DbTrackingSink:
         session_id: int,
         transition_log_level: str,
         signal_values: dict | None = None,
-        message_id: int | None = None,
+        message_id: RowHandle | None = None,
         origin: str | None = None,
         output_values: dict | None = None,
-    ) -> int:
+    ) -> RowHandle:
         return self._db.save_transition(
             old_state, action, new_state, session_id,
             transition_log_level=transition_log_level,
@@ -87,12 +87,12 @@ class TestObservationSink:
         self._run_id = run_id
 
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: int | None = None, output_values: dict | None = None,
-    ) -> int:
+        self, values: dict, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
+    ) -> RowHandle:
         row = TestObservation.create(
-            run=self._run_id, session=session_id, message=message_id, values=json.dumps(values),
+            run=self._run_id, session=session_id, message=row_id(message_id), values=json.dumps(values),
         )
-        return row.id
+        return RowHandle(row.id)
 
     def save_transition(
         self,
@@ -102,16 +102,16 @@ class TestObservationSink:
         session_id: int,
         transition_log_level: str,
         signal_values: dict | None = None,
-        message_id: int | None = None,
+        message_id: RowHandle | None = None,
         origin: str | None = None,
         output_values: dict | None = None,
-    ) -> int:
+    ) -> RowHandle:
         row = TestObservation.create(
-            run=self._run_id, session=session_id, message=message_id,
+            run=self._run_id, session=session_id, message=row_id(message_id),
             old_state=old_state, action=action, new_state=new_state,
             values=json.dumps(signal_values) if signal_values is not None else None,
         )
-        return row.id
+        return RowHandle(row.id)
 
     def clear_local_memory(self, session_id: int) -> None:
         return None
@@ -160,13 +160,13 @@ class TrackingEngine:
         signal_values: dict | None,
         selection: ChoiceSelection,
         session_id: int,
-        message_id: int | None = None,
+        message_id: RowHandle | None = None,
         *,
         origin: str,
         username: str | None = None,
         project_id: str | None = None,
         output_values: dict | None = None,
-    ) -> tuple[int, dict]:
+    ) -> tuple[RowHandle, dict]:
         """Returns the tracking row id and the env keys the fired action
         wrote — the second so whoever ran the turn can say so on the way
         out (see turn/outbound.py). The fired action's own task is
@@ -194,13 +194,13 @@ class TrackingEngine:
         action: Action,
         signal_values: dict | None,
         session_id: int,
-        message_id: int | None = None,
+        message_id: RowHandle | None = None,
         *,
         origin: str,
         username: str | None = None,
         project_id: str | None = None,
         output_values: dict | None = None,
-    ) -> int:
+    ) -> RowHandle:
         # FIXME: caller must have already applied action's own env: (via
         tracking_id = self._sink.save_transition(
             state.key,

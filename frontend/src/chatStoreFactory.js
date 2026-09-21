@@ -53,6 +53,7 @@ export function createChatStore({
   const selectedSessionActive = ref(false)
   const sessionEndReason = ref(null)
   const sessionChannel = ref(null)
+  let replySilenceSeconds = null
   const conversationElsewhere = computed(() => {
     const mine = unref(channel)
     return !!mine && !!sessionChannel.value && sessionChannel.value !== mine
@@ -129,6 +130,7 @@ export function createChatStore({
     selectedSessionActive.value = frame.current ?? true
     sessionEndReason.value = null
     sessionChannel.value = frame.channel ?? null
+    replySilenceSeconds = frame.reply_silence_seconds
     state.value = frame.state
     audioEnabled.value = !!frame.audio
     publishServices(frame.services || {})
@@ -443,6 +445,7 @@ export function createChatStore({
     const mine = () => currentSessionId.value === turnSessionId
     const exchange = new ChatExchange({
       sessionId: turnSessionId,
+      silenceSeconds: replySilenceSeconds,
       bubble: {
         writing: () => {
           if (mine()) patchBubble(assistantMsgId, { pending: false, awaitingReply: true })

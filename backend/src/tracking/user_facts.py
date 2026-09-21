@@ -5,14 +5,17 @@ SessionFacts, so WebSession().impersonate(...) scopes it to the user
 being acted for rather than whoever's live right now."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
-from db import Db
 from system.web_session import WebSession
 
 
+class UserRecords(Protocol):
+    def get_user_facts(self, email: str) -> dict[str, Any]: ...
+
+
 class UserFacts(object):
-    def __init__(self, db: Db) -> None:
+    def __init__(self, db: "UserRecords") -> None:
         self._db = db
 
     def as_dict(self) -> dict[str, Any]:

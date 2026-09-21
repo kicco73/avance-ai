@@ -1,13 +1,12 @@
 import { busChannel } from './busChannel.js'
 
-const REPLY_SILENCE_TIMEOUT_MS = 45000
-
 const WATCHED = ['output.text_stream', 'output.tool', 'output.speech', 'output.text', 'output.error', 'output.progress']
 
 export class ChatExchange {
-  constructor({ sessionId, bubble }) {
+  constructor({ sessionId, bubble, silenceSeconds }) {
     this._sessionId = sessionId
     this._bubble = bubble
+    this._silenceMs = silenceSeconds * 1000
     this._unsubscribes = []
     this._silenceTimer = null
     this.hadToolCall = false
@@ -71,8 +70,8 @@ export class ChatExchange {
     this._clearSilenceTimer()
     this._silenceTimer = setTimeout(() => this._failed({
       message: 'No reply.',
-      detail: `The server sent nothing for ${REPLY_SILENCE_TIMEOUT_MS / 1000} seconds.`
-    }), REPLY_SILENCE_TIMEOUT_MS)
+      detail: `The server sent nothing for ${this._silenceMs / 1000} seconds.`
+    }), this._silenceMs)
   }
 
   _clearSilenceTimer() {

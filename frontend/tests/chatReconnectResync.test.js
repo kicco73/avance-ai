@@ -26,7 +26,7 @@ describe('an exchange interrupted by a dropped socket', () => {
   function enter(socket, messages) {
     socket.emit({
       type: 'session.info', session_id: 1, project_id: 'proj', state: STATE,
-      services: {}, audio: false, current: true, channel: 'webchat',
+      services: {}, audio: false, current: true, channel: 'webchat', reply_silence_seconds: 45,
     })
     socket.emit({ type: 'session.messages', session_id: 1, messages })
     socket.emit({ type: 'state.buttons', session_id: 1, actions: [] })

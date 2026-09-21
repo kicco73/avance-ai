@@ -6,12 +6,14 @@ from urllib.parse import urlsplit, urlunsplit
 from ruamel.yaml import YAML
 
 from system import bus
-from ai import AIServiceConfig
+from ai import AIServiceConfig, StreamDeadline
 from system.bus import POINT_CONFIG_SERVICES
 from system.config_services import ui_section
 DEFAULT_APPS_DIR = Path(__file__).resolve().parent.parent / "apps"
 
 DEFAULT_ALLOWED_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
+REPLY_SILENCE_SECONDS = 45.0
 
 
 
@@ -199,6 +201,34 @@ class AppConfig:
         return entries
 
     @classmethod
+    def _parse_stream_deadline(cls, raw: dict, path: Path) -> StreamDeadline:
+        default = StreamDeadline()
+        return StreamDeadline(
+            first_chunk_seconds=cls._get_optional_positive_float(
+                raw, "turn-service", "first-chunk-seconds", path, default.first_chunk_seconds,
+            ),
+            next_chunk_seconds=cls._get_optional_positive_float(
+                raw, "turn-service", "next-chunk-seconds", path, default.next_chunk_seconds,
+            ),
+            silent_round_seconds=cls._get_optional_positive_float(
+                raw, "turn-service", "silent-round-seconds", path, default.silent_round_seconds,
+            ),
+        )
+
+    @classmethod
+    def _parse_reply_silence_seconds(cls, raw: dict, path: Path, deadline: StreamDeadline) -> float:
+        seconds = cls._get_optional_positive_float(
+            raw, "turn-service", "reply-silence-seconds", path, REPLY_SILENCE_SECONDS,
+        )
+        if seconds <= deadline.silent_round_seconds:
+            raise ConfigError(
+                f"{path}: 'turn-service.reply-silence-seconds' ({seconds:g}) must exceed "
+                f"'turn-service.silent-round-seconds' ({deadline.silent_round_seconds:g}): the browser would give up "
+                f"on a reply the server is still allowed to be writing."
+            )
+        return seconds
+
+    @classmethod
     def _parse_auth_providers(cls, raw: dict, path: Path) -> list[AuthProviderConfig]:
         entries = cls._get_providers(raw, "auth-service", path)
 
@@ -323,6 +353,8 @@ class AppConfig:
         self.project_file_cache_bytes = self._get_optional_positive_int(
             raw, "turn-service", "project-file-cache-bytes", path, default=8 * 1024 * 1024
         )
+        self.stream_deadline = self._parse_stream_deadline(raw, path)
+        self.reply_silence_seconds = self._parse_reply_silence_seconds(raw, path, self.stream_deadline)
         self.jobs_shared_max_concurrent = self._get_optional_positive_int(
             raw, "scheduler-service", "shared-max-concurrent", path, default=2
         )
@@ -361,11 +393,15 @@ class AppConfig:
         as-is (admin-only route) for Manage services' masked/revealable
         fields."""
         snapshot = {
-            "chat": ui_section("Chat", "Session limits and token budgets for every conversation.", {
+            "chat": ui_section("Chat", "Session limits, token budgets and reply deadlines for every conversation.", {
                 "max-session-duration-in-minutes": self.max_session_duration_in_minutes,
                 "input-token-budget-per-turn": self.input_token_budget_per_turn,
                 "total-token-budget-per-session": self.total_token_budget_per_session,
                 "project-file-cache-bytes": self.project_file_cache_bytes,
+                "first-chunk-seconds": self.stream_deadline.first_chunk_seconds,
+                "next-chunk-seconds": self.stream_deadline.next_chunk_seconds,
+                "silent-round-seconds": self.stream_deadline.silent_round_seconds,
+                "reply-silence-seconds": self.reply_silence_seconds,
             }),
             "ai": ui_section("AI", "Language model providers and the live cascade between them.", {
                 "max-output-tokens": self.ai_services[0].max_output_tokens,

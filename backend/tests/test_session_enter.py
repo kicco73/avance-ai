@@ -134,6 +134,7 @@ async def test_entering_names_the_project_and_the_conversation_comes_back(turn_s
     assert info.session_id is not None
     assert info.body["project_id"] == PROJECT_ID
     assert info.body["state"]["key"] == "a"
+    assert info.body["reply_silence_seconds"] == 45.0
 
 
 async def test_a_conversation_with_something_in_it_has_not_just_been_opened(turn_service_for):

@@ -13,9 +13,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from db import Db
 from system.web_session import WebSession
 from tracking.fixed_project_context import ProjectContext
+from turn.turn_transaction import RowHandle, TurnDbInterface
 
 
 class Env(object):
@@ -27,10 +27,10 @@ class Env(object):
         self._memory: dict[str, Any] = dict(memory or {})
         self._action_set: dict[str, Any] = dict(action_set or {})
 
-    def _write_memory(self, values: dict[str, Any], message_id: int | None = None) -> None:
+    def _write_memory(self, values: dict[str, Any], message_id: RowHandle | None = None) -> None:
         self._memory = values
 
-    def _write_action_set(self, values: dict[str, Any], origin: str | None = None) -> int | None:
+    def _write_action_set(self, values: dict[str, Any], origin: str | None = None) -> RowHandle | None:
         self._action_set = values
         return None
 
@@ -41,7 +41,7 @@ class Env(object):
         evaluation-scope namespace can deliberately exclude those."""
         return dict(self._action_set)
 
-    def update_action_set(self, values: dict[str, Any], origin: str | None = None) -> int | None:
+    def update_action_set(self, values: dict[str, Any], origin: str | None = None) -> RowHandle | None:
         """action_set()'s own update — fired by an action's `env:`, or by
         the model's `update` on a source (origin "tool", so
         TrackingProcessor can later bind that write to the turn's own
@@ -60,7 +60,7 @@ class Env(object):
         editable/deletable (only these are)."""
         return dict(self._memory)
 
-    def update(self, values: dict[str, Any], message_id: int | None = None, declared_keys: set[str] | None = None) -> None:
+    def update(self, values: dict[str, Any], message_id: RowHandle | None = None, declared_keys: set[str] | None = None) -> None:
         """Merges the reply's own `memory` delta onto memory(). A key the
         automaton *declares* (`declared_keys`, e.g. Automaton.
         declared_env_key_names() — Env itself never imports the automaton)
@@ -120,7 +120,7 @@ class PersistedEnv(Env):
     base class's in-memory dicts."""
 
     def __init__(
-        self, db: Db, project_service: ProjectContext, session_id: int,
+        self, db: TurnDbInterface, project_service: ProjectContext, session_id: int,
         username: str | None = None,
     ) -> None:
         """`project_service`: whatever answers get_active_project_id() —
@@ -166,15 +166,15 @@ class PersistedEnv(Env):
         """Same `until` convention as memory()."""
         return self._db.get_action_env(self._project_id(), self._user(), until=until)
 
-    def _write_memory(self, values: dict[str, Any], message_id: int | None = None) -> None:
+    def _write_memory(self, values: dict[str, Any], message_id: RowHandle | None = None) -> None:
         self._db.set_env(self._session_id, values, message_id=message_id)
 
-    def _write_action_set(self, values: dict[str, Any], origin: str | None = None) -> int | None:
+    def _write_action_set(self, values: dict[str, Any], origin: str | None = None) -> RowHandle | None:
         return self._db.set_action_env(self._session_id, values, origin=origin)
 
 
 class LocalMemoryEnv(Env):
-    def __init__(self, db: Db, session_id: int) -> None:
+    def __init__(self, db: TurnDbInterface, session_id: int) -> None:
         super().__init__()
         self._db = db
         self._session_id = session_id
@@ -182,5 +182,5 @@ class LocalMemoryEnv(Env):
     def memory(self, until: datetime | None = None) -> dict[str, Any]:
         return self._db.get_local_memory(self._session_id, until=until)
 
-    def _write_memory(self, values: dict[str, Any], message_id: int | None = None) -> None:
+    def _write_memory(self, values: dict[str, Any], message_id: RowHandle | None = None) -> None:
         self._db.set_local_memory(self._session_id, values)

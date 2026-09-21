@@ -6,11 +6,21 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from db import Db, _utc_iso
+from typing import Protocol
+
+from db import _utc_iso
 from metrics.metric_namespace import SessionMetricNamespace
 from metrics.metrics_framework import AnalyticsCalculator
 from system.web_session import WebSession
 from tracking.fixed_project_context import ProjectContext
+
+
+class SessionRecords(Protocol):
+    def get_last_transition_timestamp(self, project_id: str, until: datetime | None = None) -> datetime | None: ...
+    def get_latest_chat_session(
+        self, username: str | None, project_id: str, until: datetime | None = None,
+    ) -> dict | None: ...
+    def list_chat_sessions(self, username: str | None, project_id: str, until: datetime | None = None) -> list[dict]: ...
 
 
 class _Unset:
@@ -25,7 +35,7 @@ class SessionFacts(object):
     set_replay_instant/set_last_transition_instant. A test replay
     can call those once per turn, scoping every fact to that turn's instant."""
 
-    def __init__(self, db: Db, project_service: ProjectContext) -> None:
+    def __init__(self, db: "SessionRecords", project_service: ProjectContext) -> None:
         self._db = db
         self._project_service = project_service
         self._replay_instant: datetime | None | _Unset = _UNSET

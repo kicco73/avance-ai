@@ -27,6 +27,7 @@ from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.user_facts import UserFacts
 
 from event.event_namespace import watched_from, NAME
+from turn.turn_transaction import TurnTransaction
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -109,7 +110,7 @@ class EventService:
         automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
         with WebSession().impersonate(username):
             project_context = FixedProjectContext(project_id=observer_project_id)
-            env = PersistedEnv(self._db, project_context, session["id"])
+            env = PersistedEnv(TurnTransaction(self._db, session["id"]), project_context, session["id"])
             metrics = MetricService(self._db, project_context)
             session_facts = SessionFacts(self._db, project_context)
             user_facts = UserFacts(self._db)

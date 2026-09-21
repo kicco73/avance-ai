@@ -34,6 +34,7 @@ from system.bus import (
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
+from turn.turn_transaction import RowHandle
 from turn.outbound import Outbound, publishing
 from turn.turn_service import TurnService
 
@@ -79,7 +80,9 @@ class TurnInput(object):
             entered = replace(message, session_id=session["id"])
             said = self._turn_service.read_history(session["id"])
             announcement = Outbound(entered)
-            announcement.informed(session, self._turn_service.services_for(session["id"]), kind)
+            announcement.informed(
+                session, self._turn_service.services_for(session["id"]), kind, self._turn_service.reply_silence_seconds,
+            )
             announcement.recalled(said)
             announcement.offered(self._turn_service.buttons_for(session["id"], session["state"]))
             await announcement.flush()
@@ -192,11 +195,11 @@ class TurnInput(object):
                 raise ServiceError("Message cannot be empty.", status_code=400, code="empty_message")
             session_id = self._session_id(message)
             prepared = await self._turn_service.prepare_user_initiated_turn(session_id)
-            message_id = self._turn_service.accept_user_message(session_id, text)
+            accepted = self._turn_service.accept_user_message(session_id, text)
         except ServiceError as exc:
             outbound.failed(exc, prepared)
             return None
-        return _Accepted(message, message_id, prepared)
+        return _Accepted(message, accepted, prepared)
 
     async def _answer(self, session_id: int, requests: "_Requests") -> None:
         try:
@@ -208,12 +211,12 @@ class TurnInput(object):
             for _ in filter(None, [not requests.waiting]):
                 self._requests.pop(session_id, None)
 
-    async def _run(self, message: Message, accepted: list[int], prepared: list[dict]) -> None:
+    async def _run(self, message: Message, accepted: list[RowHandle], prepared: list[dict]) -> None:
         async with publishing(message, self._db) as outbound:
             await self._turn(message, accepted, prepared, outbound)
 
     async def _turn(
-        self, message: Message, accepted: list[int], prepared: list[dict], outbound: "Outbound",
+        self, message: Message, accepted: list[RowHandle], prepared: list[dict], outbound: "Outbound",
     ) -> dict | None:
         for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
             return await self._take_action(message, outbound)
@@ -221,7 +224,7 @@ class TurnInput(object):
         text = str((message.body or {}).get("text") or "").strip()
         try:
             result = await self._turn_service.process_turn(
-                session_id, text, on_metadata=outbound.on_metadata, user_message_ids=accepted,
+                session_id, text, on_metadata=outbound.on_metadata, user_messages=accepted,
             )
             for _ in filter(None, [not result.get("moved_before_reply")]):
                 outbound.said(prepared)
@@ -290,7 +293,7 @@ class _Accepted(object):
     produced: the id it was persisted under — none for a choice taken,
     which persists nothing — and whatever the state owed before it."""
     message: Message
-    message_id: int | None = None
+    message_id: RowHandle | None = None
     prepared: list[dict] = field(default_factory=list)
 
 
@@ -299,7 +302,7 @@ class _Requests(object):
 
     def __init__(self) -> None:
         self.waiting: list[Message] = []
-        self.accepted: list[int | None] = []
+        self.accepted: list[RowHandle | None] = []
         self.prepared: list[dict] = []
         self.answering = False
 
@@ -308,7 +311,7 @@ class _Requests(object):
         self.accepted.append(accepted.message_id)
         self.prepared.extend(accepted.prepared)
 
-    def take(self) -> tuple[list[Message], list[int], list[dict]]:
+    def take(self) -> tuple[list[Message], list[RowHandle], list[dict]]:
         """One answer's worth: every text that piled up, answered
         together — or one of anything else, which is a single thing done
         and is never merged with another. Never empty: the caller only

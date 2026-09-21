@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from automaton.automaton import Automaton
 from automaton.file_types import DEFAULT_MEDIA_TYPE, ProjectFileTypes
-from db import Db
+from typing import Protocol
+
 from system import bus
 from system.bus import OUTPUT_DRIVE, Message
 
@@ -11,8 +12,18 @@ from .actuator_set import _run_sync
 TEXT_MEDIA_TYPE = "text/plain"
 
 
+class DriveFiles(Protocol):
+    def read_drive_file(self, project_id: str, user_id: str, path: str) -> tuple[bytes, str] | None: ...
+    def write_drive_file(
+        self, project_id: str, user_id: str, path: str, content: bytes, content_type: str,
+        session_id: int | None = None,
+    ) -> None: ...
+    def list_drive_files(self, project_id: str, user_id: str | None = None, prefix: str = "") -> list[dict]: ...
+    def delete_drive_file(self, project_id: str, user_id: str, path: str) -> bool: ...
+
+
 class DriveNamespace:
-    def __init__(self, db: Db, automaton: Automaton, username: str, session_id: int | None = None) -> None:
+    def __init__(self, db: "DriveFiles", automaton: Automaton, username: str, session_id: int | None = None) -> None:
         self._db = db
         self._automaton = automaton
         self._username = username
@@ -92,7 +103,7 @@ class NoDriveNamespace(DriveNamespace):
 
 
 def drive_namespace_for(
-    db: "Db | None", automaton: Automaton, username: str | None, session_id: int | None = None,
+    db: "DriveFiles | None", automaton: Automaton, username: str | None, session_id: int | None = None,
 ) -> DriveNamespace:
     if db is None or automaton.project_id is None or username is None:
         return NoDriveNamespace()

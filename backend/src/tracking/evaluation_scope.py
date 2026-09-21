@@ -7,7 +7,7 @@ signal values."""
 from __future__ import annotations
 
 import datetime
-from typing import Any, TYPE_CHECKING
+from typing import Any, Protocol, TYPE_CHECKING
 
 from simpleeval import ModuleWrapper
 
@@ -15,23 +15,27 @@ from automaton.automaton import Automaton
 from automaton.choice import ChoiceSelection
 from automaton.scope import EvaluationScope
 from automaton.trigger_namespaces import TriggerNamespaces
-from db import Db
 from metrics.metric_service import MetricService
 from system.web_session import WebSession
+from tracking.actuators.drive_namespace import DriveFiles
 from tracking.actuators import (
     AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, MediaNamespace, TaskNamespace,
     drive_namespace_for,
 )
 from tracking.env import Env
-from tracking.project_files import project_files_for
+from tracking.project_files import ProjectArchives, project_files_for
 from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
 from tracking.sources import SourceNamespace
-from tracking.sources.websearch import websearch_archive_for
+from tracking.sources.websearch import WebsearchArchives, websearch_archive_for
 from tracking.user_facts import UserFacts
 
 if TYPE_CHECKING:
     from ai import AiService
+
+
+class ScopeDb(ProjectArchives, DriveFiles, WebsearchArchives, Protocol):
+    pass
 
 
 class EvaluationScopeBuilder(object):
@@ -41,7 +45,7 @@ class EvaluationScopeBuilder(object):
         metrics: MetricService,
         session: SessionFacts,
         user: UserFacts,
-        db: Db,
+        db: "ScopeDb",
         task_namespace: TaskNamespace | None = None,
         chat_namespace: ChatNamespace | None = None,
         ai_service: "AiService | None" = None,

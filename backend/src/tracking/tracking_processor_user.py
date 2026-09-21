@@ -7,6 +7,7 @@ from tracking.tracking_processor import OutVariables, TrackingProcessor
 logger = LoggerFactory.get_logger(__name__)
 
 class TrackingProcessorAfterUserMessage(TrackingProcessor):
+	# XXX FOR CLAUDE CODE: this class never reaches the Db. A new method that
 
 	async def _get_ai_reply(self) -> OutVariables:
 

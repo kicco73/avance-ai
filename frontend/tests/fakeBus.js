@@ -51,7 +51,7 @@ export function deliverEntered({
 }) {
   deliver({
     type: 'session.info', session_id: sessionId, project_id: projectId, session_type: sessionType,
-    state, services, audio, current, channel
+    state, services, audio, current, channel, reply_silence_seconds: 45
   })
   deliver({ type: 'session.messages', session_id: sessionId, messages })
   deliver({ type: 'state.buttons', session_id: sessionId, actions })

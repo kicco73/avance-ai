@@ -42,15 +42,21 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from pathlib import Path
-from typing import Callable, TYPE_CHECKING
+from typing import Protocol, Callable, TYPE_CHECKING
 
 from automaton.media_types import media_type_for
 
 if TYPE_CHECKING:
     from automaton.model import Automaton
-    from db import Db
+    pass
 DB_CACHE_KEY_PREFIX = "db:"
 DEFAULT_PROJECT_FILE_CACHE_BYTES = 8 * 1024 * 1024
+
+
+class ProjectArchives(Protocol):
+    def get_archive(self, project_id: str, archive_name: str, revision: int | None = None) -> bytes | None: ...
+    def get_archive_content_type(self, project_id: str, archive_name: str, revision: int | None = None) -> str | None: ...
+    def get_archives(self, project_id: str, revision: int | None = None) -> dict: ...
 
 
 class ProjectFiles:
@@ -140,7 +146,7 @@ class DbProjectFiles(ProjectFiles):
     never Db's own "current" default, wrong for a session pinned to an
     older one."""
 
-    def __init__(self, db: "Db", automaton: "Automaton") -> None:
+    def __init__(self, db: "ProjectArchives", automaton: "Automaton") -> None:
         self._db = db
         self._automaton = automaton
 
@@ -256,7 +262,7 @@ class CachedProjectFiles(ProjectFiles):
         return self._cache.read(self._inner.cache_key(path), lambda: self._inner.read(path))
 
 
-def project_files_for(db: "Db | None", automaton: "Automaton") -> ProjectFiles:
+def project_files_for(db: "ProjectArchives | None", automaton: "Automaton") -> ProjectFiles:
     """The one selection point. An automaton that carries its own files
     reads them; one pinned to a stored revision reads those; one with
     neither has nothing to read, whatever database it is handed. Either

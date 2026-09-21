@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from ai import StreamDeadline
 from config import (
     DEFAULT_ALLOWED_ORIGINS, AppConfig, ConfigError, optional_choice, optional_non_negative_int, optional_positive_int, optional_section,
 )
@@ -123,7 +124,45 @@ SETTINGS = [
     ("jobs_shared_max_concurrent", 2, _section("scheduler-service", "shared-max-concurrent", 3), 3, _section("scheduler-service", "shared-max-concurrent", 0)),
     ("invite_valid_days", 7, _section("project-service", "invite-valid-days", 14), 14, _section("project-service", "invite-valid-days", 0)),
     ("invite_max_shares", 3, _section("project-service", "invite-max-shares", 10), 10, _section("project-service", "invite-max-shares", 0)),
+    ("reply_silence_seconds", 45.0, _chat("reply-silence-seconds", 90), 90.0, _chat("reply-silence-seconds", 0)),
 ]
+
+
+def _deadlines(**fields) -> str:
+    lines = "".join(f"\n  {name.replace('_', '-')}: {value}" for name, value in fields.items())
+    return MINIMAL_CONFIG.replace("turn-service: {}", f"turn-service:{lines}")
+
+
+class TestReplyDeadlines:
+    def test_the_model_deadlines_default_to_the_stream_deadline_the_ai_package_ships_with(self, monkeypatch, tmp_path):
+        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG).stream_deadline == StreamDeadline()
+
+    def test_each_model_deadline_is_read_from_turn_service(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, _deadlines(first_chunk_seconds=2, next_chunk_seconds=4.5, silent_round_seconds=20))
+
+        assert config.stream_deadline == StreamDeadline(first_chunk_seconds=2.0, next_chunk_seconds=4.5, silent_round_seconds=20.0)
+
+    @pytest.mark.parametrize("field", ["first-chunk-seconds", "next-chunk-seconds", "silent-round-seconds"])
+    def test_a_model_deadline_must_be_a_positive_number(self, monkeypatch, tmp_path, field):
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, _chat(field, 0))
+
+    def test_the_browser_must_wait_longer_than_the_server_lets_the_model_stay_silent(self, monkeypatch, tmp_path):
+        with pytest.raises(ConfigError, match="reply-silence-seconds"):
+            _load(monkeypatch, tmp_path, _deadlines(silent_round_seconds=45))
+        with pytest.raises(ConfigError, match="reply-silence-seconds"):
+            _load(monkeypatch, tmp_path, _deadlines(silent_round_seconds=30, reply_silence_seconds=30))
+
+        config = _load(monkeypatch, tmp_path, _deadlines(silent_round_seconds=60, reply_silence_seconds=61))
+
+        assert config.reply_silence_seconds == 61.0
+
+    def test_manage_services_shows_all_four(self, monkeypatch, tmp_path):
+        chat = _load(monkeypatch, tmp_path, MINIMAL_CONFIG).public_services_snapshot()["chat"]
+
+        assert {key: chat[key] for key in (
+            "first-chunk-seconds", "next-chunk-seconds", "silent-round-seconds", "reply-silence-seconds",
+        )} == {"first-chunk-seconds": 5.0, "next-chunk-seconds": 10.0, "silent-round-seconds": 30.0, "reply-silence-seconds": 45.0}
 
 
 class TestOptionalSettingsEndToEnd:

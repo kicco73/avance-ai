@@ -13,6 +13,9 @@
                          docstring) — the type every generate_stream_
                          with_* system_prompt parameter accepts alongside
                          a plain str.
+    StreamDeadline     — how long a provider may stay silent before the
+                         call is given up (config.py builds one from
+                         turn-service's own three deadlines)
     ToolSpec           — one native-tool declaration a caller's own
                          ToolSet (tracking.sources.ToolSet) hands to
                          AiService — the only ai.* type built outside
@@ -23,7 +26,9 @@ failover cascade live in ai/_providers/ and are private: AiService is the
 only consumer. tests/test_ai_package_boundary.py keeps it that way."""
 from .ai_service import AiService
 from .llm_provider import AIServiceConfig, AIServiceError, MetadataCallback, SystemPrompt, ToolSpec, content_to_text
+from .stream_deadline import StreamDeadline
 
 __all__ = [
-	"AiService", "AIServiceConfig", "AIServiceError", "MetadataCallback", "SystemPrompt", "ToolSpec", "content_to_text",
+	"AiService", "AIServiceConfig", "AIServiceError", "MetadataCallback", "StreamDeadline", "SystemPrompt", "ToolSpec",
+	"content_to_text",
 ]

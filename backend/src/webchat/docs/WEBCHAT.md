@@ -94,6 +94,18 @@ is not its own, and the browser shows it read-only with a way back
 ("Continue here" → `session.create`). Taking it back is something the
 person does.
 
+## How long the browser waits
+
+An exchange the server stops answering must not sit on a progress bubble
+forever. `ChatExchange` (`frontend/src/chatExchange.js`) arms a silence
+timer on every frame it takes, and when nothing has arrived for
+`reply_silence_seconds` it fails the bubble itself with «No reply». The
+number is not the browser's: `session.info` carries it, read from
+`turn-service.reply-silence-seconds` (`README.md`, "Configuring"), and it
+is checked at boot to exceed the longest silence the server allows the
+model — so in a healthy system the server's own `output.error` arrives
+first and this timer is the net under it, not the rule.
+
 ## Files
 
 - `skill.py` — the declaration. What it contributes arrives from

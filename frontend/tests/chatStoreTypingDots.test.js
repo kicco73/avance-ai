@@ -109,7 +109,7 @@ describe('what the conversation can reach', () => {
   it('hands on what this session says it can reach', () => {
     deliver({
       type: 'session.info', session_id: 1, project_id: 'proj',
-      state: null, services: { one: false, other: true }, current: true,
+      state: null, services: { one: false, other: true }, current: true, reply_silence_seconds: 45,
     })
 
     expect(heard).toEqual([{ one: false, other: true }])
@@ -118,7 +118,7 @@ describe('what the conversation can reach', () => {
   it('says nothing about a conversation that is not the one it asked for', () => {
     deliver({
       type: 'session.info', session_id: 2, project_id: 'another-project',
-      state: null, services: { one: false }, current: true,
+      state: null, services: { one: false }, current: true, reply_silence_seconds: 45,
     })
 
     expect(heard).toEqual([])

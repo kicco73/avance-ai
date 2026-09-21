@@ -30,7 +30,8 @@ describe('tool status minimum display time', () => {
     bus.resetFakeBus()
     deliver = bus.deliver
     chatStore = await import('../src/chatStore.js')
-    chatStore.currentSessionId.value = 1
+    await chatStore.loadMessages('proj')
+    bus.deliverEntered({ sessionId: 1, projectId: 'proj' })
   })
 
   afterEach(() => {

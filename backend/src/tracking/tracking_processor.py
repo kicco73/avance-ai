@@ -5,7 +5,7 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol
 
 from turn.errors import TurnServiceError
-from db.db import Db
+from turn.turn_transaction import RowHandle, TurnTransaction
 from ai import AiService
 from ai import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
@@ -95,14 +95,14 @@ class UserVariables:
 	state: State
 	project_id: str
 	session_id: int
-	message_id: int | None = None
+	message_id: RowHandle | None = None
 	has_ai_started_conversation: bool = False
 
 @dataclass
 class OutVariables:
 	reply: str
 	messages: list[dict]
-	tracking_id: int | None
+	tracking_id: RowHandle | None
 	state: State
 	action: Action | None
 	tracking_linked_to_message: bool = False
@@ -112,7 +112,7 @@ class OutVariables:
 class MemoryScope(Protocol):
 	def store(self, processor: "TrackingProcessor") -> Env | None: ...
 	def merge(
-		self, processor: "TrackingProcessor", values: dict, *, message_id: int | None, declared_keys: set[str],
+		self, processor: "TrackingProcessor", values: dict, *, message_id: RowHandle | None, declared_keys: set[str],
 	) -> None: ...
 	def has_channel(self) -> bool: ...
 
@@ -121,7 +121,7 @@ class NoneMemoryScope:
 	def store(self, processor: "TrackingProcessor") -> Env | None:
 		return None
 
-	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: int | None, declared_keys: set[str]) -> None:
+	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: RowHandle | None, declared_keys: set[str]) -> None:
 		return None
 
 	def has_channel(self) -> bool:
@@ -132,7 +132,7 @@ class GlobalMemoryScope:
 	def store(self, processor: "TrackingProcessor") -> Env | None:
 		return processor.env
 
-	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: int | None, declared_keys: set[str]) -> None:
+	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: RowHandle | None, declared_keys: set[str]) -> None:
 		self.store(processor).update(values, message_id=message_id, declared_keys=declared_keys)
 
 	def has_channel(self) -> bool:
@@ -141,9 +141,9 @@ class GlobalMemoryScope:
 
 class LocalMemoryScope:
 	def store(self, processor: "TrackingProcessor") -> Env | None:
-		return LocalMemoryEnv(processor.db, processor.user.session_id)
+		return LocalMemoryEnv(processor.transaction, processor.user.session_id)
 
-	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: int | None, declared_keys: set[str]) -> None:
+	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: RowHandle | None, declared_keys: set[str]) -> None:
 		if processor.out.action is not None and not processor.moved_before_reply:
 			return
 		self.store(processor).update(values, message_id=message_id, declared_keys=declared_keys)
@@ -158,6 +158,7 @@ MEMORY_SCOPES: dict[str, MemoryScope] = {
 
 
 class TrackingProcessor(object):
+	# XXX FOR CLAUDE CODE: this class never reaches the Db. A new method that
 	user: UserVariables
 	out: OutVariables
 
@@ -165,7 +166,7 @@ class TrackingProcessor(object):
 			  ai_service: AiService,
 			  scope_builder: EvaluationScopeBuilder,
 			  env: Env,
-			  db: Db,
+			  transaction: TurnTransaction,
 			  user_variables: UserVariables,
 			  input_token_budget_per_turn: int | None = 16000,
 			  assistant_talker: "BaseTalker | None" = None,
@@ -175,12 +176,12 @@ class TrackingProcessor(object):
 		self.assistant_talker = assistant_talker if assistant_talker is not None else AiTalker(ai_service=ai_service)
 
 		self.env = env
-		self.db = db
+		self.transaction = transaction
 		self.user = user_variables
 		self.moved_before_reply = False
 		self.input_token_budget_per_turn = input_token_budget_per_turn
 		self._memory_scopes = memory_scopes
-		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder)
+		self._tracking_engine = TrackingEngine(DbTrackingSink(transaction), env, scope_builder)
 		self._pending_translatable_labels: dict[str, tuple[str, str]] = {}
 
 	def _memory_store_for(self, state: State) -> Env | None:
@@ -189,7 +190,7 @@ class TrackingProcessor(object):
 	async def _get_ai_reply(self) -> OutVariables:
 		raise NotImplementedError
 
-	def _open_turn(self, fragments: list[str], user_message_ids: list[int] | None) -> None:
+	def _open_turn(self, fragments: list[str], user_messages: list[RowHandle] | None) -> None:
 		"""Binds this turn to the user message that closes it — the LAST
 		fragment (see TurnService's own coalescing): its Tracking row, the
 		bot's reaction and the input tokens all land there. Every fragment
@@ -206,10 +207,10 @@ class TrackingProcessor(object):
 		use in process()), before anything else this turn writes, so it
 		can never postdate a tool write this same turn later makes."""
 		self._turn_started_at = datetime.utcnow()
-		self._fragment_ids = list(user_message_ids or [])
+		self._fragments = list(user_messages or [])
 		self.user = replace(
 			self.user,
-			message_id=self._fragment_ids[-1] if self._fragment_ids else None,
+			message_id=self._fragments[-1] if self._fragments else None,
 			has_ai_started_conversation=not fragments,
 		)
 
@@ -217,7 +218,7 @@ class TrackingProcessor(object):
 		self,
 		text: str | list[str] | None,
 		on_metadata: MetadataCallback | None = None,
-		user_message_ids: list[int] | None = None,
+		user_messages: list[RowHandle] | None = None,
 	) -> dict:
 		"""`text` is the batch of user messages this one reply answers
 		together (see PROJECT_SPECS.md §0.1). Empty for an AI-initiated
@@ -226,13 +227,13 @@ class TrackingProcessor(object):
 		fragments = [text] if isinstance(text, str) else list(text or [])
 		state = self.user.state
 
-		if not state.chat_enabled and [f for f in fragments if f not in ("", "...")]:
+		if not state.chat_enabled and fragments:
 			raise TrackingServiceError(
 				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT,
 				code="state_not_chat",
 			)
 
-		self._open_turn(fragments, user_message_ids)
+		self._open_turn(fragments, user_messages)
 
 		self.metadata = Metadata(on_metadata or (lambda key, value: None), {}, {})
 		self.metadata.on_metadata("typing", None)
@@ -242,31 +243,31 @@ class TrackingProcessor(object):
 		logger.info(
 			"process() got metadata.audio=%r for session %s", self.metadata.audio, self.user.session_id,
 		)
-		assistant_id = self.db.save_message(
+		assistant_message = self.transaction.save_message(
 			"assistant", self.out.reply, self.user.session_id,
 			audio_text=self.metadata.audio, tokens=self.metadata.output_tokens,
 		)
 		self._memory_scopes[self.out.state.ai_memory_scope].merge(
-			self, self.metadata.memory, message_id=assistant_id,
+			self, self.metadata.memory, message_id=assistant_message,
 			declared_keys=self.user.automaton.declared_env_key_names(),
 		)
-		self.db.mark_messages_answered(self._fragment_ids, assistant_id)
+		self.transaction.mark_messages_answered(self._fragments, assistant_message)
 
 		if self.metadata.tool_calls:
-			self.db.record_tool_calls(self.user.session_id, self.metadata.tool_calls, message_id=assistant_id)
-		self.db.link_tool_env_writes_to_message(self.user.session_id, assistant_id, since=self._turn_started_at)
+			self.transaction.record_tool_calls(self.user.session_id, self.metadata.tool_calls, message_id=assistant_message)
+		self.transaction.link_tool_env_writes_to_message(self.user.session_id, assistant_message, since=self._turn_started_at)
 
 		if self.out.tracking_id is not None and not self.out.tracking_linked_to_message:
-			self.db.link_signal_to_message(self.out.tracking_id, assistant_id)
+			self.transaction.link_signal_to_message(self.out.tracking_id, assistant_message)
 
-		user_message_id = self.user.message_id
-		if self.metadata.reaction and user_message_id is not None:
-			self.db.set_message_reaction(user_message_id, self.metadata.reaction)
+		user_message = self.user.message_id
+		if self.metadata.reaction and user_message is not None:
+			self.transaction.set_message_reaction(user_message, self.metadata.reaction)
 
-		if self.metadata.input_tokens is not None and user_message_id is not None:
-			self.db.set_message_tokens(user_message_id, self.metadata.input_tokens, self.metadata.cache_read_tokens or 0)
+		if self.metadata.input_tokens is not None and user_message is not None:
+			self.transaction.set_message_tokens(user_message, self.metadata.input_tokens, self.metadata.cache_read_tokens or 0)
 
-		return self._build_turn_response(user_message_id, assistant_id)
+		return self._build_turn_response(user_message, assistant_message)
 
 	def _apply_output_to_env(self, state: State) -> None:
 		output_for_env = {
@@ -400,7 +401,7 @@ class TrackingProcessor(object):
 			f"input-token-budget-per-turn cap. Heaviest: {heaviest}."
 		)
 		logger.warning(message)
-		self.db.save_system_warning(WebSession().user, self.user.project_id, "input_budget_exceeded", message)
+		self.transaction.save_system_warning(WebSession().user, self.user.project_id, "input_budget_exceeded", message)
 		raise TurnServiceError(
 			f"This turn's own system prompt alone is ~{estimate.total_tokens} tokens, over the "
 			f"{budget}-token cap.",
@@ -416,7 +417,7 @@ class TrackingProcessor(object):
 		shape a source.<name> trigger/env: reference already uses."""
 		if not state.ai_source_names:
 			return None
-		return SourceNamespace(self.db, self.user.automaton, self.user.session_id, env=self.env).tool_set(
+		return SourceNamespace(self.transaction, self.user.automaton, self.user.session_id, env=self.env).tool_set(
 			state.ai_may_read_sources, state.ai_must_read_sources,
 		)
 
@@ -431,10 +432,10 @@ class TrackingProcessor(object):
 		action re-entering the same state) still owes that first call."""
 		if not state.ai_must_read_sources:
 			return False
-		since = self.db.get_last_entry_timestamp_for_session(self.user.session_id, state.key)
+		since = self.transaction.get_last_entry_timestamp_for_session(self.user.session_id, state.key)
 		if since is None:
 			return True
-		return not self.db.has_assistant_message_since(self.user.session_id, since)
+		return not self.transaction.has_assistant_message_since(self.user.session_id, since)
 
 	def _build_base_prompt_and_history(self, state: State) -> tuple[Prompt, list[dict], "EnvPromptBlock | None"]:
 		"""The same (prompt, chat_history, env_block) the transition-
@@ -462,11 +463,10 @@ class TrackingProcessor(object):
 
 	def _build_chat_history(self, state: State, turn_attachments: list, token_budget: int | None) -> list[dict]:
 		priming_messages = build_priming_messages(turn_attachments)
-		since = self.db.history_cutoff_for_session(self.user.session_id, state.history_cutoff)
-		history = priming_messages + self._strip_timestamps(
-			self.db.get_turn_history(self.user.session_id, since, token_budget)
+		since = self.transaction.history_cutoff_for_session(self.user.session_id, state.history_cutoff)
+		return priming_messages + self._strip_timestamps(
+			self.transaction.get_turn_history(self.user.session_id, since, token_budget)
 		)
-		return history + [{"role": "user", "content": "..."}] * self.user.has_ai_started_conversation
 
 	def build_turn_prompt(
 		self, state: State, base_prompt: str, output_definition: str | None, signal_definition: str | None, reaction_definition: str | None,
@@ -564,7 +564,7 @@ class TrackingProcessor(object):
 		for id_, (key, text) in self._pending_translatable_labels.items():
 			translation = self.metadata.button_translations.get(id_, text)
 			if self.metadata.src_lang and self.metadata.dst_lang and self.metadata.src_lang != self.metadata.dst_lang:
-				self.db.save_translation(key, self.metadata.src_lang, text, self.metadata.dst_lang, translation)
+				self.transaction.save_translation(key, self.metadata.src_lang, text, self.metadata.dst_lang, translation)
 			await bus.publish(bus.Message(
 				type=TURN_TRANSLATION,
 				body={
@@ -596,7 +596,7 @@ class TrackingProcessor(object):
 			logger.warning("Translating fixed_message for state '%s'.", state.key)
 			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, None, None, []
 		output_definition = build_output_definition_for_names(automaton, state.output, state.input)
-		signals = Signals(FixedProjectContext(automaton), self.db)
+		signals = Signals(FixedProjectContext(automaton), self.transaction)
 		signal_names = automaton.tracked_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
 		reaction_definition = self._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
@@ -604,7 +604,7 @@ class TrackingProcessor(object):
 		return (
 			base_prompt, output_definition, signal_definition, reaction_definition,
 			load_attachments(
-				project_files_for(self.db, automaton),
+				project_files_for(self.transaction, automaton),
 				_turn_attachment_paths(automaton, state, include_signal_attachments),
 			),
 		)
@@ -626,14 +626,13 @@ class TrackingProcessor(object):
 		return [{"role": m["role"], "content": m["content"]} for m in history]
 
 
-	def _build_turn_response(self, user_message_id: int | None, assistant_message_id: int | None) -> dict:
+	def _build_turn_response(self, user_message: RowHandle | None, assistant_message: RowHandle) -> dict:
 		action = self.out.action
-		reply = [self.db.get_message(assistant_message_id)] if assistant_message_id is not None else []
 		return {
-			"reply": reply,
-			"user_message_id": user_message_id,
-			"assistant_message_id": assistant_message_id,
-			"user_message_reaction": self.metadata.reaction if user_message_id is not None else None,
+			"reply": [self.transaction.get_message(assistant_message)],
+			"user_message_id": user_message,
+			"assistant_message_id": assistant_message,
+			"user_message_reaction": self.metadata.reaction if user_message is not None else None,
 			"state": self._current_state_payload(self.user.automaton, self.out.state, self.metadata.button_translations),
 			"state_changed": action is not None,
 			"moved_before_reply": self.moved_before_reply,

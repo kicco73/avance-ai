@@ -4,6 +4,7 @@ from system.web_session import WebSession
 from .tracking_processor import OutVariables, TrackingProcessor
 
 class TrackingProcessorAfterAiMessage(TrackingProcessor):
+	# XXX FOR CLAUDE CODE: this class never reaches the Db. A new method that
 
 	async def _get_ai_reply(self) -> OutVariables:
 

@@ -5,15 +5,21 @@ AI calls itself."""
 from __future__ import annotations
 
 from automaton.automaton import Automaton, SignalPayload
-from db import Db
+from typing import Protocol
+
 from system.logging_factory import LoggerFactory
 from system.web_session import WebSession
 from tracking.fixed_project_context import ProjectContext
 
 logger = LoggerFactory.get_logger(__name__)
 
+class SignalSnapshots(Protocol):
+    def get_active_project_id(self, user: str) -> str | None: ...
+    def get_latest_signal_snapshot(self, project_id: str) -> dict | None: ...
+
+
 class Signals(object):
-    def __init__(self, project_service: ProjectContext, db: Db) -> None:
+    def __init__(self, project_service: ProjectContext, db: "SignalSnapshots | None") -> None:
         self._project_service = project_service
         self._db = db
 

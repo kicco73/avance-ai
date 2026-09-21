@@ -16,7 +16,7 @@ describe('an exchange the server stops answering', () => {
       writing: vi.fn(), append: vi.fn(), spoken: vi.fn(), status: vi.fn(), progress: vi.fn(),
       said: vi.fn(), failed: vi.fn()
     }
-    exchange = new ChatExchange({ sessionId: SESSION, bubble })
+    exchange = new ChatExchange({ sessionId: SESSION, bubble, silenceSeconds: SILENCE_MS / 1000 })
   })
 
   afterEach(() => {

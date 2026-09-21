@@ -9,8 +9,8 @@ from typing import Any, Protocol
 
 from automaton.automaton import Automaton
 from turn.sessions.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
-from db import Db
 from metrics.metric_namespace import UserMetricNamespace
+from metrics.metrics_framework.interfaces import AnalyticsDb
 from metrics.metrics_framework import (
     AnalyticsCalculator,
     BenchmarkCalculator,
@@ -51,7 +51,7 @@ def values_dict(pairs: list[tuple[MetricCalculator, MetricResult]]) -> dict[str,
 class MetricService(object):
     def __init__(
         self,
-        db: Db,
+        db: AnalyticsDb,
         project_service: ProjectContext,
         max_session_duration_in_minutes: float = DEFAULT_OPEN_WINDOW_MINUTES,
     ) -> None:

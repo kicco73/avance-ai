@@ -20,6 +20,7 @@ from tracking.prompt import (
 from tracking.tracking_service import TrackingService
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from testing.replay_messages import next_assistant_message_id
+from turn.turn_transaction import TurnTransaction
 
 
 class TurnByTurnSignalSource:
@@ -215,7 +216,7 @@ class BatchSignalSource(object):
         session = self._db.get_chat_session(self._session_id)
         if session is None or session['datetime_start'] is None:
             return {}
-        return env_for_session(self._db, session).memory(until=session['datetime_start'])
+        return env_for_session(TurnTransaction(self._db, session["id"]), session).memory(until=session['datetime_start'])
 
     def _user_message_ids(self) -> list[int]:
         return [m['id'] for m in self._messages if m['role'] == 'user']

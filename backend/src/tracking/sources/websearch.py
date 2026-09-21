@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Protocol, TYPE_CHECKING
+
+
+class WebsearchArchives(Protocol):
+    def get_archive(self, project_id: str, archive_name: str, revision: int | None = None) -> bytes | None: ...
+    def write_archive_at_revision(
+        self, project_id: str, archive_name: str, revision: int, content: bytes, content_type: str,
+    ) -> None: ...
 
 from project.archive.layout import CACHE_DIR
 
@@ -9,7 +16,7 @@ from .base import SourceContext
 
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
-    from db import Db
+    pass
 
 SCHEME = "websearch"
 USER_SCOPE = "user"
@@ -26,7 +33,7 @@ def archive_name(session_id: int) -> str:
 
 class WebSearchArchive:
 
-    def __init__(self, db: "Db", project_id: str, revision: int, session_id: int) -> None:
+    def __init__(self, db: "WebsearchArchives", project_id: str, revision: int, session_id: int) -> None:
         self._db = db
         self._project_id = project_id
         self._revision = revision
@@ -72,7 +79,7 @@ class NoWebSearchArchive(WebSearchArchive):
         return ""
 
 
-def websearch_archive_for(db: "Db | None", automaton: "Automaton", session_id: int | None) -> WebSearchArchive:
+def websearch_archive_for(db: "WebsearchArchives | None", automaton: "Automaton", session_id: int | None) -> WebSearchArchive:
     if db is None or automaton.project_id is None or automaton.revision is None or session_id is None:
         return NoWebSearchArchive()
     return WebSearchArchive(db, automaton.project_id, automaton.revision, session_id)

@@ -115,10 +115,11 @@ class Outbound(object):
         for key, value in (result.get("env_changed") or {}).items():
             self.put(ENV_CHANGED, {"key": key, "value": value})
 
-    def informed(self, session: dict, services: dict, kind: str) -> None:
+    def informed(self, session: dict, services: dict, kind: str, reply_silence_seconds: float) -> None:
         self.put(SESSION_INFO, {
             "state": session.get("state"),
             "services": services,
+            "reply_silence_seconds": reply_silence_seconds,
             "audio": session.get("audio", False),
             "current": session.get("current", True),
             "channel": session.get("channel"),

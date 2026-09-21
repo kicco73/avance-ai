@@ -65,6 +65,31 @@ turn-service:
   # shared by every project, bounded in bytes rather than in files (see
   # tracking/project_files.py's ProjectFileCache).
   project-file-cache-bytes: 8388608
+  # The four deadlines of a reply, all optional, all in seconds. The
+  # first three bound the model (see ai/stream_deadline.py): a provider
+  # that stays silent past one is given up, the cascade moves on, and the
+  # exchange ends with output.error — never in silence. The fourth is
+  # what the browser is told (session.info), and must exceed
+  # silent-round-seconds or the browser gives up on a reply the server
+  # is still allowed to be writing.
+  #
+  # Defaults to 5: a provider that has not sent its first byte. The
+  # eight complete replies of one production session took 1.1–2.9 s; a
+  # provider that has not started after 5 s is not going to.
+  first-chunk-seconds: 5
+  # Defaults to 10: silence between two bytes of a reply already under
+  # way. Reset on every byte, so the length of a reply never matters,
+  # only its silence.
+  next-chunk-seconds: 10
+  # Defaults to 30: a round the model spends deciding on a tool call,
+  # which arrives whole and so yields nothing until it ends. The whole
+  # generation is the silence: 4096 max-output-tokens at ≥150 tokens/s
+  # is about 27 s.
+  silent-round-seconds: 30
+  # Defaults to 45: how long the browser may hear nothing before it
+  # tells the person the reply was lost. 30 s of silent round plus the
+  # tool call that follows it, which the server does not bound.
+  reply-silence-seconds: 45
 
 scheduler-service:
   # Optional section — can be omitted entirely. Sizes the general

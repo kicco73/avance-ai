@@ -23,6 +23,7 @@ from .session_import import SessionImportManager
 from .session_import_job import SessionImportJob
 from .session_export import SessionExportManager
 from .tracking_processor import UserVariables
+from turn.turn_transaction import RowHandle, TurnTransaction
 from .tracking_processor_ai import TrackingProcessorAfterAiMessage
 from .tracking_processor_user import TrackingProcessorAfterUserMessage
 
@@ -256,17 +257,19 @@ class TrackingService(object):
 		the "Label sessions" view's "Unlabel all" action."""
 		self._db.clear_session_annotations(session_id)
 
+	# XXX FOR CLAUDE CODE: a turn never reaches the Db. Everything _process builds
 	async def _process(
 		self,
+		transaction: TurnTransaction,
 		session_id: int,
 		text: str | list[str] | None,
 		ai_service: AiService,
 		on_metadata: OnMetadata | None = None,
-		user_message_ids: list[int] | None = None,
+		user_messages: list[RowHandle] | None = None,
 		):
 
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
-		session = self._db.get_chat_session(session_id)
+		session = transaction.get_chat_session(session_id)
 		project_id = session["project_id"]
 
 		user_vars = UserVariables(
@@ -282,22 +285,22 @@ class TrackingService(object):
 			TrackingProcessor = TrackingProcessorAfterAiMessage
 
 		fixed_context = FixedProjectContext(automaton=automaton, project_id=project_id)
-		env = env_for_session(self._db, session)
-		session_facts = SessionFacts(self._db, fixed_context)
-		user_facts = UserFacts(self._db)
+		env = env_for_session(transaction, session)
+		session_facts = SessionFacts(transaction, fixed_context)
+		user_facts = UserFacts(transaction)
 		task_namespace = self._namespace_factory.for_session(session_id)
 		chat_namespace = self._namespace_factory.chat_for_session(session_id)
 		metrics = MetricService(
-			self._db, fixed_context, max_session_duration_in_minutes=self._metrics.max_session_duration_in_minutes
+			transaction, fixed_context, max_session_duration_in_minutes=self._metrics.max_session_duration_in_minutes
 		)
 		scope_builder = EvaluationScopeBuilder(
-			env, metrics, session_facts, user_facts, self._db, task_namespace, chat_namespace,
+			env, metrics, session_facts, user_facts, transaction, task_namespace, chat_namespace,
 			ai_service=ai_service,
 		)
 		tracking_processor = TrackingProcessor(
 			ai_service, scope_builder,
-			env, self._db, user_vars,
+			env, transaction, user_vars,
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 
-		return await tracking_processor.process(text, on_metadata=on_metadata, user_message_ids=user_message_ids)
+		return await tracking_processor.process(text, on_metadata=on_metadata, user_messages=user_messages)

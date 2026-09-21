@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
-    from db import Db
+    from tracking.project_files import ProjectArchives
     from tracking.env import Env
     from tracking.project_files import ProjectFiles
 MAX_SOURCE_RESULT_CHARS = 8_000
@@ -40,7 +40,7 @@ class SourceContext:
     by SourceNamespace; a driver never asks which it got. Defaulted here
     so a context built by hand still works: it resolves to the same choice
     project_files_for would have made."""
-    db: "Db | None"
+    db: "ProjectArchives | None"
     automaton: "Automaton"
     session_id: int | None
     env: "Env"
