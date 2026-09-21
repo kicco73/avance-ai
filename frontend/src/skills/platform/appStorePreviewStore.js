@@ -32,6 +32,16 @@ export async function stopPreviewSession() {
   }
 }
 
+export async function endPreviewSession() {
+  const sessionId = currentSessionId.value
+  if (sessionId == null) return
+  try {
+    await deletePreviewSessionEnv(sessionId)
+    await deleteSession(sessionId)
+  } catch {
+  }
+}
+
 export async function restartPreviewSession() {
   const sessionId = currentSessionId.value
   if (sessionId != null) {

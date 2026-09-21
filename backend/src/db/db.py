@@ -23,6 +23,7 @@ from .settings import SettingsMixin
 from .users import UserMixin
 from .user_projects import UserProjectMixin
 from .tracking import TrackingMixin
+from .trial_sessions import TrialSessionMixin
 from .tasks import TaskMixin
 from .translations import TranslationMixin
 
@@ -31,7 +32,7 @@ from playhouse.db_url import connect, parse as parse_db_url
 from .models import (
     AiTokenUsage, AppRating, Archive, CoreSession, Drive, EditHistory, File, Invite, Message,
     Project, Settings, User, StateRemap, SystemWarning, Task, Test,
-    TestAggregateResult, TestObservation, Tracking, Translation, UserProject,
+    TestAggregateResult, TestObservation, Tracking, Translation, TrialSession, UserProject,
     database,
 )
 
@@ -53,6 +54,7 @@ class Db(
     TestAggregateMixin,
     SettingsMixin,
     UserProjectMixin,
+    TrialSessionMixin,
     InviteMixin,
     ObservabilityMixin,
     AiUsageMixin,
@@ -65,7 +67,7 @@ class Db(
     _MODELS = (
         Project, CoreSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SystemWarning,
-        Settings, UserProject, Invite, AiTokenUsage, Task, Drive, Translation, AppRating,
+        Settings, UserProject, TrialSession, Invite, AiTokenUsage, Task, Drive, Translation, AppRating,
     )
 
     MIGRATION_STRATEGIES = ('stop', 'upgrade', 'drop')

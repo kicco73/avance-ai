@@ -35,6 +35,8 @@ MEDIA_EXTENSIONS = frozenset({".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", 
 
 ICON_FILE_RE = re.compile(r'^media/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECASE)
 
+SNAPSHOT_FILE_RE = re.compile(r'^media/snapshot-(?P<aspect>[a-z][a-z-]*)-(?P<index>\d+)\.jpg$', re.IGNORECASE)
+
 
 def media_doc_id_for(path: str) -> str | None:
     """The `media.<doc_id>` name `path` (a stored archive path) is

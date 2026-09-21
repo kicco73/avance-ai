@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 from automaton.automaton import Automaton, CompiledAutomaton, ProjectPayload, StatePayload
 from automaton.build_error import AutomatonBuildError
-from automaton.file_types import ICON_FILE_RE
+from automaton.file_types import ICON_FILE_RE, SNAPSHOT_FILE_RE
 from project.web_import_job import WebImportJob
 from system import bus
 from system.bus import POINT_PROJECT_PUBLISHED
@@ -43,6 +43,8 @@ class UnbuildableRevision(object):
 
 
 class PlatformService(object):
+
+    TRIAL_SESSIONS_PER_APP = 3
 
     def __init__(self, project_service: "ProjectService") -> None:
         self.project_service = project_service
@@ -211,17 +213,19 @@ class PlatformService(object):
         raise FileNotFoundError(f"Source '{source_name}' does not exist in project '{project_id}'.")
 
     def list_app_store_apps(self, username: str, search: str | None = None) -> list[dict]:
+        trials_used = self.db.count_trial_sessions_by_project(username)
         apps = []
         for app in self.db.list_projects_for_app_store(username, search):
             try:
-                apps.append(self._offered(app, self._published_automaton(app["id"])))
+                apps.append(self._offered(app, self._published_automaton(app["id"]), trials_used))
             except AutomatonBuildError:
                 continue
         return apps
 
     def list_managed_apps(self, username: str, search: str | None = None) -> list[dict]:
+        trials_used = self.db.count_trial_sessions_by_project(username)
         return [
-            self._offered(app, self._published_automaton_or_unbuildable(app["id"]))
+            self._offered(app, self._published_automaton_or_unbuildable(app["id"]), trials_used)
             for app in self.db.list_projects_for_app_store(username, search)
         ]
 
@@ -234,11 +238,15 @@ class PlatformService(object):
         except AutomatonBuildError:
             return UnbuildableRevision()
 
-    def _offered(self, app: dict, automaton: Automaton | UnbuildableRevision) -> dict:
+    def _offered(self, app: dict, automaton: Automaton | UnbuildableRevision, trials_used: dict[str, int]) -> dict:
         app["icon_file"] = self._find_app_icon_file(app["id"])
+        app["snapshot_files"] = self._find_app_snapshot_files(app["id"])
         app["family"] = automaton.family
         app["reactions_enabled"] = any(automaton.reactions_enabled_for(s) for s in automaton.states.values())
         app["compiled"] = isinstance(automaton, CompiledAutomaton)
+        used = trials_used.get(app["id"], 0)
+        app["trials_used"] = used
+        app["trials_left"] = max(0, self.TRIAL_SESSIONS_PER_APP - used)
         return app
 
     def _find_app_icon_file(self, project_id: str) -> str | None:
@@ -247,6 +255,32 @@ class PlatformService(object):
             if ICON_FILE_RE.match(name):
                 return name
         return None
+
+    def _find_app_snapshot_files(self, project_id: str) -> dict[str, list[str]]:
+        """The published revision's media/snapshot-<aspect>-<n>.jpg files,
+        grouped by aspect and ordered by <n> — the captures RunChat.vue
+        saves from the project editor, one group per entry of its ASPECTS
+        list. An app that has none gets an empty dict and the store falls
+        back to its imported preview transcript."""
+        revision = self.project_service.get_published_revision(project_id)
+        indexed: dict[str, list[tuple[int, str]]] = {}
+        for name in self.db.list_archives(project_id, revision=revision):
+            match = SNAPSHOT_FILE_RE.match(name)
+            if match is None:
+                continue
+            indexed.setdefault(match.group("aspect").lower(), []).append((int(match.group("index")), name))
+        return {aspect: [name for _, name in sorted(entries)] for aspect, entries in indexed.items()}
+
+    def start_trial_session(self, username: str, project_id: str) -> int:
+        """Spend one of this user's test sessions on `project_id` and
+        return how many are left after it. Raises PermissionError once
+        TRIAL_SESSIONS_PER_APP have been spent — the browser cannot be
+        the one counting, since a reload would reset it."""
+        used = self.db.count_trial_sessions(username, project_id)
+        if used >= self.TRIAL_SESSIONS_PER_APP:
+            raise PermissionError(f"No test sessions left for {project_id!r}.")
+        self.db.record_trial_session(username, project_id, self.project_service.get_published_revision(project_id))
+        return self.TRIAL_SESSIONS_PER_APP - used - 1
 
     def install_app(self, username: str, project_id: str) -> None:
         if not self.db.project_exists(project_id):

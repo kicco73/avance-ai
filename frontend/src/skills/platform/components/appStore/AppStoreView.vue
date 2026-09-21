@@ -139,6 +139,11 @@ defineExpose({ refresh: load })
                 <span class="app-store-card-body">
                   <span class="app-store-card-title">{{ appTitle(app) }}</span>
                   <span v-if="app.ui_description" class="app-store-card-desc">{{ app.ui_description }}</span>
+                  <span v-if="!subscribedOnly" class="app-store-card-status">
+                    <span v-if="app.installed" class="app-store-card-pill app-store-card-pill-installed">Installed</span>
+                    <span v-else-if="app.trials_left > 0" class="app-store-card-pill app-store-card-pill-try">{{ app.trials_left }} tests left</span>
+                    <span v-else class="app-store-card-pill app-store-card-pill-spent">Tests used</span>
+                  </span>
                 </span>
               </button>
             </div>
@@ -334,6 +339,36 @@ defineExpose({ refresh: load })
   overflow: hidden;
 }
 
+.app-store-card-status {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+}
+
+.app-store-card-pill {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.app-store-card-pill-installed {
+  background: #eef3fa;
+  color: #4a6fa5;
+}
+
+.app-store-card-pill-try {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.app-store-card-pill-spent {
+  background: #f2f2f7;
+  color: #8e8e93;
+}
+
 .app-store-preview {
   position: relative;
   flex: 1;
@@ -341,8 +376,8 @@ defineExpose({ refresh: load })
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  overflow-y: auto;
+  gap: 0.8rem;
+  overflow: hidden;
 }
 
 .app-store-detail-enter-active,
@@ -407,6 +442,10 @@ defineExpose({ refresh: load })
     padding: 1rem;
     box-sizing: border-box;
     transition: transform 0.3s ease;
+  }
+
+  .app-store-preview {
+    overflow-y: auto;
   }
 
   .app-store-list {

@@ -384,6 +384,28 @@ class UserProject(BaseModel):
         table_name = 'UserProject'
         primary_key = CompositeKey('user', 'project')
 
+class TrialSession(BaseModel):
+    """One row per test session a user has started from the app store
+    (AppDetailPanel's "Try me!"), used to enforce PlatformService.
+    TRIAL_SESSIONS_PER_APP. It is deliberately NOT a counter column on
+    UserProject: that row is created by terms acceptance or invite
+    redemption and deleted by uninstall_project, and its mere existence
+    is what user_has_project_access grants on — a trial must neither
+    reset on uninstall nor confer project access. `revision` records the
+    project's published_revision at the time, so a future policy can
+    scope the quota to a revision without a schema change; the quota
+    enforced today counts every row for the (user, project) pair."""
+    id = AutoField()
+    user = ForeignKeyField(User, field='id', column_name='user_id', backref='trial_sessions', on_delete='CASCADE')
+    user_id: str
+    project = ForeignKeyField(Project, field='id', column_name='project_id', backref='trial_sessions', on_delete='CASCADE')
+    project_id: str
+    revision = IntegerField(null=True)
+    started_at = DateTimeField(default=datetime.utcnow)
+
+    class Meta:
+        table_name = 'TrialSession'
+
 class Settings(BaseModel):
     key = CharField(primary_key=True)
     value = CharField()

@@ -32,6 +32,14 @@ class AppStoreController(BaseController):
         self.platform_service.uninstall_app(WebSession().user, app_id)
         return {"success": True}
 
+    @post("/api/skills/platform/app-store/apps/{app_id}/trial")
+    def post_trial_session(self, app_id: str):
+        try:
+            trials_left = self.platform_service.start_trial_session(WebSession().user, app_id)
+        except PermissionError as exc:
+            raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
+        return {"trials_left": trials_left}
+
     @get("/api/skills/platform/app-store/apps/{app_id}/preview-transcript")
     def get_app_preview_transcript(self, app_id: str):
         return {"messages": self.platform_service.get_app_store_preview_messages(app_id)}

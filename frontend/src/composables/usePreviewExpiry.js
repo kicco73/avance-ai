@@ -2,8 +2,6 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 
 const PREVIEW_EXPIRY_SECONDS = 5 * 60
 
-const COUNTDOWN_THRESHOLD_SECONDS = 59
-
 export function usePreviewExpiry() {
   const remainingSeconds = ref(PREVIEW_EXPIRY_SECONDS)
   const expired = ref(false)
@@ -14,9 +12,10 @@ export function usePreviewExpiry() {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
   })
 
-  const quitButtonLabel = computed(() => (
-    remainingSeconds.value <= COUNTDOWN_THRESHOLD_SECONDS ? remainingLabel.value : 'Quit'
-  ))
+  const elapsedPercent = computed(() => {
+    const s = Math.min(PREVIEW_EXPIRY_SECONDS, Math.max(0, remainingSeconds.value))
+    return Math.round(((PREVIEW_EXPIRY_SECONDS - s) / PREVIEW_EXPIRY_SECONDS) * 100)
+  })
 
   function clear() {
     if (interval === null) return
@@ -38,5 +37,5 @@ export function usePreviewExpiry() {
 
   onBeforeUnmount(clear)
 
-  return { remainingSeconds, remainingLabel, quitButtonLabel, expired, arm, clear }
+  return { remainingSeconds, remainingLabel, elapsedPercent, expired, arm, clear }
 }
