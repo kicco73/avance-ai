@@ -20,6 +20,7 @@ from ai.llm_provider import (
 	content_to_text,
 )
 from ai._providers.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
+from ai.stream_deadline import StreamDeadline, StreamStalled
 from ai._providers import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 from db import Db
 from system.web_session import WebSession
@@ -99,8 +100,10 @@ class AiService(object):
 		auto_config_indices: list[int] | None = None,
 		db: Db | None = None,
 		input_token_budget_per_turn: int | None = None,
+		deadline: StreamDeadline | None = None,
 	) -> None:
 		self._auto_provider = auto_provider
+		self._deadline = deadline if deadline is not None else StreamDeadline()
 		self._selectable_providers = selectable_providers or []
 		self._configs = configs or []
 		self._auto_config_indices = (
@@ -423,9 +426,9 @@ class AiService(object):
 
 		if tool_set is None:
 			logger.info(f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())}")
-			response_stream = self._active_provider.generate_stream_with_schema(
+			response_stream = self._deadline.streaming(self._active_provider.generate_stream_with_schema(
 				system_prompt, history, schema=schema, on_metadata=tapped_on_metadata,
-			) # type: ignore
+			), provider_label) # type: ignore
 			async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
 				yield chunk
 			return
@@ -454,12 +457,12 @@ class AiService(object):
 				f"tool_round={round_number} tools={[spec.name for spec in tool_specs]} "
 				f"required_tools={[spec.name for spec in required_this_round] if required_this_round else []}"
 			)
-			response_stream = self._active_provider.generate_stream_with_schema(
+			response_stream = self._deadline.tool_round(self._active_provider.generate_stream_with_schema(
 				system_prompt, turn_history, schema=schema, on_metadata=_tally_input_tokens, tools=tool_specs,
 				tool_round=round_number, required_tools=required_this_round,
-			) # type: ignore
+			), provider_label) # type: ignore
 			try:
-				round_chunks = [chunk async for chunk in response_stream]
+				round_chunks = [chunk async for chunk in self._within_deadline(response_stream)]
 			except ToolCallsRequested as requested:
 				turn_history.append({
 					"role": "assistant", "tool_calls": requested.calls, "content": requested.assistant_content,
@@ -497,9 +500,9 @@ class AiService(object):
 			f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())} "
 			f"exceeded {MAX_TOOL_ROUNDS} tool-call rounds, forcing a final answer with tools disabled"
 		)
-		response_stream = self._active_provider.generate_stream_with_schema(
+		response_stream = self._deadline.streaming(self._active_provider.generate_stream_with_schema(
 			system_prompt, turn_history, schema=schema, on_metadata=tapped_on_metadata,
-		) # type: ignore
+		), provider_label) # type: ignore
 		async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
 			yield chunk
 
@@ -507,6 +510,14 @@ class AiService(object):
 	async def _as_async_iter(items: list[str]) -> AsyncIterator[str]:
 		for item in items:
 			yield item
+
+	async def _within_deadline(self, stream: AsyncIterator[str]) -> AsyncIterator[str]:
+		try:
+			async for chunk in stream:
+				yield chunk
+		except StreamStalled:
+			self._active_provider.advance()
+			raise
 
 	async def _stream_final_answer(
 		self,
@@ -527,7 +538,7 @@ class AiService(object):
 		last_text_length = 0
 
 		try:
-			async for chunk in response_stream:
+			async for chunk in self._within_deadline(response_stream):
 				accumulated_json += chunk
 				parsed = partial_json_parser.parse_json(accumulated_json)
 				if not isinstance(parsed, dict):

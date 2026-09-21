@@ -22,8 +22,6 @@ import { rememberBackgroundAudio, recallBackgroundAudio, forgetBackgroundAudio }
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
 
-const AWAITING_REPLY_TIMEOUT_MS = 15000
-
 export const chatConnectionState = ref(busChannel.connectionState)
 busChannel.onConnectionState((next) => { chatConnectionState.value = next })
 
@@ -203,6 +201,7 @@ export function createChatStore({
   busChannel.subscribe('output.error', (frame) => {
     if (frame.session_id !== currentSessionId.value) return
     if (openExchanges.size > 0) return
+    actionLoading.value = false
     setApiError(frame.message, frame.detail)
   })
 
@@ -448,9 +447,6 @@ export function createChatStore({
         writing: () => {
           if (mine()) patchBubble(assistantMsgId, { pending: false, awaitingReply: true })
         },
-        stopWaiting: () => {
-          if (mine()) patchBubble(assistantMsgId, { awaitingReply: false })
-        },
         append: (text) => {
           if (!mine()) return
           const current = messages.value.find((m) => m.id === assistantMsgId)
@@ -531,6 +527,7 @@ export function createChatStore({
     function failExchange(frame) {
       done()
       statusHold.cancel()
+      actionLoading.value = false
       setApiError(frame.message, frame.detail)
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx !== -1) {

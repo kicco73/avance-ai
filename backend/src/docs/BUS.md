@@ -116,7 +116,11 @@ state.buttons                   what can be done now — and the exchange ends h
 The reply is not the last frame: `state.buttons` is, always published right
 after it, so a reader has both the answer and what it may do next before it
 treats the exchange as over. When something goes wrong, `output.error`
-arrives in place of the reply, with no `state.buttons` after it.
+arrives in place of the reply, with no `state.buttons` after it. That holds
+whatever went wrong: a refusal the turn could name carries its `code`, and an
+exception that escapes the turn is turned into `output.error` (`message`
+`Unexpected server error.`) by `turn/outbound.py`'s `publishing`, the seam
+every exchange runs inside — no exchange ends in silence.
 
 A reader does not wait for a final payload; it assembles what was
 published. `conftest.chat_turn` does the same, so a test reads what a

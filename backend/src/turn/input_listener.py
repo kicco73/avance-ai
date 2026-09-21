@@ -229,10 +229,9 @@ class TurnInput(object):
             return result
         except ServiceError as exc:
             outbound.failed(exc, prepared)
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Unexpected error while processing a turn: %s", exc)
+        except Exception:
             outbound.said(prepared)
-            outbound.put(OUTPUT_ERROR, {"message": "Unexpected server error.", "detail": str(exc)})
+            raise
         return None
 
 

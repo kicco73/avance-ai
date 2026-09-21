@@ -1,6 +1,6 @@
 import { busChannel } from './busChannel.js'
 
-const AWAITING_REPLY_TIMEOUT_MS = 15000
+const REPLY_SILENCE_TIMEOUT_MS = 45000
 
 const WATCHED = ['output.text_stream', 'output.tool', 'output.speech', 'output.text', 'output.error', 'output.progress']
 
@@ -9,7 +9,7 @@ export class ChatExchange {
     this._sessionId = sessionId
     this._bubble = bubble
     this._unsubscribes = []
-    this._awaitingTimer = null
+    this._silenceTimer = null
     this.hadToolCall = false
     this.hasChunk = false
   }
@@ -28,11 +28,12 @@ export class ChatExchange {
   stop() {
     for (const unsubscribe of this._unsubscribes) unsubscribe()
     this._unsubscribes = []
-    this._clearAwaitingTimer()
+    this._clearSilenceTimer()
   }
 
   _take(type, frame) {
     if (frame.session_id !== this._sessionId) return
+    this._armSilenceTimer()
     if (type === 'output.text_stream') this._streamed(frame.text)
     else if (type === 'output.speech') this._bubble.spoken(frame.text)
     else if (type === 'output.tool') this._tool(frame)
@@ -44,12 +45,9 @@ export class ChatExchange {
   _streamed(text) {
     if (text === '') {
       this._bubble.writing()
-      this._clearAwaitingTimer()
-      this._awaitingTimer = setTimeout(() => this._bubble.stopWaiting(), AWAITING_REPLY_TIMEOUT_MS)
       return
     }
     this.hasChunk = true
-    this._clearAwaitingTimer()
     this._bubble.append(text)
   }
 
@@ -69,8 +67,16 @@ export class ChatExchange {
     this._bubble.failed(frame)
   }
 
-  _clearAwaitingTimer() {
-    clearTimeout(this._awaitingTimer)
-    this._awaitingTimer = null
+  _armSilenceTimer() {
+    this._clearSilenceTimer()
+    this._silenceTimer = setTimeout(() => this._failed({
+      message: 'No reply.',
+      detail: `The server sent nothing for ${REPLY_SILENCE_TIMEOUT_MS / 1000} seconds.`
+    }), REPLY_SILENCE_TIMEOUT_MS)
+  }
+
+  _clearSilenceTimer() {
+    clearTimeout(this._silenceTimer)
+    this._silenceTimer = null
   }
 }

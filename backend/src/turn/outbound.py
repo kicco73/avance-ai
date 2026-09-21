@@ -179,6 +179,9 @@ async def publishing(message: Message, db):
         drain = asyncio.create_task(outbound.drain())
         try:
             yield outbound
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Exchange %s for session %s failed: %s", message.type, message.session_id, exc)
+            outbound.put(OUTPUT_ERROR, {"message": "Unexpected server error.", "detail": str(exc)})
         finally:
             outbound.close()
             await drain

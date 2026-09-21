@@ -238,6 +238,9 @@ class LLMProvider(TokenCounter, ABC):
 		raise NotImplementedError
 		yield
 
+	def advance(self) -> None:
+		return None
+
 	@abstractmethod
 	def get_input_tokens(self, prompt: str) -> int:
 		"""Estimated token count `prompt` would cost as input, computed
