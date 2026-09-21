@@ -116,6 +116,37 @@ no fixture has to be told.
 A test module never imports another test module. Anything two of them
 share is core, and core belongs in `conftest.py` or `tests/turn_harness.py`.
 
+## Time a test moves itself
+
+A wait in the product — a stream deadline, a `sleep`, a retry backoff —
+is a timer on the event loop, and a test of one has two bad options: run
+it against real seconds, or shrink the number until the test is fast and
+no longer says anything about the number the product ships with.
+`tests/virtual_clock.py` is the third: `VirtualClockLoop` is an event
+loop whose `time()` is a value the test owns, so the product runs with
+its real 5 s and the test pays nothing for it.
+
+```python
+with asyncio.Runner(loop_factory=VirtualClockLoop) as runner:
+    runner.run(scenario(runner.get_loop().clock))
+```
+
+`clock.advance(seconds)` fires every timer due in that span, each at the
+instant it was scheduled for and in order, and returns once the loop has
+nothing left to run — so an assertion after `advance(4.9)` sees the
+world at 4.9 s and one after a further `advance(0.1)` sees it at 5.0 s.
+`clock.settle()` is `advance(0)`: let everything already runnable run.
+The test drives the loop, so it never `wait_for`s anything: it moves
+time, then reads what was published.
+
+`tests/scripted_provider.py` is what such a test puts on the other end
+of the call: an `LLMProvider` that does, on each call, the one thing the
+test scripted — `Reply`, `RepliesAfter(seconds, text)`, `Stalled`,
+`StallsAfter(prefix)`, `Trickles(words, gap)`, `Crashes(error)` — and
+counts the streams the product closed before they finished
+(`torn_down`). `test_stalled_reply_ends_in_time.py` replays production
+session 55 with the two together.
+
 ## How a test gets a session
 
 The same two ways a browser does, and no other: `conftest.enter_chat` and
