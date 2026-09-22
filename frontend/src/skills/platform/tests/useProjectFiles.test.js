@@ -226,27 +226,41 @@ describe('useProjectFiles', () => {
     })
   })
 
-  it('handleNewAspect and handleNewLegal each create their file once, then select it, and are a no-op if it already exists', async () => {
+  it('handleNewLegal creates its file once, then selects it, and is a no-op if it already exists', async () => {
     const existing = mount()
     getProjectFiles.mockResolvedValue({ files: ['index.yml', 'index.css', 'legal/terms.md'] })
     await existing.loadFiles()
 
-    await existing.handleNewAspect()
     await existing.handleNewLegal()
-    expect(putProjectFile).not.toHaveBeenCalled()
     expect(postAddLegalTerms).not.toHaveBeenCalled()
 
     getProjectFiles.mockResolvedValue({ files: ['index.yml'] })
     const fresh = mount()
     await fresh.loadFiles()
     fresh.currentFileName.value = 'index.yml'
-    await fresh.handleNewAspect()
-    expect(putProjectFile).toHaveBeenCalledWith('proj', 'index.css', expect.stringContaining('.chat-header'))
 
     getProjectFiles.mockResolvedValue({ files: ['index.yml', 'legal/terms.md'] })
     await fresh.handleNewLegal()
     expect(postAddLegalTerms).toHaveBeenCalledWith('proj')
     expect(fresh.currentFileName.value).toBe('legal/terms.md')
+  })
+
+  it('selecting "index.css" creates it empty the first time, and is a no-op once it already exists', async () => {
+    getProjectFiles.mockResolvedValue({ files: ['index.yml'] })
+    const s = mount()
+    await s.loadFiles()
+    s.currentFileName.value = 'index.yml'
+
+    getProjectFiles.mockResolvedValue({ files: ['index.yml', 'index.css'] })
+    await s.selectFile('index.css')
+
+    expect(putProjectFile).toHaveBeenCalledWith('proj', 'index.css', '')
+    expect(s.currentFileName.value).toBe('index.css')
+
+    putProjectFile.mockClear()
+    s.currentFileName.value = 'index.yml'
+    await s.selectFile('index.css')
+    expect(putProjectFile).not.toHaveBeenCalled()
   })
 
   describe('handleDeleteFile', () => {

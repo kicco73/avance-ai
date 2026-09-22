@@ -7,6 +7,7 @@ import { getHistory, getProjectFiles, putProjectFileBinary } from '../../../../a
 import { totalTokenBudgetPerSession } from '../../../../../../chatStoreFactory.js'
 import { infoDialog } from '../../../../../../dialogStore.js'
 import { testStore } from '../../../../testChatStore.js'
+import { buildEmbedUrl } from '../../../../../../embedParams.js'
 import { useTokensBar } from '../../../../../../composables/useTokensBar.js'
 import { useFloatingTooltip } from '../../../../../../useFloatingTooltip.js'
 
@@ -93,10 +94,7 @@ defineExpose({
 
 const iframeSrc = computed(() => {
   if (!currentProjectId.value || !currentSessionId.value) return null
-  const params = new URLSearchParams({
-    embed: 'test-chat', project: currentProjectId.value, session: currentSessionId.value
-  })
-  return `${window.location.origin}${window.location.pathname}?${params}`
+  return buildEmbedUrl('test-chat', currentProjectId.value, currentSessionId.value)
 })
 
 const aspect = ref('dynamic')

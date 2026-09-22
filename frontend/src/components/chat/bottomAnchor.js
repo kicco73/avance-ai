@@ -60,10 +60,10 @@ export class BottomAnchor {
       this.stopSettling()
       return
     }
-    if (this.settling) return
-    this.settling = true
     this.from = this.scroller.scrollTop
     this.startedAt = null
+    if (this.settling) return
+    this.settling = true
     this.frame = requestAnimationFrame((now) => this.step(now))
   }
 

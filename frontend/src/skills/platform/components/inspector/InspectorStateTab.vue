@@ -5,6 +5,12 @@ import InspectorSourceCard from './InspectorSourceCard.vue'
 import SourcesEditDialog from './SourcesEditDialog.vue'
 import { customDialog } from '../../../../dialogStore.js'
 import SessionDetailCard from '../../../../components/skillkit/SessionDetailCard.vue'
+import SegmentedControl from '../../../../components/skillkit/SegmentedControl.vue'
+
+const INPUT_PROCESSOR_OPTIONS = [
+  { id: 'ai', label: 'AI', title: 'Answered by the model' },
+  { id: 'system', label: 'System', title: "Answered by the automaton's own scripts, via chat.write(...)" }
+]
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -63,13 +69,21 @@ function openSourcesDialog() {
 
 const open = ref(false)
 watch(elementIdentity, (identity) => {
-  open.value = identity != null && (props.selectedElement.kind === 'state' || props.recentlyAddedKey === identity)
+  open.value = identity != null && props.recentlyAddedKey === identity
 }, { immediate: true })
 
 </script>
 
 <template>
   <div class="inspector-state-tab">
+    <div v-if="selectedElement?.kind === 'state' && isBehaviorContext" class="inspector-state-tab-processor">
+      <span class="inspector-state-tab-processor-label">Input processor</span>
+      <SegmentedControl
+        :model-value="selectedElement.data.inputProcessor"
+        :options="INPUT_PROCESSOR_OPTIONS"
+        @update:model-value="(value) => emit('set-field', 'input-processor', value)"
+      />
+    </div>
     <InspectorSourceCard
       v-if="isSourceContext"
       :source="selectedSource"
@@ -129,6 +143,8 @@ watch(elementIdentity, (identity) => {
 
 <style scoped>
 .inspector-state-tab { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.inspector-state-tab-processor { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.6rem; }
+.inspector-state-tab-processor-label { font-size: 0.78rem; color: #555; }
 .inspector-state-tab-add-row { flex-shrink: 0; display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 .inspector-state-tab-add-btn { flex: 1; padding: 0.5rem; border-radius: 6px; border: 1px dashed #4a6fa5; background: white; color: #4a6fa5; font-size: 0.82rem; cursor: pointer; }
 .inspector-state-tab-add-btn:hover { background: #eef2f9; }

@@ -5,16 +5,6 @@ import { confirmDialog, promptDialog, chooseDialog } from '../../dialogStore.js'
 import { findActionLine, findAttachmentLine, findEnvKeyLine, findInitActionLine, findSignalLine, findStateLine } from '../../indexYmlLineFinder.js'
 import { ensureProjectFileTypes, projectFileTypes } from '../../projectFileTypes.js'
 
-const INDEX_CSS_SKELETON = `.chat-header {
-}
-
-.chat-body {
-}
-
-.chat-footer {
-}
-`
-
 const LEGAL_TERMS_FILE_NAME = 'legal/terms.md'
 
 export function useProjectFiles(projectId, emit) {
@@ -113,9 +103,21 @@ export function useProjectFiles(projectId, emit) {
     return undefined
   }
 
+  async function ensureAspectFileExists() {
+    if (files.value.includes('index.css')) return
+    try {
+      await putProjectFile(projectId, 'index.css', '')
+      await loadFiles()
+    } catch {
+    }
+  }
+
   function selectFile(fileName) {
     if (fileName === currentFileName.value) return
-    guardedAction(`switch to "${fileName}"`, () => switchFile(fileName))
+    return guardedAction(`switch to "${fileName}"`, async () => {
+      if (fileName === 'index.css') await ensureAspectFileExists()
+      switchFile(fileName)
+    })
   }
 
   function applyPendingCursorTarget() {
@@ -273,11 +275,6 @@ export function useProjectFiles(projectId, emit) {
     await createProjectFile(`behaviour/${toMdFileName(rawName.trim())}`, '')
   }
 
-  async function handleNewAspect() {
-    if (files.value.includes('index.css')) return
-    await createProjectFile('index.css', INDEX_CSS_SKELETON)
-  }
-
   async function handleNewLegal() {
     if (hasLegalTerms.value) return
     creatingFile.value = true
@@ -359,7 +356,7 @@ export function useProjectFiles(projectId, emit) {
     attachmentsRootSelected, selectAttachmentsRoot,
     activeEditorIsDirty, activeEditor,
     loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
-    handleUploadFile, handleUploadMedia, handleUploadAttachment, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
+    handleUploadFile, handleUploadMedia, handleUploadAttachment, handleNewAttachment, handleNewLegal, handleDeleteFile, handleRenameFile,
     handleFileRenamedByHistory, handleFileSaved,
   }
 }

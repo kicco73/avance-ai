@@ -60,7 +60,7 @@ const {
   attachmentsRootSelected, selectAttachmentsRoot,
   activeEditorIsDirty, activeEditor,
   loadFiles, switchFile, guardedAction, selectFile, jumpToDefinition,
-  handleUploadMedia, handleUploadAttachment, handleNewAttachment, handleNewAspect, handleNewLegal, handleDeleteFile, handleRenameFile,
+  handleUploadMedia, handleUploadAttachment, handleNewAttachment, handleNewLegal, handleDeleteFile, handleRenameFile,
   handleFileRenamedByHistory, handleFileSaved,
 } = useProjectFiles(props.projectId, emit)
 
@@ -205,11 +205,13 @@ const inspectorTabs = computed(() => {
   if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || mediaRootSelected.value || !isBehaviorNodeSelected.value)) {
     return [{ id: 'state', label: 'Info' }]
   }
+  const isSystemState = selectedStateData.value?.inputProcessor === 'system'
   const ioTab = selectedStateData.value == null || selectedStateData.value.inputProcessor === 'ai'
     ? [{ id: 'output', label: 'I/O' }] : []
+  const signalsTab = isSystemState ? [] : [{ id: 'design-signals', label: 'Signals' }]
   return [
     { id: 'state', label: 'Info' },
-    { id: 'design-signals', label: 'Signals' },
+    ...signalsTab,
     ...ioTab
   ]
 })
@@ -512,7 +514,6 @@ async function handleSetSessionComment(sessionId, comment) {
           :attachments-root-selected="attachmentsRootSelected"
           @start-explorer-drag="startExplorerDrag"
           @new-attachment="handleNewAttachment"
-          @new-aspect="handleNewAspect"
           @new-legal="handleNewLegal"
           @new-source="handleAddSource"
           @new-websearch-source="handleAddWebSearchSource"

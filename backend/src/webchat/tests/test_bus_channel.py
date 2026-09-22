@@ -431,13 +431,20 @@ class TestChannelLoop:
         assert websocket.closed_with == 4401
 
 
+PRIVILEGED_ROLES = ("customer", "supervisor", "admin")
+
+
 class TestConnectionCap:
-    """Per-role cap (see MAX_CONNECTIONS_PER_USER/MAX_CONNECTIONS_PER_ADMIN),
+    """Per-role cap (see MAX_CONNECTIONS_PER_USER/MAX_CONNECTIONS_PER_PRIVILEGED_ROLE),
     and who gives way when it is reached: the newest connection always wins
     and the oldest is superseded, because the browser the person is looking
-    at is the one that just connected. The admin's higher cap is what makes
-    room for the two-tabs-same-account setup HumanTalker testing relies on
-    (see talker.human_talker)."""
+    at is the one that just connected. The higher cap — every role ranked
+    "customer" or above, not "user" itself — is what makes room for a
+    privileged tab's own preview/test chat (App Store, Manage Projects, the
+    project editor's Run tab, each opening a second connection of their
+    own) without superseding the tab's primary connection, the same seam
+    the two-tabs-same-account setup HumanTalker testing relies on (see
+    talker.human_talker)."""
 
     def test_a_second_connection_for_a_plain_user_supersedes_the_first(self):
         channel = BusChannel(_FakeAuthService())
@@ -468,8 +475,9 @@ class TestConnectionCap:
         assert first.sent == [{"type": SWITCHED_TO_OTHER_CLIENT}]
         assert second.sent == [{"type": UI_NOTIFICATION}]
 
-    def test_an_admin_may_open_a_second_connection_without_superseding(self):
-        channel = BusChannel(_FakeAdminAuthService())
+    @pytest.mark.parametrize("role", PRIVILEGED_ROLES)
+    def test_a_privileged_role_may_open_a_second_connection_without_superseding(self, role):
+        channel = BusChannel(_FakeAuthService(role=role))
         first, second = _OpenWebSocket(), _OpenWebSocket()
 
         async def scenario():
@@ -482,8 +490,9 @@ class TestConnectionCap:
         assert first.sent == [] and first.closed_with is None
         assert second.sent == [] and second.closed_with is None
 
-    def test_a_third_connection_for_an_admin_supersedes_the_oldest_only(self):
-        channel = BusChannel(_FakeAdminAuthService())
+    @pytest.mark.parametrize("role", PRIVILEGED_ROLES)
+    def test_a_third_connection_for_a_privileged_role_supersedes_the_oldest_only(self, role):
+        channel = BusChannel(_FakeAuthService(role=role))
         oldest, newer, newest = _OpenWebSocket(), _OpenWebSocket(), _OpenWebSocket()
 
         async def scenario():

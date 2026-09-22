@@ -1,14 +1,14 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import ChatView from '../../../../components/chat/ChatView.vue'
 import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppSnapshotGallery from './AppSnapshotGallery.vue'
 import AppStoreFrozenPreview from './AppStoreFrozenPreview.vue'
+import PreviewChatFrame from '../PreviewChatFrame.vue'
 import { postInstallApp, deleteInstallApp, postTrialSession, getAppSkills, appStoreFileContentUrl } from '../../api.js'
 import { confirmDialog } from '../../../../dialogStore.js'
 import { holdSkin } from '../../../../chatSkin.js'
 import { AppSkinSource } from '../../appSkinSource.js'
-import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession, endPreviewSession } from '../../appStorePreviewStore.js'
+import { setPreviewApp, appStorePreviewStore, currentSessionId, historyLoaded, restartPreviewSession, stopPreviewSession, endPreviewSession } from '../../appStorePreviewStore.js'
 import { usePreviewExpiry } from '../../../../composables/usePreviewExpiry.js'
 import avanceLogoUrl from '../../../../assets/avance-logo.png'
 
@@ -288,7 +288,7 @@ onBeforeUnmount(async () => {
             :snapshot-files="app.snapshot_files"
           />
           <AppStoreFrozenPreview v-else-if="!previewing || !historyLoaded" :app-id="app.id" />
-          <ChatView v-else hide-sessions-panel :store="appStorePreviewStore" />
+          <PreviewChatFrame v-else :project-id="app.id" :session-id="currentSessionId" />
         </Transition>
         <ChatWaitingPanel v-if="previewing && !historyLoaded" />
 

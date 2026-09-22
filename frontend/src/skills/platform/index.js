@@ -9,6 +9,7 @@ const EditProjectView = defineAsyncComponent(() => import('./components/project/
 const ManageUsersView = defineAsyncComponent(() => import('./components/settings/ManageUsersView.vue'))
 const AppStoreView = defineAsyncComponent(() => import('./components/appStore/AppStoreView.vue'))
 const EmbedTestChat = defineAsyncComponent(() => import('./components/project/edit/run/EmbedTestChat.vue'))
+const PreviewChatEmbed = defineAsyncComponent(() => import('./components/PreviewChatEmbed.vue'))
 
 export const key = 'platform'
 
@@ -29,4 +30,7 @@ export const servicesTabActions = [{ id: 'platform-server-ops', tab: 'database',
 
 export const modelSelectors = [liveModelStore]
 
-export const embedViews = [{ key: 'test-chat', component: EmbedTestChat }]
+export const embedViews = [
+  { key: 'test-chat', component: EmbedTestChat },
+  { key: 'preview-chat', component: PreviewChatEmbed },
+]

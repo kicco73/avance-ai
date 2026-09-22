@@ -1,11 +1,11 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
-import ChatView from '../../../../components/chat/ChatView.vue'
 import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppStoreFrozenPreview from '../appStore/AppStoreFrozenPreview.vue'
+import PreviewChatFrame from '../PreviewChatFrame.vue'
 import { holdSkin } from '../../../../chatSkin.js'
 import { ProjectSkinSource } from '../../projectSkinSource.js'
-import { setPreviewApp, appStorePreviewStore, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
+import { setPreviewApp, appStorePreviewStore, currentSessionId, historyLoaded, restartPreviewSession, stopPreviewSession } from '../../appStorePreviewStore.js'
 import { projectActions } from '../../../registry.js'
 
 const props = defineProps({
@@ -123,7 +123,7 @@ onBeforeUnmount(async () => {
 
     <div class="project-detail-try-panel">
       <AppStoreFrozenPreview v-if="!previewing || !historyLoaded" :app-id="app.id" />
-      <ChatView v-if="previewing && historyLoaded" hide-sessions-panel :store="appStorePreviewStore" />
+      <PreviewChatFrame v-if="previewing && historyLoaded" :project-id="app.id" :session-id="currentSessionId" />
       <ChatWaitingPanel v-if="previewing && !historyLoaded" />
     </div>
 </template>

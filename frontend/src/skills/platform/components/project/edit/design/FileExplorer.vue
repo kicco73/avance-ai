@@ -17,7 +17,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'new-aspect', 'new-legal',
+  'new-legal',
   'select-file', 'select-source', 'select-sources-root', 'select-attachments-root',
   'select-media-root',
 ])
@@ -27,11 +27,6 @@ const newFileMenuRootEl = ref(null)
 
 function toggleNewFileMenu() {
   newFileMenuOpen.value = !newFileMenuOpen.value
-}
-
-function selectNewAspect() {
-  newFileMenuOpen.value = false
-  emit('new-aspect')
 }
 
 function selectNewLegal() {
@@ -62,7 +57,6 @@ function basename(name) {
 
 const behaviorAttachments = computed(() => props.files.filter((name) => name.startsWith(BEHAVIOUR_PREFIX)))
 const mediaAssets = computed(() => props.files.filter((name) => name.startsWith(MEDIA_PREFIX)))
-const hasIndexCss = computed(() => props.files.includes('index.css'))
 const hasLegalTerms = computed(() => props.files.includes(LEGAL_TERMS_FILE_NAME))
 const declaredSources = computed(() => props.sources.map((entry) => entry.source))
 
@@ -129,7 +123,6 @@ watch(
         <div class="file-explorer-new-menu" ref="newFileMenuRootEl">
           <button class="file-explorer-icon-btn" :disabled="creatingFile" title="New file" @click="toggleNewFileMenu">+</button>
           <ul v-if="newFileMenuOpen" class="file-explorer-new-menu-list">
-            <li><button class="file-explorer-new-menu-item" :disabled="hasIndexCss" :title="hasIndexCss ? 'index.css already exists' : ''" @click="selectNewAspect">New aspect</button></li>
             <li><button class="file-explorer-new-menu-item" :disabled="hasLegalTerms" :title="hasLegalTerms ? 'legal/terms.md already exists' : ''" @click="selectNewLegal">New legal</button></li>
           </ul>
         </div>
@@ -220,7 +213,7 @@ watch(
         </div>
       </li>
 
-      <li v-if="hasIndexCss" class="file-explorer-branch">
+      <li class="file-explorer-branch">
         <div class="file-explorer-node-row">
           <span class="file-explorer-caret-spacer"></span>
           <button

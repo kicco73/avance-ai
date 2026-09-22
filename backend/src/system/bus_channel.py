@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 SWITCHED_TO_OTHER_CLIENT = "switched_to_other_client"
 SUPERSEDED_CLOSE_CODE = 4410
 MAX_CONNECTIONS_PER_USER = 1
-MAX_CONNECTIONS_PER_ADMIN = 2
+MAX_CONNECTIONS_PER_PRIVILEGED_ROLE = 2
+PRIVILEGED_ROLE_FLOOR = "customer"
 HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
 WEB_FORWARDED = (UI_NOTIFICATION, SESSION_TAKEN_OVER, UI_PROGRESS, OUTPUT_DRIVE)
 HUMAN_PROMPT = "human_prompt"
@@ -184,11 +185,15 @@ class BusChannel(object):
     runs as a task; the session lock serializes turns of one session.
 
     At most MAX_CONNECTIONS_PER_USER connections per identity
-    (MAX_CONNECTIONS_PER_ADMIN for an admin), and the newest always wins:
-    a connection past the cap is accepted, and the oldest is superseded
-    to make room (see _supersede_over_cap). The tab that loses the
-    channel is never left to go quiet guessing why — it is told first,
-    with a SWITCHED_TO_OTHER_CLIENT frame it blocks its own chat on."""
+    (MAX_CONNECTIONS_PER_PRIVILEGED_ROLE for anything ranked "customer" or
+    above — staff, not a plain end user), and the newest always wins: a
+    connection past the cap is accepted, and the oldest is superseded to
+    make room (see _supersede_over_cap). The tab that loses the channel
+    is never left to go quiet guessing why — it is told first, with a
+    SWITCHED_TO_OTHER_CLIENT frame it blocks its own chat on. The higher
+    cap is what lets a privileged tab open a preview/test chat in a
+    second connection (App Store, Manage Projects, the project editor's
+    Run tab) without superseding its own primary one."""
 
     def __init__(self, auth_service: AuthService) -> None:
         self.__auth_service = auth_service
@@ -213,7 +218,10 @@ class BusChannel(object):
         WebSession().role = identity.role
 
         username = WebSession().user
-        cap = MAX_CONNECTIONS_PER_ADMIN if role_satisfies(identity.role, "admin") else MAX_CONNECTIONS_PER_USER
+        cap = (
+            MAX_CONNECTIONS_PER_PRIVILEGED_ROLE if role_satisfies(identity.role, PRIVILEGED_ROLE_FLOOR)
+            else MAX_CONNECTIONS_PER_USER
+        )
         await websocket.accept()
         logger.info(f"accepted websocket for {username}")
         connection = WsConnection(websocket, username)

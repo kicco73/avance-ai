@@ -545,13 +545,21 @@ def _compiled(table, text, kind):
 
         The text is indented into a parenthesised return rather than inlined
         on one line, so a source spanning several lines, or carrying a
-        trailing '#' comment, stays valid."""
+        trailing '#' comment, stays valid. Only the first physical line
+        gets that indent prefix: parens don't require continuation lines to
+        line up, and re-indenting every line the way the first one needs
+        would reach into a multi-line string literal's own content —
+        chat.write/chat.show/task.prompt text the author indented two
+        spaces would arrive eight spaces deeper, past Markdown's own
+        four-space indented-code-block rule, and render as a code block
+        instead of the text it was written as."""
         bindings = "\n".join(
             f"    {root} = {cls._ADAPTERS[root]}(_scope[{root!r}])" if root in cls._ADAPTERS
             else f"    {root} = _scope[{root!r}]"
             for root in sorted(cls._roots(source, "eval") - known_builtins)
         )
-        indented = "\n".join(f"        {line}" for line in source.splitlines())
+        first, *rest = source.splitlines()
+        indented = "\n".join([f"        {first}", *rest])
         return f"def {name}(_scope):\n" + (f"{bindings}\n" if bindings else "") + f"    return (\n{indented}\n    )\n"
 
 

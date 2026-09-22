@@ -107,12 +107,7 @@ function commitBoolField(field, value) {
   emit('set-field', field, value)
 }
 
-const OTHER_PROCESSOR = { ai: 'system', system: 'ai' }
 const isAiState = computed(() => props.selectedElement?.data.inputProcessor === 'ai')
-
-function toggleInputProcessor() {
-  emit('set-field', 'input-processor', OTHER_PROCESSOR[props.selectedElement.data.inputProcessor])
-}
 
 const hasConfiguredSources = computed(() => {
   const d = props.selectedElement?.data
@@ -158,9 +153,10 @@ const isSelectedStateCurrent = computed(() => {
 const hasSelectedElementBadges = computed(() => {
   if (!props.selectedElement) return false
   if (props.selectedElement.kind === 'state') {
-    if (showEditForm.value) return true
     const d = props.selectedElement.data
-    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || isAiState.value
+    if (showEditForm.value) return isAiState.value
+    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final ||
+      (isAiState.value && (!d.chatEnabled || d.historyCutoff || (d.reactionsEnabled && d.hasReactions)))
   }
   if (showEditForm.value) return true
   const d = props.selectedElement.data
@@ -222,12 +218,6 @@ function selectAttachment(fileName) {
           </template>
           <template v-if="showEditForm">
             <span
-              class="inspector-detail-badge inspector-detail-badge-toggle inspector-detail-badge-ai"
-              :class="isAiState ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
-              title="Click to toggle: answered by the AI, or by the automaton's own scripts"
-              @click.stop="toggleInputProcessor"
-            >AI</span>
-            <span
               v-if="isAiState"
               class="inspector-detail-badge inspector-detail-badge-toggle"
               :class="!selectedElement.data.chatEnabled ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
@@ -253,7 +243,6 @@ function selectAttachment(fileName) {
             >Reactions</span>
           </template>
           <template v-else>
-            <span v-if="isAiState" class="inspector-detail-badge inspector-detail-badge-neutral inspector-detail-badge-ai-on">AI</span>
             <span v-if="isAiState && !selectedElement.data.chatEnabled" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
             <span v-if="isAiState && selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
             <span v-if="isAiState && selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
@@ -450,7 +439,6 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
 .inspector-detail-badge-toggle-on { background: #4a6fa5; }
 .inspector-detail-badge-toggle-locked { cursor: not-allowed; opacity: 0.5; }
-.inspector-detail-badge-ai.inspector-detail-badge-toggle-on, .inspector-detail-badge-ai-on { background: #8b5cf6; }
 .inspector-detail-badge-trigger-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
 .inspector-detail-badge-trigger-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .inspector-detail-badge-trigger.inspector-detail-badge-toggle-on { background: #4b8bbe; }

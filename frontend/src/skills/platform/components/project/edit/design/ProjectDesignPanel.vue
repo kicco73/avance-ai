@@ -49,7 +49,7 @@ const noRootSelection = computed(() => (
 const currentFileIsMediaFolder = computed(() => projectFileTypes.value.isMediaFile(props.currentFileName ?? ''))
 
 const emit = defineEmits([
-  'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'new-source', 'new-websearch-source',
+  'start-explorer-drag', 'new-attachment', 'new-legal', 'new-source', 'new-websearch-source',
   'select-file', 'select-source', 'select-sources-root', 'select-attachments-root',
   'select-media-root', 'upload-media', 'upload-attachment',
   'jump-to-definition', 'select', 'saved', 'renamed'
@@ -110,7 +110,6 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
       :modified-files="modifiedFiles"
       :media-root-selected="mediaRootSelected"
       :attachments-root-selected="attachmentsRootSelected"
-      @new-aspect="emit('new-aspect')"
       @new-legal="emit('new-legal')"
       @select-file="emit('select-file', $event)"
       @select-source="emit('select-source', $event)"
