@@ -12,8 +12,8 @@ from __future__ import annotations
 from http import HTTPStatus
 from typing import TYPE_CHECKING, AsyncIterator
 
-from automaton.automaton import Automaton, State
-from automaton.choice import ChoiceSelection
+from automaton.automaton import Action, Automaton, State
+from automaton.choice import ChoiceSelection, option_value
 from system import bus
 from system.bus import POINT_INPUT_PROCESSORS
 from system.web_session import WebSession
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 def plain_reply_result(
-    session_id: int, automaton: Automaton, state: State, assistant_message: RowHandle,
+    session_id: int, automaton: Automaton, state: State, assistant_message: RowHandle | None,
     user_messages: list[PendingMessage] | None, buttons: list[dict], ai_model: dict,
 ) -> dict:
     return {
@@ -49,10 +49,11 @@ def plain_reply_result(
 
 def committed(transaction: TurnTransaction, turn_result: dict) -> dict:
     assistant_message = turn_result["assistant_message_id"]
+    found = (transaction.get_message(handle) for handle in filter(None, [assistant_message]))
     return {
         **turn_result,
-        "reply": [transaction.get_message(assistant_message)],
-        "assistant_message_id": assistant_message.id,
+        "reply": [message for message in found if message is not None],
+        "assistant_message_id": row_id(assistant_message),
         "user_message_id": row_id(turn_result["user_message_id"]),
     }
 
@@ -92,7 +93,9 @@ class InputProcessor(object):
                     automaton, source_state, action, None, ChoiceSelection.NONE, session["id"],
                     origin='manual', username=WebSession().user, project_id=project_id,
                 )
-                turn_result = await self.turn(session["id"], on_metadata, [], transaction)
+                turn_result = await self.turn_after(
+                    self._answering(automaton, source_state, action), session["id"], on_metadata, transaction,
+                )
             return self._transition_result(
                 session["id"], source_state_key, action.name, env_changed, committed(transaction, turn_result),
             )
@@ -106,7 +109,8 @@ class InputProcessor(object):
             session = self._turns.require_active_session(session_id, project_id, source_state.key)
             if selection.key not in source_state.choice_keys:
                 raise ValueError(f"'{selection.key}' is not a choice offered in state '{source_state.key}'.")
-            if selection.option not in self._turns.choice_options_for(session["id"]).get(selection.key, []):
+            offered = self._turns.choice_options_for(session["id"]).get(selection.key, [])
+            if selection.option not in [option_value(option) for option in offered]:
                 raise ValueError(f"'{selection.option}' is not among the current options of '{selection.key}'.")
             transaction = self._turns.exchange(session["id"], [])
             tracking_engine, _ = self._turns.tracking_engine_for(session["id"], transaction)
@@ -118,15 +122,33 @@ class InputProcessor(object):
                     automaton, source_state, action, None, selection, session["id"],
                     origin='manual', username=WebSession().user, project_id=project_id,
                 )
-                turn_result = await self.turn(session["id"], on_metadata, [], transaction)
+                turn_result = await self.turn_after(
+                    self._answering(automaton, source_state, action), session["id"], on_metadata, transaction,
+                )
             return self._transition_result(
                 session["id"], source_state.key, action.name, env_changed, committed(transaction, turn_result),
             )
+
+    def _answering(self, automaton: Automaton, source_state: State, action: Action) -> "InputProcessor":
+        stayed = {source_state.key: self._turns.script_reply_processor()}
+        return stayed.get(action.target, self._turns.processor_for(automaton.get_state(action.target)))
 
     async def turn(
         self, session_id: int, on_metadata: OnMetadata | None, user_messages: list[PendingMessage] | None,
         transaction: TurnTransaction,
     ) -> dict:
+        session, automaton, state = self._standing(session_id, transaction)
+        return await self._answered(
+            self._turns.processor_for(state), session, automaton, state, on_metadata, user_messages, transaction,
+        )
+
+    async def turn_after(
+        self, answering: "InputProcessor", session_id: int, on_metadata: OnMetadata | None, transaction: TurnTransaction,
+    ) -> dict:
+        session, automaton, state = self._standing(session_id, transaction)
+        return await self._answered(answering, session, automaton, state, on_metadata, [], transaction)
+
+    def _standing(self, session_id: int, transaction: TurnTransaction) -> tuple[dict, Automaton, State]:
         session = transaction.get_chat_session(session_id)
         if session is None:
             raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
@@ -134,10 +156,15 @@ class InputProcessor(object):
         self._turns.ensure_project_available(project_id)
         automaton, state = self._turns.automaton_and_state_or_raise_unsupported(session_id, session, transaction)
         self._turns.require_active_session(session_id, project_id, state.key)
+        return session, automaton, state
+
+    async def _answered(
+        self, answering: "InputProcessor", session: dict, automaton: Automaton, state: State,
+        on_metadata: OnMetadata | None, user_messages: list[PendingMessage] | None, transaction: TurnTransaction,
+    ) -> dict:
+        session_id = session["id"]
         fragments = fragments_of(transaction, user_messages)
-        reply = await self._turns.processor_for(state).reply(
-            transaction, session, automaton, state, on_metadata, fragments,
-        )
+        reply = await answering.reply(transaction, session, automaton, state, on_metadata, fragments)
         self._turns.touch_session(reply['session_id'], reply['state']['key'])
         reply['buttons'] = self._turns.buttons_for(session_id, reply['state'])
         return reply
@@ -189,10 +216,14 @@ class SystemInputProcessor(InputProcessor):
 
     async def reply(self, transaction, session, automaton, state, on_metadata, fragments) -> dict:
         session_id = session["id"]
-        assistant_message = transaction.save_message("assistant", self._turns.outbox(session_id).take(), session_id)
-        transaction.mark_messages_answered([handle for handle, _ in fragments], assistant_message)
+        written = [
+            transaction.save_message("assistant", text, session_id)
+            for text in filter(None, [self._turns.outbox(session_id).take()])
+        ]
+        for assistant_message in written:
+            transaction.mark_messages_answered([handle for handle, _ in fragments], assistant_message)
         return plain_reply_result(
-            session_id, automaton, state, assistant_message, [handle for handle, _ in fragments],
+            session_id, automaton, state, next(iter(written), None), [handle for handle, _ in fragments],
             self._turns.buttons_for(session_id, automaton.get_state_payload(state)), self._turns.get_ai_models_info(),
         )
 

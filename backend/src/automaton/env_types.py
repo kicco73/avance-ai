@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from automaton.choice import is_option_list
 from automaton.model import ENV_TYPE_DEFAULTS
 
 
@@ -43,7 +44,7 @@ class ListType(EnvType):
     name = "list"
 
     def accepts(self, value: Any) -> bool:
-        return isinstance(value, list) and all(isinstance(option, str) for option in value)
+        return is_option_list(value)
 
 
 class UndeclaredType(EnvType):

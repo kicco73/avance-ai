@@ -130,10 +130,12 @@ TURN_FRAMES = (
 )
 def _is_terminal(kinds: list[str]) -> bool:
     """The exchange is over once `state.buttons` follows the `output.text`
-    it belongs to — an earlier `state.buttons` is a message the state owed
-    before it could answer. An `output.error` replaces the answer and ends
-    the exchange too."""
-    return kinds[-1] == "output.error" or (kinds[-1] == "state.buttons" and "output.text" in kinds)
+    it belongs to, or the `state.changed` of a manual action that had
+    nothing to say — an earlier `state.buttons` is a message the state
+    owed before it could answer. An `output.error` replaces the answer
+    and ends the exchange too."""
+    answered = "output.text" in kinds or "state.changed" in kinds
+    return kinds[-1] == "output.error" or (kinds[-1] == "state.buttons" and answered)
 
 
 async def drive_turn(turn_service, db, session_id: int, _unused: str, text: str) -> list[tuple[str, dict]]:

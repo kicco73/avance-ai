@@ -318,12 +318,13 @@ class AutomatonValidator:
         env_keys: dict[str, EnvKey], sources: dict[str, Source], archives: ProjectArchives,
         namespaces: TriggerNamespaces,
     ) -> None:
-        registry = INPUT_PROCESSOR_KINDS[state.input_processor].script_registry(registry)
+        kind = INPUT_PROCESSOR_KINDS[state.input_processor]
+        registry = kind.script_registry(registry)
         registry_for_triggers = IdentifierRegistry.for_triggers(registry)
         registry_for_task = IdentifierRegistry.for_task(registry)
         self._cursor.at(state.line, f"states.{key}")
         self.validate_state_sources(state, sources)
-        self.validate_state_io(state, env_keys)
+        self.validate_state_io(state, env_keys, kind.model_visible_io(state))
         for action in state.actions:
             self._cursor.at(action.line, f"states.{key}.actions.{action.name}")
             action_context = f"State {key}, action '{action.name}'"
@@ -360,9 +361,11 @@ class AutomatonValidator:
                     action.on_exit, action_context, registry_for_on_exit, sources, env_keys, archives, namespaces.names,
                 )
 
-    def validate_state_io(self, state: State, env_keys: dict[str, EnvKey]) -> None:
+    def validate_state_io(
+        self, state: State, env_keys: dict[str, EnvKey], io: tuple[tuple[str, tuple[str, ...]], ...],
+    ) -> None:
         list_keys = list_key_names(env_keys)
-        for field_name, names in (("input", state.input), ("output", state.output)):
+        for field_name, names in io:
             for name in names:
                 env_key = env_keys.get(name)
                 if env_key is None:
@@ -372,7 +375,7 @@ class AutomatonValidator:
                     )
                 if name in list_keys:
                     raise ValueError(
-                        f"State '{state.key}': {field_name} '{name}' — a list key is never rendered to the model."
+                        f"State '{state.key}': {field_name} '{name}' — a list key never reaches the model."
                     )
                 if not env_key.ai_definition:
                     raise ValueError(

@@ -7,6 +7,8 @@ import MessageBubble from './MessageBubble.vue'
 import ChatWaitingPanel from './ChatWaitingPanel.vue'
 import SessionRating from './SessionRating.vue'
 import ChartDialog from './ChartDialog.vue'
+import SelectProfileDialog from './SelectProfileDialog.vue'
+import { ProjectMedia, splitProfileChoices } from './profileChoices.js'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import MusicToggleButton from '../MusicToggleButton.vue'
@@ -44,6 +46,7 @@ const {
   actionLoading,
   draft,
   currentSessionId,
+  currentProjectId,
   selectedSessionActive,
   sessionEndReason,
   conversationElsewhere,
@@ -69,6 +72,19 @@ watch(chart, (next) => {
   customDialog({ component: ChartDialog, props: { title: next.title, series: next.series, maxScale: next.maxScale } })
   dismissChart()
 })
+
+const buttonRow = computed(() => (
+  splitProfileChoices(buttons.value, new ProjectMedia(currentProjectId.value, currentSessionId.value))
+))
+const rowButtons = computed(() => [...buttonRow.value.plain, ...buttonRow.value.choices.map((choice) => choice.reopenButton)])
+const reopenable = computed(() => new Map(buttonRow.value.choices.map((choice) => [choice.reopenName, choice])))
+
+function openProfileChoice(choice) {
+  customDialog({ component: SelectProfileDialog, props: { heading: choice.heading, profiles: choice.profiles } })
+    .then((name) => { if (name) onAction(name) })
+}
+
+watch(buttonRow, ({ choices }) => choices.forEach(openProfileChoice))
 
 const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout', 'select-message'])
 
@@ -179,6 +195,8 @@ function focusInput() {
 }
 
 async function onAction(actionName) {
+  const choice = reopenable.value.get(actionName)
+  if (choice) return openProfileChoice(choice)
   await handleAction(actionName)
   await nextTick()
   focusInput()
@@ -333,7 +351,7 @@ watch(
     <div class="chat-footer">
       <ActionButtons
         v-if="selectedSessionActive"
-        :actions="buttons"
+        :actions="rowButtons"
         :disabled="actionLoading || !chatConnected"
         @action="onAction"
       />

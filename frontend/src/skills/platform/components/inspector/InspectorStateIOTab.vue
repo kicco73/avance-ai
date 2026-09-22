@@ -102,7 +102,7 @@ function jumpToEnvKey(name) {
               @change="toggle(field.name, key.name, $event)"
             />
             <span class="inspector-io-name">{{ key.name }}</span>
-            <span v-if="isList(key)" class="inspector-io-undefined">list keys are never rendered to the model</span>
+            <span v-if="isList(key)" class="inspector-io-undefined">a list key never reaches the model</span>
             <span v-else-if="key.ai_definition" class="inspector-io-definition">{{ key.ai_definition }}</span>
             <span v-else class="inspector-io-undefined">needs an AI definition — click to write one</span>
           </label>

@@ -89,6 +89,12 @@ def test_a_system_state_ignores_its_prompt_and_never_takes_chat():
     assert automaton.get_state("a").chat_enabled is True
 
 
+def test_a_system_state_s_input_and_output_are_not_checked_against_the_model():
+    automaton = _build(b=SYSTEM_B + "\n    input:\n      - step\n    output:\n      - step")
+
+    assert automaton.get_state("b").input == ("step",)
+
+
 def test_an_ai_state_still_needs_its_prompt():
     assert "State 'b': 'contextual-prompt' is required for input-processor: ai" in _refused(
         b="    input-processor: ai",
@@ -130,7 +136,7 @@ def test_chat_write_table_reaches_a_system_state():
 
 @pytest.mark.parametrize("slot", ["init_on_exit", "b_on_exit"])
 @pytest.mark.parametrize("call", ["chat.write('nobody reads this')", "chat.write_table({'h': ['nobody reads this']})"])
-def test_chat_write_has_no_reader_on_the_way_into_an_ai_state(slot, call):
+def test_chat_write_has_no_reader_on_the_way_into_an_ai_state_a_self_loop_included(slot, call):
     ai_b = "    input-processor: ai\n    contextual-prompt: hi"
     message = _refused(b=ai_b, **{slot: call})
 

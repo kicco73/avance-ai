@@ -70,6 +70,22 @@ async def test_a_choice_options_current_text_is_translated_alongside_manual_butt
 	assert by_name["choice:slot:1"]["ui_button"] == "EVENING"
 
 
+async def test_a_profiles_title_and_description_are_translated_and_its_key_is_not(turn_service_for):
+	db = turn_service_for.db
+	turn_service = turn_service_for(_automaton(), ai_service=UppercasingSchemaAiService())
+	db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
+	session = await turn_service.enter_session(PROJECT_ID, "live")
+	env_for_session(db, db.get_chat_session(session["id"])).update_action_set({"slot": [
+		{"title": "Ada", "picture_url": "/ada.png", "description": "The analyst.", "key": "ada"},
+	]})
+
+	result = await turn_service.process_turn(session["id"], "hello")
+
+	button = {b["name"]: b for b in result["buttons"]}["choice:slot:0"]
+	assert button["ui_button"] == "ADA"
+	assert button["profile"] == {"title": "ADA", "picture_url": "/ada.png", "description": "THE ANALYST.", "key": "ada"}
+
+
 def _automaton_reached_by_a_manual_action() -> Automaton:
 	enter = Action(name="enter", ui_label="Enter", ui_button="Enter", target="b")
 	state_a = State(input_processor="ai", key="a", ui_label="A", final=False, actions=[enter])

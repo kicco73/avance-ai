@@ -281,9 +281,9 @@ false` state; what moves the conversation on is a manual action or a
 choice (§5.2, `choice.<key>`), whose triggers are evaluated when the
 button is pressed. The reply of the state is what the `on-exit` of the
 action that reached it wrote with `chat.write(body_md)` (§5.3bis) — one
-paragraph per call, in order, and nothing at all when no call was made,
-which a test session shows at once. That text is saved as an assistant
-message and published like any reply. The init-action's `on-exit` writes
+paragraph per call, in order. That text is saved as an assistant message
+and published like any reply; when no call was made there is no message
+at all — nothing saved, nothing published, the buttons alone. The init-action's `on-exit` writes
 the opening message of a `system` initial state the same way.
 
 `contextual-prompt`, `attachments`, `input`, `output`, `ai-memory-scope`,
@@ -418,7 +418,7 @@ actions:
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
 | `name` | **yes** | string | — | This action's own identifier — what a manual firing references. |
-| `target` | no | string | this action's own state | Destination state; must be a real key (or the current state itself). Omitted/self-referential ⇒ self-loop (only the action's own effects happen). |
+| `target` | no | string | this action's own state | Destination state; must be a real key (or the current state itself). Omitted/self-referential ⇒ self-loop: only the action's own effects happen. Fired manually (a button, a choice) in an `ai` state, nobody answers — no model call, no message, since nothing new was said; in a `system` state the reply is what its `on-exit` wrote (§4.1), as for any action reaching that state. |
 | `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
 | `task` | no | string | `None` | One or more `task.<name>(...)` calls, one per line — side effect of firing, run in the background off the request (§5.4). Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
 | `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, `name = expression` locals and/or bare `chat.<method>(...)` calls, one per line — same timing as `env:` (and its future replacement for the write half), run synchronously, in this same request. §5.3bis. |
@@ -703,10 +703,11 @@ itself update it on any turn. Whether the model ever sees or sets a given
 key is decided entirely per state, by that state's own `input`/`output`
 (§4.3) — never a property of the key itself.
 
-**List keys.** A `list` key holds the options on offer — a list of
-strings a script writes (an action's `env:` or `on-exit`) and nothing
-ever shows the model: a `list` key in a state's
-`input`/`output` fails the build, and its `ai-definition` is read only by
+**List keys.** A `list` key holds a list of strings a script writes (an
+action's `env:` or `on-exit`) — the options on offer when a trigger
+reads it through `choice.<key>`, or any list a script keeps for its own
+use. A list never reaches the model: a `list` key in a state's
+`input`/`output` fails the build. Its `ai-definition` is read only by
 the editor and as an option button's description.
 In any state whose actions' `trigger`s read `choice.<key>`, the current
 options become buttons, one per option, after the state's own pressable
@@ -740,6 +741,39 @@ states:
           booked_slot: choice.slot
 ```
 
+**Profiles.** A `list` key may hold, instead of strings, a list of
+*profiles*: dictionaries with exactly the four string fields `title`,
+`picture_url`, `description` and `key`. Nothing else changes in the
+automaton — the options are offered the same way, and `choice.<key>` is
+the pressed profile's `key`, a string, so the trigger above reads
+unchanged. What changes is the presentation: a chat that receives
+profiles shows one at a time in a dialog — picture, title, description
+and a full-width "Select" button flanked by arrows that move through
+them — instead of a row of buttons; a channel with no dialog shows the
+titles as buttons. `picture_url` is what `media.<doc_id>.url()` returns
+for an image among the project's files, or any absolute URL, used as
+written; a bare file name (`'ada.png'`) is served from the project's
+media the way a skin's `url(...)` is. A list mixing strings and profiles, or a dictionary
+missing or adding a field, is not a `list` value and is discarded like
+any other value outside its type (below).
+
+```yaml
+      - name: offer
+        target: pick
+        trigger: "env.hero == []"
+        env:
+          hero: >
+            [{'title': 'Ada', 'picture_url': '/ada.png',
+              'description': 'The analyst.', 'key': 'ada'},
+             {'title': 'Grace', 'picture_url': '/grace.png',
+              'description': 'The admiral.', 'key': 'grace'}]
+      - name: chosen
+        target: play
+        trigger: "choice.hero != ''"
+        env:
+          hero_key: choice.hero
+```
+
 **The type is enforced twice.** At build, every expression that writes a
 key — an action's `env:` entry, an `on-exit` assignment, the key's own
 `value` — is compared with the declared `type` whenever its kind is
@@ -748,7 +782,7 @@ knowable ahead of a turn and passes). At run time, every value an
 action's `env:` or `on-exit` produces is checked against the declared
 type before it is written: `number` takes an `int` or `float` and never
 a bool, `string` a `str`, `bool` a `bool`, `list` a list whose
-elements are all strings. A value outside its type is treated exactly
+elements are all strings or all profiles. A value outside its type is treated exactly
 like a key whose expression failed to evaluate — logged with the key,
 the declared type and the type found, and discarded, while the action's
 other keys are written. Nothing is coerced.
@@ -913,8 +947,8 @@ there's nothing to defer. Ten methods exist:
   published as one, exactly like a model's reply; several calls in one
   exchange join as paragraphs. Only available in the `on-exit` of an
   action (or the init-action) whose target declares `input-processor:
-  system` — on the way into an `ai` state it is an undefined name, since
-  the model answers there.
+  system` — on the way into an `ai` state, a self-loop included, it is
+  an undefined name, since the model answers there.
 - `chat.write_table(table)` — `chat.write` of a markdown table: `table`
   is a dict `{column name: [cells]}`, one column per key in order, cells
   strings, numbers or booleans — exactly what `source.<name>.select_subtable(...)`
@@ -1281,7 +1315,7 @@ of how you're likely to hit them:
 - No signal named after a reserved core metric (§2).
 - Every `attachments:` entry (global/signal/state — actions have none) names a file actually present alongside `index.yml`.
 - Every `sources:` entry's own `url`, if set, has a recognized driver scheme, and (for `avance:<path>`) its path names a file actually present alongside `index.yml`.
-- Every name in a state's own `input`/`output` (§4.3) names a key actually declared in `env:`, and that env key declares its own `ai-definition`.
+- Every name in an `ai` state's own `input`/`output` (§4.3) names a key actually declared in `env:`, that env key declares its own `ai-definition`, and it is not a `list` key (§5.3). A `system` state's `input`/`output` are ignored, not checked (§4.1).
 - Every name in a state's own `ai-may-read-sources`/`ai-must-read-sources` (§4.2) names a source actually declared in `sources:`, that source declares its own `ai-definition`, its driver implements `select_rows_containing`, and no name appears in both fields for the same state. The old names `tools`, `ai-may-query-sources`, `ai-must-query-sources` are rejected with a message naming their replacement, and the removed `ai-may-write-sources` is rejected outright — the one place a build does say what a name used to be, because there is nothing that can settle it on the author's behalf (§8.2).
 
 ### 8.1 A field nobody reads

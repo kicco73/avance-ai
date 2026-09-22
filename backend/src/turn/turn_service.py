@@ -12,7 +12,7 @@ from typing import Any
 
 from automaton.automaton import Action, Automaton, SignalPayload, State, pressable_actions
 from automaton.build_error import AutomatonBuildError
-from automaton.choice import ChoiceSelection, button_name
+from automaton.choice import ChoiceSelection, button_name, option_of
 from db import Db, _utc_iso
 from config import REPLY_SILENCE_SECONDS
 from system.keyed_lock_registry import KeyedLockRegistry
@@ -36,7 +36,9 @@ from turn.sessions.env_for_session import env_for_session
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.errors import TurnServiceError
 from turn.atomic_turn_transaction import AtomicTurnTransaction
-from turn.input_processor import InputProcessor, committed, fragments_of, plain_reply_result, processors as input_processors
+from turn.input_processor import (
+	InputProcessor, SystemInputProcessor, committed, fragments_of, plain_reply_result, processors as input_processors,
+)
 from turn.turn_transaction import Inbox, Outbox, PendingMessage, TurnTransaction
 from turn.sessions.session_manager import SessionManager, SessionNotWritable
 from turn.sessions.session_insights import SessionInsights
@@ -94,7 +96,7 @@ class TurnService(object):
 		self._session_lifecycle_locks = KeyedLockRegistry(asyncio.Lock)
 		self._global_lock = asyncio.Lock()
 
-		self._choice_translations: dict[int, dict[tuple[str, str], str]] = {}
+		self._choice_translations: dict[int, dict[str, dict[str, str]]] = {}
 		bus.contribute(POINT_TRANSLATABLE_LABELS, self._contribute_choice_labels)
 		bus.subscribe(TURN_TRANSLATION, self._on_translation)
 
@@ -116,6 +118,9 @@ class TurnService(object):
 				"installed in this build.", status_code=HTTPStatus.SERVICE_UNAVAILABLE, code="input_processor_not_installed",
 			)
 		return processor
+
+	def script_reply_processor(self) -> InputProcessor:
+		return self._processors[SystemInputProcessor.name]
 
 	def _processor_at(self, session_id: int) -> InputProcessor:
 		_, state = self.__project_service.get_automaton_and_state_for_session(session_id)
@@ -658,8 +663,7 @@ class TurnService(object):
 		return [
 			{
 				"name": button_name(key, index),
-				"ui_label": translations.get((key, option), option),
-				"ui_button": translations.get((key, option), option),
+				**option_of(option).button_fields(translations.get(key, {})),
 				"ui_description": descriptions.get(key),
 				"target": "",
 				"has_trigger": False,
@@ -678,13 +682,14 @@ class TurnService(object):
 		options_by_key = self.choice_options_for(target.session_id)
 		for key in state.choice_keys:
 			for option in options_by_key.get(key, []):
-				target.contribute(key, option)
+				for text in option_of(option).translatable_texts():
+					target.contribute(key, text)
 
 	async def _on_translation(self, message: Message) -> None:
 		key, text, translation = message.body["key"], message.body["text"], message.body["translation"]
-		self._choice_translations.setdefault(message.session_id, {})[(key, text)] = translation
+		self._choice_translations.setdefault(message.session_id, {}).setdefault(key, {})[text] = translation
 
-	def choice_options_for(self, session_id: int) -> dict[str, list[str]]:
+	def choice_options_for(self, session_id: int) -> dict[str, list[str | dict]]:
 		automaton = self.__project_service.get_automaton_for_session(session_id)
 		declared = {env_key.name for env_key in automaton.env_keys if env_key.type == "list"}
 		current = self._env_for_session(session_id).action_set()

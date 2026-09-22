@@ -71,7 +71,7 @@ def _env_for(db, session_id: int) -> PersistedEnv:
     return PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 
 
-async def _session_with_options(turn_service, db, options: list[str], session_type: str = "live") -> int:
+async def _session_with_options(turn_service, db, options: list, session_type: str = "live") -> int:
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     session = await turn_service.enter_session(PROJECT_ID, session_type)
     env_for_session(db, db.get_chat_session(session["id"])).update_action_set({"slot": options})
@@ -91,6 +91,38 @@ async def test_buttons_are_the_pressable_actions_then_one_per_current_option_of_
         "evening", "evening", "The appointment slot.",
     )
     assert (evening["target"], evening["has_trigger"], evening["task"], evening["on-exit"]) == ("", False, None, None)
+
+
+_PROFILES = [
+    {"title": "Ada", "picture_url": "/ada.png", "description": "The analyst.", "key": "ada"},
+    {"title": "Grace", "picture_url": "/grace.png", "description": "The admiral.", "key": "grace"},
+]
+
+
+async def test_a_list_of_profiles_is_a_row_of_buttons_each_carrying_its_profile(turn_service_for):
+    db = turn_service_for.db
+    turn_service = turn_service_for(_automaton(), _FakeProvider())
+    session_id = await _session_with_options(turn_service, db, _PROFILES)
+
+    buttons = turn_service.buttons_for(session_id, turn_service.get_state_for_session(session_id))
+
+    assert [button["name"] for button in buttons] == ["manual", "choice:slot:0", "choice:slot:1"]
+    assert "profile" not in buttons[0]
+    assert (buttons[2]["ui_button"], buttons[2]["ui_label"], buttons[2]["profile"]) == ("Grace", "Grace", _PROFILES[1])
+
+
+async def test_pressing_a_profile_makes_its_key_the_value_of_the_choice(turn_service_for):
+    db = turn_service_for.db
+    turn_service = turn_service_for(_automaton(), _FakeProvider())
+    session_id = await _session_with_options(turn_service, db, _PROFILES)
+
+    frames = await _press(turn_service, db, session_id, "choice:slot:1")
+
+    by_type = {frame.type: frame.body for frame in frames}
+    assert by_type["state.changed"]["triggered_action"] == "book"
+    written = {frame.body["key"]: frame.body["value"] for frame in frames if frame.type == "env.changed"}
+    assert written == {"booked_slot": "grace", "note": "picked grace"}
+    assert _env_for(db, session_id).action_set()["slot"] == _PROFILES
 
 
 @pytest.mark.parametrize("options", [[], None], ids=["empty-list", "key-absent"])
@@ -113,7 +145,7 @@ class _Recorder:
 
     async def take(self, message: Message) -> None:
         self.messages.append(message)
-        if message.type in ("output.text", "output.error"):
+        if message.type in ("state.buttons", "output.error"):
             self.finished.set()
 
 

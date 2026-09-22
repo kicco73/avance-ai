@@ -1,7 +1,7 @@
 """The `choice` trigger namespace (automaton/choice_namespace.py): a
 `choice` env key's options become buttons, and the option pressed is
 `choice.<key>` for the one trigger evaluation the press starts — read in
-an action's trigger and env only, never rendered to the model.
+an action's trigger and env only.
 """
 from __future__ import annotations
 
@@ -91,11 +91,12 @@ def test_build_rejects_a_chain_that_is_not_exactly_a_declared_choice_key_or_sits
 
 
 @pytest.mark.parametrize("field_name", ["input", "output"])
-def test_a_choice_key_is_never_an_input_or_an_output(field_name):
-    with pytest.raises(ValueError, match=r"a list key is never rendered to the model"):
-        _build(BOOK, state_extra=f"    {field_name}:\n      - slot\n").replace(
-            "  slot:\n    type: list\n", "  slot:\n    type: list\n    ai-definition: The slot.\n",
-        )
+def test_a_list_key_is_never_an_input_or_an_output(field_name):
+    index_yml = _project(BOOK, state_extra=f"    {field_name}:\n      - slot\n").replace(
+        "  slot:\n    type: list\n", "  slot:\n    type: list\n    ai-definition: The slot.\n",
+    )
+    with pytest.raises(ValueError, match=r"a list key never reaches the model"):
+        AutomatonBuilder().build({"index.yml": index_yml})
 
 
 def test_a_states_choice_keys_are_the_ones_its_triggers_read_in_order_of_first_occurrence():

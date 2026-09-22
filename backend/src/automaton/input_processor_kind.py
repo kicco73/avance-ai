@@ -7,7 +7,12 @@ with `chat.write` is the reply. The kind answers those questions at build
 time; what runs a turn is turn/input_processor.py, keyed the same way."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from automaton.identifier_registry import IdentifierRegistry
+
+if TYPE_CHECKING:
+    from automaton.automaton import State
 
 REQUIRED = (
     "State '{key}': 'input-processor' is required, 'ai' or 'system' — 'ai' answers through "
@@ -31,6 +36,9 @@ class InputProcessorKind:
     def on_exit_registry(self, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
         raise NotImplementedError
 
+    def model_visible_io(self, state: "State") -> tuple[tuple[str, tuple[str, ...]], ...]:
+        raise NotImplementedError
+
 
 class AiKind(InputProcessorKind):
     name = "ai"
@@ -52,6 +60,9 @@ class AiKind(InputProcessorKind):
         }
         return {**registry, "chat": chat}
 
+    def model_visible_io(self, state: "State") -> tuple[tuple[str, tuple[str, ...]], ...]:
+        return (("input", tuple(state.input)), ("output", tuple(state.output)))
+
 
 class SystemKind(InputProcessorKind):
     name = "system"
@@ -67,6 +78,9 @@ class SystemKind(InputProcessorKind):
 
     def on_exit_registry(self, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
         return registry
+
+    def model_visible_io(self, state: "State") -> tuple[tuple[str, tuple[str, ...]], ...]:
+        return ()
 
 
 INPUT_PROCESSOR_KINDS: dict[str, InputProcessorKind] = {kind.name: kind for kind in (AiKind(), SystemKind())}

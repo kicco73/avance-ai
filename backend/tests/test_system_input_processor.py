@@ -53,6 +53,9 @@ states:
         on-exit: |
           env.step = 1
           chat.write('Step 1')
+      - name: again
+        target: a
+        on-exit: env.step = env.step
   step:
     input-processor: system
     contextual-prompt: ignored
@@ -162,6 +165,19 @@ async def test_a_button_into_a_system_state_answers_with_what_the_script_wrote(t
     assert chat.provider.started == 0
 
 
+async def test_a_self_loop_button_in_the_model_s_state_asks_nothing_of_the_model_and_says_nothing(turn_service_for):
+    chat = await _Conversation(turn_service_for, _automaton(), ScriptedProvider(Reply("unwanted"))).open()
+    before = chat.transcript()
+
+    await chat.presses("again")
+
+    assert chat.frames.texts() == []
+    assert chat.frames.last().type == "state.buttons"
+    assert chat.state() == "a"
+    assert chat.transcript() == before
+    assert chat.provider.started == 0
+
+
 async def test_text_has_no_effect_in_a_system_state(turn_service_for):
     chat = await _Conversation(turn_service_for, _automaton(), ScriptedProvider()).open()
     await chat.presses("start")
@@ -223,11 +239,14 @@ async def test_the_opening_message_of_a_system_initial_state_is_the_init_action_
     assert chat.provider.started == 0
 
 
-async def test_an_action_that_writes_nothing_leaves_an_empty_reply(turn_service_for):
+async def test_an_action_that_writes_nothing_leaves_no_reply_at_all(turn_service_for):
     chat = await _Conversation(turn_service_for, _automaton(start_on_exit="env.step = 1"), ScriptedProvider()).open()
+    before = chat.transcript()
 
     await chat.presses("start")
 
-    assert chat.frames.texts() == [""]
-    assert chat.transcript()[-1] == ("assistant", "")
+    assert chat.frames.texts() == []
+    assert chat.frames.last().type == "state.buttons"
+    assert chat.transcript() == before
+    assert chat.state() == "step"
     assert chat.provider.started == 0
