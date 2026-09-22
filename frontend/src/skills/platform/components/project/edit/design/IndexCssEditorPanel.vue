@@ -25,6 +25,8 @@ const { width: previewWidth, startDrag: startPreviewDrag } = useResizablePanel(4
 
 const stateNodes = ref([])
 const selectedStateKey = ref('')
+const selectedReactionKey = ref('')
+const reactionOptions = computed(() => stateNodes.value[0]?.reactions ?? [])
 
 async function loadStateNodes() {
   try {
@@ -81,6 +83,15 @@ function onSelectState() {
   codeEditorRef.value?.jumpToLine(lineIndex)
 }
 
+function onSelectReaction() {
+  const reactionKey = selectedReactionKey.value
+  if (!reactionKey) return
+  const lines = content.value.split('\n')
+  const lineIndex = findFirstLineContaining(lines, `.reaction-${reactionKey}`)
+  if (lineIndex === null) return
+  codeEditorRef.value?.jumpToLine(lineIndex)
+}
+
 function onCodeSaved(result) {
   invalidateSkin()
   emit('saved', result)
@@ -96,6 +107,10 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
         <select v-model="selectedStateKey" class="chat-preview-state-select" @change="onSelectState">
           <option value="">— Preview state —</option>
           <option v-for="node in stateNodes" :key="node.key" :value="node.key">{{ node.ui_label }}</option>
+        </select>
+        <select v-model="selectedReactionKey" class="chat-preview-state-select" @change="onSelectReaction">
+          <option value="">— Preview reaction —</option>
+          <option v-for="opt in reactionOptions" :key="opt.key" :value="opt.key">{{ opt.ui_label }}</option>
         </select>
         <button
           class="ai-edit-btn"
@@ -133,7 +148,10 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
 
     <div class="index-css-editor-split">
       <div class="index-css-editor-preview" :style="{ width: previewWidth + 'px' }">
-        <ChatPreview ref="previewRef" :css="content" :state-key="selectedStateKey" :project-id="projectId" />
+        <ChatPreview
+          ref="previewRef" :css="content" :state-key="selectedStateKey" :reaction-key="selectedReactionKey"
+          :project-id="projectId"
+        />
       </div>
 
       <div class="index-css-editor-split-divider" @mousedown="startPreviewDrag"></div>

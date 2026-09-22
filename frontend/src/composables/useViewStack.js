@@ -4,6 +4,7 @@ import { enterScreen } from '../errorStore.js'
 export function useViewStack(currentUserRole) {
   const pushedView = ref(null)
   const pushedViewContext = ref({})
+  const pushedViewHistory = ref([])
   const chatOpen = ref(false)
   const homePreviewRole = ref(null)
   const showProfile = ref(false)
@@ -23,19 +24,29 @@ export function useViewStack(currentUserRole) {
   function pushView(view, context = {}) {
     setNavForward()
     enterScreen(view, context.projectId ?? '')
+    if (view === 'chat') {
+      chatOpen.value = true
+      return
+    }
+    if (pushedView.value !== null) {
+      pushedViewHistory.value = [...pushedViewHistory.value, { view: pushedView.value, context: pushedViewContext.value }]
+    }
+    pushedView.value = view
     pushedViewContext.value = context
-    if (view === 'chat') chatOpen.value = true
-    else pushedView.value = view
   }
 
   function popPushedView() {
     setNavBack()
-    enterScreen('home')
     if (chatOpen.value) {
       chatOpen.value = false
+      enterScreen(pushedView.value ?? 'home')
       return
     }
-    pushedView.value = null
+    const previous = pushedViewHistory.value.at(-1) ?? null
+    pushedViewHistory.value = pushedViewHistory.value.slice(0, -1)
+    pushedView.value = previous?.view ?? null
+    pushedViewContext.value = previous?.context ?? {}
+    enterScreen(pushedView.value ?? 'home', pushedViewContext.value.projectId ?? '')
   }
 
   function openHomePreview(role) {
@@ -56,6 +67,7 @@ export function useViewStack(currentUserRole) {
       enterScreen('home')
       chatOpen.value = false
       pushedView.value = null
+      pushedViewHistory.value = []
       return
     }
     openHomePreview('customer')

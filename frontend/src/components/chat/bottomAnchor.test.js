@@ -1,74 +1,81 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { BottomAnchor } from './bottomAnchor.js'
-
-function fakeFrames() {
-  let nextHandle = 0
-  const queue = new Map()
-  const requestAnimationFrame = vi.fn((cb) => {
-    nextHandle += 1
-    queue.set(nextHandle, cb)
-    return nextHandle
-  })
-  const cancelAnimationFrame = vi.fn((handle) => queue.delete(handle))
-  function runNextFrame(now) {
-    const [[handle, cb]] = queue
-    queue.delete(handle)
-    cb(now)
-  }
-  return { requestAnimationFrame, cancelAnimationFrame, runNextFrame, pending: () => queue.size }
-}
 
 function fakeScroller(scrollHeight, clientHeight = 400) {
   return { scrollTop: 0, scrollHeight, clientHeight, addEventListener() {}, removeEventListener() {} }
 }
 
-describe('BottomAnchor', () => {
-  let frames
+function attached(scrollHeight) {
+  const scroller = fakeScroller(scrollHeight)
+  const anchor = new BottomAnchor()
+  anchor.attach(scroller, {})
+  return { scroller, anchor }
+}
 
-  beforeEach(() => {
-    frames = fakeFrames()
-    vi.stubGlobal('requestAnimationFrame', frames.requestAnimationFrame)
-    vi.stubGlobal('cancelAnimationFrame', frames.cancelAnimationFrame)
+function bottomOf(scroller) {
+  return scroller.scrollHeight - scroller.clientHeight
+}
+
+describe('BottomAnchor', () => {
+  it('is at the bottom after every growth, however dense the growth is', () => {
+    const { scroller, anchor } = attached(1000)
+    for (let i = 0; i < 300; i++) {
+      scroller.scrollHeight += 24
+      anchor.follow()
+      expect(scroller.scrollTop).toBe(bottomOf(scroller))
+    }
   })
 
-  afterEach(() => vi.unstubAllGlobals())
-
-  it('re-aims a follow already in flight at a growth that arrives before it settles, instead of finishing at the stale target', () => {
-    const scroller = fakeScroller(1000)
-    const anchor = new BottomAnchor()
-    anchor.attach(scroller, {})
-
+  it('keeps following when the echo of its own placement arrives after a growth larger than the near-bottom threshold', () => {
+    const { scroller, anchor } = attached(1000)
     scroller.scrollHeight = 1200
     anchor.follow()
-    expect(frames.pending()).toBe(1)
-    frames.runNextFrame(0)
-    frames.runNextFrame(100)
-    expect(anchor.settling).toBe(true)
-    expect(scroller.scrollTop).toBeLessThan(scroller.scrollHeight - scroller.clientHeight)
-
-    scroller.scrollHeight = 3000
+    scroller.scrollHeight = 1600
+    anchor.onScroll()
     anchor.follow()
-
-    expect(frames.pending()).toBe(1)
-
-    frames.runNextFrame(150)
-    frames.runNextFrame(150 + 250)
-
-    expect(anchor.settling).toBe(false)
-    expect(scroller.scrollTop).toBe(scroller.scrollHeight - scroller.clientHeight)
+    expect(scroller.scrollTop).toBe(bottomOf(scroller))
   })
 
-  it('starts a fresh follow normally when nothing was in flight', () => {
-    const scroller = fakeScroller(1000)
-    const anchor = new BottomAnchor()
-    anchor.attach(scroller, {})
-
-    scroller.scrollHeight = 1800
+  it('stops following once the reader scrolls away, and resumes when they come back near the bottom', () => {
+    const { scroller, anchor } = attached(2000)
+    scroller.scrollTop = 800
+    anchor.onScroll()
+    scroller.scrollHeight = 2400
     anchor.follow()
-    frames.runNextFrame(0)
-    frames.runNextFrame(250)
+    expect(scroller.scrollTop).toBe(800)
 
-    expect(anchor.settling).toBe(false)
-    expect(scroller.scrollTop).toBe(scroller.scrollHeight - scroller.clientHeight)
+    scroller.scrollTop = bottomOf(scroller) - 40
+    anchor.onScroll()
+    scroller.scrollHeight = 2800
+    anchor.follow()
+    expect(scroller.scrollTop).toBe(bottomOf(scroller))
+  })
+
+  it('releases on a wheel gesture that leaves the bottom', () => {
+    const { scroller, anchor } = attached(2000)
+    scroller.scrollTop = 500
+    anchor.handleEvent()
+    scroller.scrollHeight = 2400
+    anchor.follow()
+    expect(scroller.scrollTop).toBe(500)
+  })
+
+  it('follows when the scroller itself shrinks around the same content', () => {
+    const { scroller, anchor } = attached(2000)
+    scroller.clientHeight = 200
+    anchor.follow()
+    expect(scroller.scrollTop).toBe(bottomOf(scroller))
+  })
+
+  it('re-sticks and jumps to the bottom of a new conversation', () => {
+    const { scroller, anchor } = attached(2000)
+    scroller.scrollTop = 100
+    anchor.onScroll()
+    scroller.scrollHeight = 3000
+    anchor.jump()
+    expect(scroller.scrollTop).toBe(bottomOf(scroller))
+    scroller.scrollHeight = 3100
+    anchor.follow()
+    expect(scroller.scrollTop).toBe(bottomOf(scroller))
   })
 })

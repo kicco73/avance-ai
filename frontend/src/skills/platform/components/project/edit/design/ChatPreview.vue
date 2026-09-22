@@ -8,10 +8,13 @@ import { DraftSkinSource } from './draftSkinSource.js'
 const props = defineProps({
   css: { type: String, default: '' },
   stateKey: { type: String, default: '' },
+  reactionKey: { type: String, default: '' },
   projectId: { type: String, required: true }
 })
 
-const sampleStore = createSampleChatStore({ stateKey: toRef(props, 'stateKey'), appId: toRef(props, 'projectId') })
+const sampleStore = createSampleChatStore({
+  stateKey: toRef(props, 'stateKey'), reactionKey: toRef(props, 'reactionKey'), appId: toRef(props, 'projectId')
+})
 
 const rootEl = ref(null)
 const visible = ref(false)

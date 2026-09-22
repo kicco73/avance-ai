@@ -14,7 +14,7 @@ const SAMPLE_BUTTONS = [
 
 const noop = () => {}
 
-export function createSampleChatStore({ stateKey = ref(''), appId = ref(null) } = {}) {
+export function createSampleChatStore({ stateKey = ref(''), reactionKey = ref(''), appId = ref(null) } = {}) {
   const messages = ref(SAMPLE_MESSAGES)
   const historyLoaded = ref(true)
 
@@ -43,6 +43,7 @@ export function createSampleChatStore({ stateKey = ref(''), appId = ref(null) } 
   return {
     sample: true,
     state: computed(() => ({ key: stateKey.value, chat_enabled: true, reactions: [] })),
+    reaction: computed(() => reactionKey.value || null),
     buttons: ref(SAMPLE_BUTTONS),
     messages,
     historyLoaded,
