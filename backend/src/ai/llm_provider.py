@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable
 
 
+from content_text import content_to_text, is_text_fragments  # noqa: F401 — re-exported, ai/__init__.py's own public contract
+from tool_spec import ToolSpec  # noqa: F401 — re-exported, ai/__init__.py's own public contract
 from system.cascade import ProviderError, ProviderRateLimitedError, ProviderUnavailableError
 from system.logging_factory import LoggerFactory
 from system.try_again_error import TryAgainError
@@ -90,22 +92,6 @@ class AIServiceRequestError(AIServiceError):
 
 
 @dataclass(frozen=True)
-class ToolSpec:
-	"""One callable a provider's own native tool-calling exposes to the
-	model this turn — see tracking.sources.ToolSet.specs(), the only
-	producer of these today. `name` is always "source_<source
-	name>_<method>"; `parameters` is a JSON Schema object — the method's
-	uniform schema (tracking.sources.METHOD_SCHEMAS: `values` an array of
-	strings, plus `keys`/`fields`), possibly narrowed by the driver with
-	enums, fixed object properties or descriptions (see
-	SourceDriver.parameter_schema). Every provider forwards it as-is
-	except Gemini, which translates it to its own Schema dialect."""
-	name: str
-	description: str
-	parameters: dict
-
-
-@dataclass(frozen=True)
 class ToolCall:
 	"""One invocation the model asked for, already translated out of
 	whichever provider reported it — `id` is that provider's own call id
@@ -146,37 +132,6 @@ class AIServiceProviderOutputTruncatedError(Exception):
 		self.reason = reason
 
 
-def is_text_fragments(content: Any) -> bool:
-	"""True for one user message made of several text blocks — the
-	fragments of a coalesced turn (see Db.get_turn_history). Tells them
-	apart from the other list shape a content can have, the attachment
-	blocks content_to_text flattens below."""
-	return isinstance(content, list) and bool(content) and all(isinstance(block, str) for block in content)
-
-
-def content_to_text(content: Any, provider_name: str = "LLM") -> str:
-	"""Flattens provider-neutral attachment blocks to plain text.
-	Binary (base64) attachments are skipped if unsupported. A message of
-	several text fragments joins with a newline — for estimating tokens
-	only; every provider renders those as real, separate blocks of one
-	message (see is_text_fragments's own callers).
-	"""
-	if isinstance(content, str):
-		return content
-	if is_text_fragments(content):
-		return "\n".join(content)
-	parts: list[str] = []
-	for block in content:
-		source = block["source"]
-		if source["type"] == "text":
-			parts.append(f"[Attachment: {block['filename']}]\n{source['data']}")
-		else:
-			logger.warning(
-				"Skipping unsupported binary attachment '%s' for %s.",
-				block["filename"],
-				provider_name,
-			)
-	return "\n\n".join(parts)
 
 
 class TokenCounter:

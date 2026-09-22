@@ -35,6 +35,7 @@ signals:
     definition: "How the user feels."
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: stay
@@ -134,6 +135,7 @@ init-action:
   target: x
 states:
   x:
+    input-processor: ai
     contextual-prompt: hi
     actions: []
 """

@@ -28,10 +28,12 @@ init-action:
   target: a
 {init_extra}states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     actions:
 {actions_yaml}
   b:
+    input-processor: ai
     contextual-prompt: there
 """
 
@@ -60,6 +62,7 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     task: task.send_mail(user.email, 'hi')
 """)
@@ -127,6 +130,7 @@ env:
     type: number
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: go
@@ -134,6 +138,7 @@ states:
         task: |
           {task_line}
   b:
+    input-processor: ai
     contextual-prompt: there
 """
 

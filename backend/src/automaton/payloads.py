@@ -95,6 +95,7 @@ class PayloadsMixin(object):
             "ui_label": state.ui_label,
             "ui_description": state.ui_description,
             "final": state.final,
+            "input_processor": state.input_processor,
             "chat_enabled": state.chat_enabled,
             "reactions": [self.get_reaction_option_payload(r) for r in self.reactions],
             "actions": [self.get_action_payload(a) for a in state.actions],

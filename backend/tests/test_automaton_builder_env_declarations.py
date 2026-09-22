@@ -22,6 +22,7 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 """
     return AutomatonBuilder().build({"index.yml": content})

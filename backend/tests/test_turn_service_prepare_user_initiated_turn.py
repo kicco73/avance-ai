@@ -26,10 +26,10 @@ PROJECT_ID = "proj"
 def _automaton(*, final: bool, env: dict | None = None) -> Automaton:
     init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a", env=env)
     actions = [] if final else [Action(name="go", ui_label="go", ui_button="", target="a")]
-    state_a = State(key="a", ui_label="A", final=final, contextual_prompt="hi", actions=actions)
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=final, contextual_prompt="hi", actions=actions)
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
         general_prompt="",
         signals=[],
         general_attachments={},
@@ -48,6 +48,9 @@ class FakeProjectService:
         return self._automaton, self._automaton.states["a"]
 
     def get_automaton_and_state_for_session(self, session_id: int):
+        return self._automaton, self._automaton.states["a"]
+
+    def get_automaton_and_state_as_recorded(self, session_id: int, state_key: str | None):
         return self._automaton, self._automaton.states["a"]
 
     def get_automaton_for_session(self, session_id: int) -> Automaton:

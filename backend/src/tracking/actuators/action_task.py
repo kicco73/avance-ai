@@ -65,7 +65,6 @@ from system.web_session import WebSession
 from turn.turn_transaction import TurnTransaction
 
 if TYPE_CHECKING:
-    from ai import AiService
     from db import Db
     from project.project_service import ProjectService
     from tracking.actuators.factory import TaskNamespaceFactory
@@ -278,7 +277,7 @@ class ScopeHydrator(object):
 
     def __init__(
         self, db: "Db", project_service: "ProjectService", namespace_factory: "TaskNamespaceFactory",
-        ai_service: "AiService | None",
+        ai_service: Any,
     ) -> None:
         self._db = db
         self._project_service = project_service
@@ -319,7 +318,7 @@ class ScopeHydrator(object):
             task_namespace = task_namespace.with_session(firing_session_id)
             chat_namespace = chat_namespace.with_session(firing_session_id)
         firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
-        env = env_for_session(TurnTransaction(self._db, firing_session["id"]), firing_session) if firing_session is not None else Env()
+        env = env_for_session(TurnTransaction(self._db, firing_session["id"], []), firing_session) if firing_session is not None else Env()
         builder = EvaluationScopeBuilder(
             env, MetricService(self._db, context),
             SessionFacts(self._db, context), UserFacts(self._db), self._db,

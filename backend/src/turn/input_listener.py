@@ -34,7 +34,7 @@ from system.bus import (
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
-from turn.turn_transaction import RowHandle
+from turn.turn_transaction import PendingMessage
 from turn.outbound import Outbound, publishing
 from turn.turn_service import TurnService
 
@@ -211,12 +211,12 @@ class TurnInput(object):
             for _ in filter(None, [not requests.waiting]):
                 self._requests.pop(session_id, None)
 
-    async def _run(self, message: Message, accepted: list[RowHandle], prepared: list[dict]) -> None:
+    async def _run(self, message: Message, accepted: list[PendingMessage], prepared: list[dict]) -> None:
         async with publishing(message, self._db) as outbound:
             await self._turn(message, accepted, prepared, outbound)
 
     async def _turn(
-        self, message: Message, accepted: list[RowHandle], prepared: list[dict], outbound: "Outbound",
+        self, message: Message, accepted: list[PendingMessage], prepared: list[dict], outbound: "Outbound",
     ) -> dict | None:
         for _ in filter(INPUT_BUTTON.__eq__, [message.type]):
             return await self._take_action(message, outbound)
@@ -293,7 +293,7 @@ class _Accepted(object):
     produced: the id it was persisted under — none for a choice taken,
     which persists nothing — and whatever the state owed before it."""
     message: Message
-    message_id: RowHandle | None = None
+    message_id: PendingMessage | None = None
     prepared: list[dict] = field(default_factory=list)
 
 
@@ -302,7 +302,7 @@ class _Requests(object):
 
     def __init__(self) -> None:
         self.waiting: list[Message] = []
-        self.accepted: list[RowHandle | None] = []
+        self.accepted: list[PendingMessage | None] = []
         self.prepared: list[dict] = []
         self.answering = False
 
@@ -311,7 +311,7 @@ class _Requests(object):
         self.accepted.append(accepted.message_id)
         self.prepared.extend(accepted.prepared)
 
-    def take(self) -> tuple[list[Message], list[RowHandle], list[dict]]:
+    def take(self) -> tuple[list[Message], list[PendingMessage], list[dict]]:
         """One answer's worth: every text that piled up, answered
         together — or one of anything else, which is a single thing done
         and is never merged with another. Never empty: the caller only

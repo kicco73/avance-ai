@@ -15,6 +15,7 @@ TWO_STATE_YML = (
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hi\n"
     "    actions:\n"
     "      - name: go\n"
@@ -22,6 +23,7 @@ TWO_STATE_YML = (
     "        ui-button: Go\n"
     "        target: b\n"
     "  b:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: there\n"
     "    actions:\n"
     "      - name: back\n"
@@ -43,7 +45,7 @@ def _upload_and_reach_b(client) -> int:
 
 def test_editing_a_file_without_touching_the_current_state_keeps_the_conversation(client):
     session_id = _upload_and_reach_b(client)
-    yml_v2 = TWO_STATE_YML + "  c:\n    contextual-prompt: extra\n"
+    yml_v2 = TWO_STATE_YML + "  c:\n    input-processor: ai\n    contextual-prompt: extra\n"
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
 
@@ -55,7 +57,7 @@ def test_editing_a_file_without_touching_the_current_state_keeps_the_conversatio
 def test_editing_a_file_that_removes_the_current_state_resets_the_conversation(client):
     _upload_and_reach_b(client)
 
-    yml_v2 = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+    yml_v2 = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
 
@@ -74,6 +76,7 @@ def test_editing_a_file_that_renames_the_current_state_resets_the_conversation(c
         "init-action:\n  target: a\n"
         "states:\n"
         "  a:\n"
+        "    input-processor: ai\n"
         "    contextual-prompt: hi\n"
         "    actions:\n"
         "      - name: go\n"
@@ -81,6 +84,7 @@ def test_editing_a_file_that_renames_the_current_state_resets_the_conversation(c
         "        ui-button: Go\n"
         "        target: b-renamed\n"
         "  b-renamed:\n"
+        "    input-processor: ai\n"
         "    contextual-prompt: there\n"
     )
     resp = client.put("/api/skills/platform/projects/proj/files/index.yml", content=yml_v2.encode())
@@ -96,14 +100,14 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     conversation that's actually running right now."""
     session_id = _upload_and_reach_b(client)
 
-    other_yml = "project:\n  id: other\ninit-action:\n  target: x\nstates:\n  x:\n    contextual-prompt: hi\n"
+    other_yml = "project:\n  id: other\ninit-action:\n  target: x\nstates:\n  x:\n    input-processor: ai\n    contextual-prompt: hi\n"
     resp = client.post("/api/skills/platform/projects/upload", content=other_yml.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     client.post("/api/core/projects/proj/activate")
 
     resp = client.put(
         "/api/skills/platform/projects/other/files/index.yml",
-        content=b"project:\n  id: other\ninit-action:\n  target: y\nstates:\n  y:\n    contextual-prompt: hi\n",
+        content=b"project:\n  id: other\ninit-action:\n  target: y\nstates:\n  y:\n    input-processor: ai\n    contextual-prompt: hi\n",
     )
     assert resp.status_code == 200, resp.text
 

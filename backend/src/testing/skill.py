@@ -46,11 +46,16 @@ class TestingSkill(Skill):
         """Built here rather than at start: a run needs the turn engine it
         replays against, and at boot that does not exist yet (see
         bus.POINT_CORE_SERVICES)."""
+        core = bus.collect(POINT_CORE_SERVICES, {})
+        ai_test_service = core.get("ai_test_service")
+        if ai_test_service is None:
+            logger.info("benchmarking needs the ai skill installed — no /tests route, no replay pool.")
+            return
+
         from jobs.throttled_job_queue import ThrottledJobQueue
         from testing.testing_service import TestingService
         from testing.testing_controller import TestingController
 
-        core = bus.collect(POINT_CORE_SERVICES, {})
         broadcaster = core["progress_broadcaster"]
         queue = ThrottledJobQueue(
             max_concurrent=self._config.max_concurrent_tests,
@@ -59,7 +64,7 @@ class TestingSkill(Skill):
             min_job_interval_ms=self._config.min_test_interval_ms,
         )
         service = TestingService(
-            core["db"], core["ai_test_service"], core["tracking_service"], queue,
+            core["db"], ai_test_service, core["tracking_service"], queue,
             core["project_service"], broadcaster,
         )
         controllers.append(construct(TestingController, {**core, "testing_service": service}))

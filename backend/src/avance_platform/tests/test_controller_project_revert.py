@@ -13,7 +13,7 @@ from conftest import parse_sse_result
 
 pytestmark = pytest.mark.contract
 
-MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
 
 
 def _zip_of(files: dict[str, str]) -> bytes:

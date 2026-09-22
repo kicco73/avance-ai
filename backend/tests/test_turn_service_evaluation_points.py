@@ -21,11 +21,11 @@ PROJECT_ID = "proj"
 
 def _automaton(*, autotracking_on_ai_message=False, trigger="signal.foo >= 0") -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger)
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action], ai_memory_scope="global")
-    state_b = State(key="b", ui_label="B", final=True, actions=[], ai_memory_scope="global")
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action], ai_memory_scope="global")
+    state_b = State(input_processor="ai", key="b", ui_label="B", final=True, actions=[], ai_memory_scope="global")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {
-        "": State(key="", ui_label="", final=False, actions=[init_action]),
+        "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
         "a": state_a,
         "b": state_b,
     }
@@ -58,6 +58,9 @@ class FakeProjectService:
         return self._automaton
 
     def get_automaton_and_state_for_session(self, session_id: int):
+        return self._automaton, self._automaton.states[self._state_key]
+
+    def get_automaton_and_state_as_recorded(self, session_id: int, state_key: str | None):
         return self._automaton, self._automaton.states[self._state_key]
 
     def get_active_project_id(self) -> str:

@@ -73,10 +73,11 @@ turn-service:
   # silent-round-seconds or the browser gives up on a reply the server
   # is still allowed to be writing.
   #
-  # Defaults to 5: a provider that has not sent its first byte. The
+  # Defaults to 10: a provider that has not sent its first byte. The
   # eight complete replies of one production session took 1.1–2.9 s; a
-  # provider that has not started after 5 s is not going to.
-  first-chunk-seconds: 5
+  # provider that has not started after 10 s is not going to, and a
+  # slow start under load still fits.
+  first-chunk-seconds: 10
   # Defaults to 10: silence between two bytes of a reply already under
   # way. Reset on every byte, so the length of a reply never matters,
   # only its silence.

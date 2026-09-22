@@ -32,15 +32,12 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import TYPE_CHECKING
+from typing import Any
 
 from system import bus
 from system.bus import UI_PROGRESS, Message
 from jobs.job import CancelableJob
 from system.logging_factory import LoggerFactory
-
-if TYPE_CHECKING:
-    from ai import AiService
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -80,7 +77,7 @@ class Broadcaster:
 
     def __init__(
         self,
-        ai_service: "AiService | None" = None,
+        ai_service: Any = None,
         batch_window_seconds: float = 0.0,
     ) -> None:
         self._ai_service = ai_service

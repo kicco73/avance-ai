@@ -40,7 +40,7 @@ class EventSkill(Skill):
         self._service = EventService(
             core["db"], core["project_service"], core["scheduler_service"],
             core["namespace_factory"],
-            ai_service=core["ai_live_service"],
+            ai_service=core.get("ai_live_service"),
         )
         self._service.register()
         logger.info("event started — a project that watches another one hears it move.")

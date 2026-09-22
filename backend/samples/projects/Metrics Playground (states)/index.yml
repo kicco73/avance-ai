@@ -82,6 +82,7 @@ states:
         target: engaged
         trigger: "session.metric.engagement() >= 4"
 
+    input-processor: ai
   engaged:
     ui-label: Engaged
     ui-description: >
@@ -117,12 +118,14 @@ states:
         target: signal_stability_reached
         trigger: "session.metric.signal_stability() >= 1"
 
+    input-processor: ai
   mood_reached:
     ui-label: "Mood signal fired"
     ui-description: "Reached via a trigger that referenced only the 'mood' signal."
     contextual-prompt: |
       Acknowledge that the mood-based trigger fired, then stop.
 
+    input-processor: ai
   combo_reached:
     ui-label: "Combined signal+metric fired"
     ui-description: >
@@ -131,22 +134,26 @@ states:
     contextual-prompt: |
       Acknowledge that the combined trigger fired, then stop.
 
+    input-processor: ai
   engagement_reached:
     ui-label: "Engagement metric fired"
     ui-description: "Reached via a trigger that referenced only the 'engagement' metric."
     contextual-prompt: |
       Acknowledge that the engagement trigger fired, then stop.
 
+    input-processor: ai
   stability_reached:
     ui-label: "State stability metric fired"
     ui-description: "Reached via a trigger that referenced only the 'state_stability' metric."
     contextual-prompt: |
       Acknowledge that the state-stability trigger fired, then stop.
 
+    input-processor: ai
   signal_stability_reached:
     ui-label: "Signal stability metric fired"
     ui-description: "Reached via a trigger that referenced only the 'signal_stability' metric."
     contextual-prompt: |
       Acknowledge that the signal-stability trigger fired, then stop.
+    input-processor: ai
 project:
   id: metrics_playground_states

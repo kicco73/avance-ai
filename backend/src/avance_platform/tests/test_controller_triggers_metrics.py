@@ -29,6 +29,7 @@ signals:
     definition: "whatever"
 states:
   a:
+    input-processor: ai
     contextual-prompt: "hi"
 """
     response = client.post("/api/skills/platform/projects/upload", content=_zip_of(content), headers={"Content-Type": "application/zip"})

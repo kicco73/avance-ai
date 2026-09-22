@@ -27,6 +27,7 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 {state_yaml}
     actions:

@@ -13,8 +13,8 @@ import asyncio
 from typing import Any, Sequence
 
 from automaton.automaton import Automaton, Source
-from tracking.project_files import ProjectArchives
-from ai import ToolSpec
+from .base import SourceArchives
+from tool_spec import ToolSpec
 from tracking.env import Env
 from tracking.project_files import project_files_for
 
@@ -237,7 +237,7 @@ class ToolSet:
 
 
 class SourceNamespace:
-    def __init__(self, db: ProjectArchives | None, automaton: Automaton, session_id: int | None = None, env: Env | None = None) -> None:
+    def __init__(self, db: SourceArchives | None, automaton: Automaton, session_id: int | None = None, env: Env | None = None) -> None:
         self._context = SourceContext(
             db=db, automaton=automaton, session_id=session_id,
             env=env if env is not None else Env(),

@@ -20,6 +20,7 @@ signals:
 states:
   a:
     ui-label: State A
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: go-b
@@ -32,9 +33,11 @@ states:
         trigger: signal.foo >= 50 and signal.bar >= 50
   b:
     ui-label: State B
+    input-processor: ai
     contextual-prompt: there
   c:
     ui-label: State C
+    input-processor: ai
     contextual-prompt: elsewhere
 """
 
@@ -61,6 +64,7 @@ env:
 states:
   a:
     ui-label: State A
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: go-b
@@ -73,9 +77,11 @@ states:
         trigger: env.visits >= 1 and env.score >= 50
   b:
     ui-label: State B
+    input-processor: ai
     contextual-prompt: there
   c:
     ui-label: State C
+    input-processor: ai
     contextual-prompt: elsewhere
 """
 
@@ -94,6 +100,7 @@ sources:
 states:
   a:
     ui-label: State A
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: go-b
@@ -106,9 +113,11 @@ states:
         trigger: source.pino.select_rows_containing('x') != 'nope' and source.cities.select_rows_containing('x') != 'nope'
   b:
     ui-label: State B
+    input-processor: ai
     contextual-prompt: there
   c:
     ui-label: State C
+    input-processor: ai
     contextual-prompt: elsewhere
 """
 

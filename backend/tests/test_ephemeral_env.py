@@ -29,6 +29,7 @@ init-action:
 states:
   a:
     ui-label: A
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: advance
@@ -37,6 +38,7 @@ states:
           favorite_color: "'blue'"
   b:
     ui-label: B
+    input-processor: ai
     contextual-prompt: bye
 """
 

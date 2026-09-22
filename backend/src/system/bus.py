@@ -84,6 +84,7 @@ POINT_PROJECT_PUBLISHED = "project.published"
 POINT_SPOKEN_REPLY = "turn.spoken_reply"
 POINT_SESSION_SERVICES = "session.services"
 POINT_TRIGGER_NAMESPACES = "trigger.namespaces"
+POINT_INPUT_PROCESSORS = "turn.input_processors"
 POINT_TRANSLATABLE_LABELS = "turn.translatable_labels"
 TURN_TRANSLATION = "turn.translation"
 CLIENT_INJECTABLE = frozenset({

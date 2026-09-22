@@ -30,7 +30,7 @@ from .translations import TranslationMixin
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    AiTokenUsage, AppRating, Archive, CoreSession, Drive, EditHistory, File, Invite, Message,
+    AiUsage, AppRating, Archive, CoreSession, Drive, EditHistory, File, Invite, Message,
     Project, Settings, User, StateRemap, SystemWarning, Task, Test,
     TestAggregateResult, TestObservation, Tracking, Translation, TrialSession, UserProject,
     database,
@@ -67,7 +67,7 @@ class Db(
     _MODELS = (
         Project, CoreSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SystemWarning,
-        Settings, UserProject, TrialSession, Invite, AiTokenUsage, Task, Drive, Translation, AppRating,
+        Settings, UserProject, TrialSession, Invite, AiUsage, Task, Drive, Translation, AppRating,
     )
 
     MIGRATION_STRATEGIES = ('stop', 'upgrade', 'drop')
@@ -90,6 +90,9 @@ class Db(
         self._rename_channels_to_skill_keys()
         self._repoint_foreign_keys_to_renamed_tables()
         self._repair_rows_orphaned_by_stale_foreign_keys()
+
+    def atomic(self):
+        return database.atomic()
 
     @staticmethod
     def _repoint_foreign_keys_to_renamed_tables() -> None:

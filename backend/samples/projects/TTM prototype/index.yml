@@ -173,6 +173,7 @@ states:
         target: Contemplation
         trigger: "signal.problemRecognition >= 75"
 
+    input-processor: ai
   Contemplation:
     ui-label: Contemplation
     ui-description: >
@@ -191,6 +192,7 @@ states:
         target: Preparation
         trigger: "signal.decisionalBalanceShift >= 75"
 
+    input-processor: ai
   Preparation:
     ui-label: Preparation
     ui-description: >
@@ -209,6 +211,7 @@ states:
         trigger: "signal.planConcreteness >= 75"
         on-exit: chat.celebrate()
 
+    input-processor: ai
   Action:
     ui-label: "Action"
     ui-description: >
@@ -239,6 +242,7 @@ states:
         target: Maintenance
         trigger: "signal.stabilityConfidence >= 70" #daysSinceLastEvent >= 85 and
 
+    input-processor: ai
   Maintenance:
     ui-label: Maintenance
     ui-description: >
@@ -263,6 +267,7 @@ states:
         target: Relapse
         trigger: "signal.encounterRisk == 100"
 
+    input-processor: ai
   Relapse:
     ui-label: Relapse
     ui-description: >
@@ -282,6 +287,7 @@ states:
         target: Contemplation
         trigger: "signal.reengagementSignal >= 70"
 
+    input-processor: ai
   Crisis:
     ui-label: Crisis
     transition-log-level: CRITICAL
@@ -304,3 +310,4 @@ states:
     actions: []
     history-cutoff: true
     reactions-enabled: false
+    input-processor: ai

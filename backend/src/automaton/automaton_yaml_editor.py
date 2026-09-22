@@ -15,6 +15,7 @@ from automaton.automaton import (
     ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
 )
 from automaton import project_services
+from automaton.input_processor_kind import SystemKind, kind_of
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 
@@ -149,12 +150,14 @@ class AutomatonYamlEditor:
     def _state_payload(self, state_name: str) -> StatePayload:
         raw_state = self._state(state_name)
         raw_actions = raw_state.get("actions") or []
+        kind = kind_of(state_name, raw_state.get("input-processor"))
         return {
             "key": state_name,
             "ui_label": raw_state.get("ui-label", state_name),
             "ui_description": raw_state["ui-description"].strip() if raw_state.get("ui-description") else None,
             "final": len(raw_actions) == 0,
-            "chat_enabled": raw_state.get("chat-enabled", True),
+            "input_processor": kind.name,
+            "chat_enabled": kind.chat_enabled(raw_state.get("chat-enabled", True)),
             "actions": [self._action_payload_from_raw(raw_action, state_name) for raw_action in raw_actions],
             "ai_may_read_sources": list(raw_state.get("ai-may-read-sources") or []),
             "ai_must_read_sources": list(raw_state.get("ai-must-read-sources") or []),
@@ -246,6 +249,7 @@ class AutomatonYamlEditor:
         ui_label = self._unique_ui_label("New State", self._existing_state_ui_labels())
         self._add_entry(states, name, CommentedMap({
             "ui-label": ui_label,
+            "input-processor": SystemKind.name,
             "contextual-prompt": "",
         }))
         return self._state_payload(name)

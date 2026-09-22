@@ -38,6 +38,7 @@ def test_task_is_reported_per_edge_not_per_node(client):
         "init-action:\n  target: a\n"
         "states:\n"
         "  a:\n"
+        "    input-processor: ai\n"
         "    contextual-prompt: hi\n"
         "    actions:\n"
         "      - name: go-quiet\n"
@@ -46,6 +47,7 @@ def test_task_is_reported_per_edge_not_per_node(client):
         "        target: b\n"
         "        task: task.send_mail(user.email, 'hi')\n"
         "  b:\n"
+        "    input-processor: ai\n"
         "    contextual-prompt: there\n"
     )
     resp = client.post("/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})

@@ -15,7 +15,7 @@ pytestmark = pytest.mark.contract
 
 def _automaton() -> Automaton:
     state = State(
-        key="a", ui_label="A", final=False, contextual_prompt="You are in A.",
+        input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="You are in A.",
         attachments={}, actions=[],
     )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")

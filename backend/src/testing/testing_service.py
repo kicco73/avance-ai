@@ -8,10 +8,9 @@ running" can be answered, and only for the lifetime of this process."""
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import cast
+from typing import Any, cast
 
 from automaton.automaton import Automaton
-from ai import AiService
 from db import Db
 from db.tests import _USERNAME_UNSPECIFIED
 from jobs import CancelableJob
@@ -34,6 +33,7 @@ from testing.jobs import (
 from tracking.tracking_service import TrackingService
 
 from system.logging_factory import LoggerFactory
+
 logger = LoggerFactory.get_logger(__name__)
 
 VALID_STRATEGIES = ('batch_lite', 'batch', 'turn_by_turn')
@@ -48,7 +48,7 @@ _SIGNAL_SOURCE_CLASS_BY_STRATEGY: dict[str, type] = {
 class TestingService:
 
     def __init__(
-        self, db: Db, ai_service: AiService, tracking_service: TrackingService, job_queue: JobQueue,
+        self, db: Db, ai_service: Any, tracking_service: TrackingService, job_queue: JobQueue,
         project_service: ProjectService, status_broadcaster: Broadcaster,
     ) -> None:
         self._db = db

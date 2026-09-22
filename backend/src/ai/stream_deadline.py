@@ -6,7 +6,7 @@ from typing import AsyncGenerator, AsyncIterator, cast
 
 from ai.llm_provider import AIServiceProviderUnavailableError
 
-FIRST_CHUNK_SECONDS = 5.0
+FIRST_CHUNK_SECONDS = 10.0
 NEXT_CHUNK_SECONDS = 10.0
 SILENT_ROUND_SECONDS = 30.0
 

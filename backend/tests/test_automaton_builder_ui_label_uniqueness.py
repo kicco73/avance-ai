@@ -54,6 +54,7 @@ def test_unique_ui_labels_build_fine_and_actions_in_different_states_may_share_o
 states:
   a:
     ui-label: State A
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: go-a
@@ -61,6 +62,7 @@ states:
         target: b
   b:
     ui-label: State B
+    input-processor: ai
     contextual-prompt: there
     actions:
       - name: go-b

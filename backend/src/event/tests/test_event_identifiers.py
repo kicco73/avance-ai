@@ -25,6 +25,7 @@ env:
 
 states:
   a:
+    input-processor: ai
     contextual-prompt: "hi"
 """
 
@@ -43,6 +44,7 @@ env:
 
 states:
   x:
+    input-processor: ai
     contextual-prompt: "hi"
 """
 
@@ -81,6 +83,7 @@ init-action:
 
 states:
   x:
+    input-processor: ai
     contextual-prompt: "hi"
 """
 

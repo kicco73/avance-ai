@@ -44,10 +44,10 @@ class State:
     key: str
     ui_label: str
     final: bool
+    input_processor: str
     ui_description: str | None = None
     contextual_prompt: str | None = None
     actions: list[Action] = field(default_factory=list)
-    fixed_message: str | None = None
     transition_log_level: str = "WARNING"
     signal_tracking_strategy: str = "relevant"
     ai_memory_scope: str = "none"
@@ -152,6 +152,7 @@ class StatePayload(TypedDict):
     ui_label: str
     ui_description: str | None
     final: bool
+    input_processor: str
     chat_enabled: bool
     reactions: list[ReactionOptionPayload]
     actions: list[ActionPayload]

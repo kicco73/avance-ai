@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import json
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import Protocol, TYPE_CHECKING
 
 from automaton.automaton import JsSnippet
 from system.logging_factory import LoggerFactory
@@ -17,6 +17,19 @@ if TYPE_CHECKING:
     from tracking.actuators.factory import TaskNamespaceFactory
 
 logger = LoggerFactory.get_logger(__name__)
+
+
+class ReplySink(Protocol):
+    def write(self, text: str) -> None: ...
+    def take(self) -> str: ...
+
+
+class MutedReply:
+    def write(self, text: str) -> None:
+        return None
+
+    def take(self) -> str:
+        return ""
 
 
 class ChatNamespace(ABC):
@@ -35,6 +48,7 @@ class ChatNamespace(ABC):
         self._project_id = project_id
         self._factory = factory
         self._session_id: int | None = None
+        self._reply: ReplySink = MutedReply()
 
     def with_session(self, session_id: int) -> "ChatNamespace":
         """A copy of this namespace bound to the session whose on-exit
@@ -43,6 +57,14 @@ class ChatNamespace(ABC):
         bound = copy.copy(self)
         bound._session_id = session_id
         return bound
+
+    def with_reply(self, reply: ReplySink) -> "ChatNamespace":
+        bound = copy.copy(self)
+        bound._reply = reply
+        return bound
+
+    def write(self, body_md: str) -> None:
+        self._reply.write(body_md)
 
     def celebrate(self) -> JsSnippet | None:
         return JsSnippet("celebrate()")

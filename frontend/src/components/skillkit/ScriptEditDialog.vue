@@ -7,17 +7,23 @@ const props = defineProps({
   initialOnExit: { type: String, default: '' },
   initialTask: { type: String, default: '' },
   showTrigger: { type: Boolean, default: true },
+  targetIsAiState: { type: Boolean, default: false },
   initialTab: { type: String, default: 'trigger' },
   onCommit: { type: Function, required: true }
 })
 
-const TAB_DEFS = [
+const TAB_DEFS = computed(() => [
   { key: 'trigger', label: 'Trigger', field: 'trigger', excludeNamespaces: ['task', 'chat'], hint: 'A Python expression, evaluated server-side, deciding whether this action is available.' },
-  { key: 'on-exit', label: 'On Exit', field: 'on-exit', excludeNamespaces: ['task'], hint: 'One "env.key = expression" write, "name = expression" local, or bare "chat.<method>(...)" call per line, evaluated when the action fires and before landing to next state. Locals are dropped when the script ends.' },
+  {
+    key: 'on-exit', label: 'On Exit', field: 'on-exit', excludeNamespaces: ['task'],
+    excludeIdentifiers: props.targetIsAiState ? ['chat.write'] : [],
+    hint: 'One "env.key = expression" write, "name = expression" local, or bare "chat.<method>(...)" call per line, evaluated when the action fires and before landing to next state. Locals are dropped when the script ends.'
+      + (props.targetIsAiState ? ' chat.write is unavailable here: the target state answers through the model, not input-processor: system.' : '')
+  },
   { key: 'task', label: 'Task', field: 'task', excludeNamespaces: ['session', 'chat'], hint: 'Script executed when running the action and before landing to next state.' }
-]
+])
 
-const tabs = computed(() => TAB_DEFS.filter((t) => t.key !== 'trigger' || props.showTrigger))
+const tabs = computed(() => TAB_DEFS.value.filter((t) => t.key !== 'trigger' || props.showTrigger))
 
 const initialValues = { trigger: props.initialTrigger, 'on-exit': props.initialOnExit, task: props.initialTask }
 const savedValues = ref({ ...initialValues })
@@ -84,6 +90,7 @@ function handleKeydown(event) {
       :key="activeTab.key"
       v-model="values[activeTab.field]"
       :exclude-namespaces="activeTab.excludeNamespaces"
+      :exclude-identifiers="activeTab.excludeIdentifiers ?? []"
       :tooltip-parent="rootEl"
       large
     />

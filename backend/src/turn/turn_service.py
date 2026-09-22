@@ -8,11 +8,12 @@ from dataclasses import replace
 from datetime import datetime
 from http import HTTPStatus
 
+from typing import Any
+
 from automaton.automaton import Action, Automaton, SignalPayload, State, pressable_actions
 from automaton.build_error import AutomatonBuildError
 from automaton.choice import ChoiceSelection, button_name
 from db import Db, _utc_iso
-from ai import AiService
 from config import REPLY_SILENCE_SECONDS
 from system.keyed_lock_registry import KeyedLockRegistry
 from system.project_locks import ProjectLocks
@@ -20,6 +21,7 @@ from project.archive.layout import CACHE_DIR
 from system.web_session import WebSession
 from system import bus
 from system.bus import POINT_SESSION_SERVICES, POINT_TRANSLATABLE_LABELS, TURN_TRANSLATION, Message
+
 from tracking.session_services import SessionServices
 from tracking.translatable_labels import TranslatableLabels
 
@@ -33,7 +35,9 @@ from tracking.user_facts import UserFacts
 from turn.sessions.env_for_session import env_for_session
 from turn.ephemeral_env_registry import EphemeralEnvRegistry
 from turn.errors import TurnServiceError
-from turn.turn_transaction import RowHandle, TurnTransaction, row_id
+from turn.atomic_turn_transaction import AtomicTurnTransaction
+from turn.input_processor import InputProcessor, committed, fragments_of, plain_reply_result, processors as input_processors
+from turn.turn_transaction import Inbox, Outbox, PendingMessage, TurnTransaction
 from turn.sessions.session_manager import SessionManager, SessionNotWritable
 from turn.sessions.session_insights import SessionInsights
 from turn.sessions.session_ownership import SessionOwnership
@@ -54,8 +58,8 @@ class TurnService(object):
 	def __init__(
 		self,
 		db: Db,
-		ai_service: AiService,
-		ai_test_service: AiService,
+		ai_service: Any,
+		ai_test_service: Any,
 		project_service: ProjectService,
 		session_manager: SessionManager,
 		tracking_service: TrackingService,
@@ -84,7 +88,9 @@ class TurnService(object):
 
 		self._project_locks = project_locks or ProjectLocks()
 		self._session_locks = KeyedLockRegistry(asyncio.Lock)
-		self._transactions: dict[int, TurnTransaction] = {}
+		self._inboxes: dict[int, Inbox] = {}
+		self._outboxes: dict[int, Outbox] = {}
+		self._processors: dict[str, InputProcessor] = {name: kind(self) for name, kind in input_processors().items()}
 		self._session_lifecycle_locks = KeyedLockRegistry(asyncio.Lock)
 		self._global_lock = asyncio.Lock()
 
@@ -92,35 +98,97 @@ class TurnService(object):
 		bus.contribute(POINT_TRANSLATABLE_LABELS, self._contribute_choice_labels)
 		bus.subscribe(TURN_TRANSLATION, self._on_translation)
 
-	def _ai_service_for_session(self, session_id: int) -> AiService:
+	def _ai_service_for_session(self, session_id: int) -> Any:
 		session = self._db.get_chat_session(session_id)
 		return self._ai_test_service if session is not None and session["type"] in ("test", "preview") else self._ai_service
 
-	def _transaction(self, session_id: int) -> TurnTransaction:
-		return self._transactions.setdefault(session_id, TurnTransaction(self._db, session_id))
+	def _inbox(self, session_id: int) -> Inbox:
+		return self._inboxes.setdefault(session_id, Inbox(session_id))
+
+	def outbox(self, session_id: int) -> Outbox:
+		return self._outboxes.setdefault(session_id, Outbox())
+
+	def processor_for(self, state: State) -> InputProcessor:
+		processor = self._processors.get(state.input_processor)
+		if processor is None:
+			raise TurnServiceError(
+				f"State '{state.key}' needs the '{state.input_processor}' input processor, which isn't "
+				"installed in this build.", status_code=HTTPStatus.SERVICE_UNAVAILABLE, code="input_processor_not_installed",
+			)
+		return processor
+
+	def _processor_at(self, session_id: int) -> InputProcessor:
+		_, state = self.__project_service.get_automaton_and_state_for_session(session_id)
+		return self.processor_for(state)
+
+	@property
+	def tracking_service(self) -> TrackingService:
+		return self._tracking_service
+
+	def ai_service_for_session_type(self, session_type: str) -> Any:
+		return self._ai_test_service if session_type == "test" else self._ai_service
+
+	def project_id_for_session(self, session_id: int) -> str:
+		return self._project_id_for_session(session_id)
+
+	def ensure_project_available(self, project_id: str) -> None:
+		self._ensure_project_available(project_id)
+
+	def refuse_while_answering(self, session_id: int) -> None:
+		if self._session_locks.get(str(session_id)).locked():
+			raise TurnServiceError(
+				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
+			)
+
+	def session_scope(self, project_id: str, session_id: int):
+		return self._session_scope(project_id, session_id)
+
+	def automaton_and_state_for(self, session_id: int) -> tuple[Automaton, State]:
+		return self.__project_service.get_automaton_and_state_for_session(session_id)
+
+	def automaton_and_state_or_raise_unsupported(
+		self, session_id: int, session: dict, transaction: TurnTransaction,
+	) -> tuple[Automaton, State]:
+		return self._get_automaton_and_state_or_raise_unsupported(session_id, session, transaction)
+
+	def require_active_session(self, session_id: int | None, project_id: str, current_state: str) -> dict:
+		return self._require_active_session(session_id, project_id, current_state)
+
+	def resolve_manual_action(self, action_name: str, session_id: int):
+		return self.__project_service.resolve_manual_action(action_name, session_id)
+
+	def exchange(self, session_id: int, user_messages: list[PendingMessage] | None) -> AtomicTurnTransaction:
+		return self._exchange(session_id, user_messages)
+
+	def tracking_engine_for(self, session_id: int, transaction: TurnTransaction) -> tuple[TrackingEngine, "TaskNamespace"]:
+		return self._tracking_engine_for_session(session_id, transaction)
+
+	def touch_session(self, session_id: int, state_key: str) -> None:
+		self.__session_manager.touch_session(session_id, state_key)
 
 	def _env_for_session(self, session_id: int) -> Env:
-		return env_for_session(TurnTransaction(self._db, session_id), self._ownership.require_session(session_id))
+		return env_for_session(TurnTransaction(self._db, session_id, []), self._ownership.require_session(session_id))
 
-	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "TaskNamespace"]:
+	def _tracking_engine_for_session(
+		self, session_id: int, transaction: TurnTransaction,
+	) -> tuple[TrackingEngine, "TaskNamespace"]:
 		session = self._ownership.require_session(session_id)
-		transaction = self._transaction(session_id)
 		fixed_context = FixedProjectContext(project_id=session["project_id"])
 		env = env_for_session(transaction, session)
 		session_facts = SessionFacts(transaction, fixed_context)
-		task_namespace = self._namespace_factory.for_session(session_id)
+		task_namespace = transaction.task_namespace(self._namespace_factory.for_session(session_id))
 		chat_namespace = self._namespace_factory.chat_for_session(session_id)
 		scope_builder = EvaluationScopeBuilder(
 			env, self.metric_service, session_facts, self._user_facts,
 			transaction, task_namespace, chat_namespace,
-			ai_service=self._ai_service_for_session(session_id),
+			ai_service=self._ai_service_for_session(session_id), reply=self.outbox(session_id),
 		)
 		return TrackingEngine(DbTrackingSink(transaction), env, scope_builder), task_namespace
 
 	def _schedule_task(self, automaton: Automaton, action: Action, session_id: int, project_id: str) -> None:
 		if not action.task:
 			return
-		tracking_engine, _ = self._tracking_engine_for_session(session_id)
+		tracking_engine, _ = self._tracking_engine_for_session(session_id, TurnTransaction(self._db, session_id, []))
 		tracking_engine.schedule_task(automaton, action, action.target, ChoiceSelection.NONE, session_id=session_id)
 
 	@property
@@ -134,17 +202,21 @@ class TurnService(object):
 	def get_message_audio_text(self, message_id: int) -> str | None:
 		return self._db.get_message_audio_text(message_id)
 
+	_NO_AI_MODELS: dict = {"auto": True, "current_index": None, "models": []}
+
 	def get_ai_models_info(self) -> dict:
-		return self._ai_service.get_models_info()
+		return self._ai_service.get_models_info() if self._ai_service is not None else self._NO_AI_MODELS
 
 	def select_ai_model(self, index: int | None) -> None:
-		self._ai_service.select_model(index)
+		if self._ai_service is not None:
+			self._ai_service.select_model(index)
 
 	def get_test_ai_models_info(self) -> dict:
-		return self._ai_test_service.get_models_info()
+		return self._ai_test_service.get_models_info() if self._ai_test_service is not None else self._NO_AI_MODELS
 
 	def select_test_ai_model(self, index: int | None) -> None:
-		self._ai_test_service.select_model(index)
+		if self._ai_test_service is not None:
+			self._ai_test_service.select_model(index)
 
 	def _session_payload(self, session: dict, *, current: bool) -> dict:
 		return {
@@ -185,9 +257,13 @@ class TurnService(object):
 				status_code=HTTPStatus.CONFLICT, code="project_unavailable",
 			)
 
-	def _get_automaton_and_state_or_raise_unsupported(self, session_id: int, session: dict) -> tuple[Automaton, State]:
+	def _get_automaton_and_state_or_raise_unsupported(
+		self, session_id: int, session: dict, transaction: TurnTransaction,
+	) -> tuple[Automaton, State]:
 		try:
-			return self.__project_service.get_automaton_and_state_for_session(session_id)
+			return self.__project_service.get_automaton_and_state_as_recorded(
+				session_id, transaction.get_current_state_for_session(session_id),
+			)
 		except (AutomatonBuildError, FileNotFoundError, ValueError) as exc:
 			if session["type"] == "test":
 				raise
@@ -244,7 +320,9 @@ class TurnService(object):
 		than a project: an operator paged into one, a person picking a
 		past one out of the list."""
 		session = self._ownership.require_own_session(session_id)
-		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(
+			session_id, session, TurnTransaction(self._db, session_id, []),
+		)
 		return {
 			**self._session_payload(session, current=True),
 			"state": automaton.get_state_payload(state),
@@ -368,7 +446,7 @@ class TurnService(object):
 			assert session is not None
 			self.__session_manager.close_session(session, "manual-user")
 		EphemeralEnvRegistry().discard(session_id)
-		self._transactions.pop(session_id, None)
+		self._inboxes.pop(session_id, None)
 		return self._reloaded_session_payload(session_id)
 
 	async def close_exhausted_session(self, session_id: int) -> None:
@@ -377,7 +455,7 @@ class TurnService(object):
 		async with self._session_lifecycle_scope(session["username"], session["project_id"]):
 			self.__session_manager.close_session(session, "final-state")
 		EphemeralEnvRegistry().discard(session_id)
-		self._transactions.pop(session_id, None)
+		self._inboxes.pop(session_id, None)
 
 	def get_session_rating(self, session_id: int) -> int | None:
 		session = self._ownership.require_own_session(session_id)
@@ -428,7 +506,9 @@ class TurnService(object):
 		self._ownership.require_own_session(session_id)
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
-		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(
+			session_id, session, TurnTransaction(self._db, session_id, []),
+		)
 		return automaton.get_state_payload(state)
 
 	def read_history(self, session_id: int, last_n: int | None = None) -> list[dict]:
@@ -443,13 +523,12 @@ class TurnService(object):
 		thing twice. Opening a conversation is something a channel does on
 		purpose; reading it is a read."""
 		self._ownership.require_own_session(session_id)
-		transaction = self._transaction(session_id)
 		return self._with_tool_calls(
-			session_id, transaction.get_messages(session_id, last_n=last_n) + transaction.pending_messages(),
+			session_id, self._db.get_messages(session_id, last_n=last_n) + self._inbox(session_id).pending(),
 		)
 
 	def _with_tool_calls(self, session_id: int, messages: list[dict]) -> list[dict]:
-		tool_calls_by_message = self._transaction(session_id).get_tool_calls_by_message(session_id)
+		tool_calls_by_message = self._db.get_tool_calls_by_message(session_id)
 		for message in messages:
 			tool_calls = tool_calls_by_message.get(message["id"])
 			if tool_calls:
@@ -655,7 +734,7 @@ class TurnService(object):
 		missing = {key: expression for key, expression in action.env.items() if key not in current}
 		if not missing:
 			return
-		tracking_engine, _ = self._tracking_engine_for_session(session_id)
+		tracking_engine, _ = self._tracking_engine_for_session(session_id, TurnTransaction(self._db, session_id, []))
 		for key, expression in missing.items():
 			tracking_engine.apply_action_env(
 				automaton, replace(action, env={key: expression}), {}, ChoiceSelection.NONE, "",
@@ -670,10 +749,10 @@ class TurnService(object):
 
 	def _restart_automaton(self, session: dict, username: str) -> None:
 		session_id, project_id = session["id"], session["project_id"]
-		env_for_session(TurnTransaction(self._db, session["id"]), session).clear()
+		env_for_session(TurnTransaction(self._db, session["id"], []), session).clear()
 		automaton = self.__project_service.get_automaton_for_session(session_id)
 		self._backfill_declared_env_keys(automaton, project_id, session_id, username)
-		tracking_engine, _ = self._tracking_engine_for_session(session_id)
+		tracking_engine, _ = self._tracking_engine_for_session(session_id, TurnTransaction(self._db, session_id, []))
 		tracking_engine.apply_transition(
 			automaton, automaton.states[""], automaton.init_action, None, ChoiceSelection.NONE, session_id,
 			origin='init-action', username=username, project_id=project_id,
@@ -704,7 +783,9 @@ class TurnService(object):
 			return None, None
 
 		project_id = session["project_id"]
-		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(
+			session_id, session, TurnTransaction(self._db, session_id, []),
+		)
 
 		self._backfill_declared_env_keys(automaton, project_id, session_id, self._username)
 		self._cleanup_orphan_action_env_keys(automaton, project_id, session_id, session["type"])
@@ -749,91 +830,14 @@ class TurnService(object):
 	async def apply_manual_action(
 		self, action_name: str, session_id: int, on_metadata: OnMetadata | None = None,
 	) -> dict:
-		project_id = self._project_id_for_session(session_id)
-		self._ensure_project_available(project_id)
-		if self._session_locks.get(str(session_id)).locked():
-			raise TurnServiceError(
-				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
-			)
-		async with self._session_scope(project_id, session_id):
-			automaton, source_state = self.__project_service.get_automaton_and_state_for_session(session_id)
-			session = self._require_active_session(session_id, project_id, source_state.key)
-			state_payload, action, source_state_key = self.__project_service.resolve_manual_action(
-				action_name, session["id"]
-			)
-			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
-			transaction = self._transaction(session["id"])
-			async with transaction.exchange([]):
-				_, env_changed = tracking_engine.apply_transition(
-					automaton, source_state, action, None, ChoiceSelection.NONE, session["id"],
-					origin='manual', username=WebSession().user, project_id=project_id,
-				)
-				turn_result = await self._process_turn_body(session["id"], on_metadata=on_metadata)
-			return self._transition_result(
-				session["id"], source_state_key, action.name, env_changed, self._committed(transaction, turn_result),
-			)
+		return await self._processor_at(session_id).manual_action(action_name, session_id, on_metadata)
 
 	async def apply_choice(
 		self, selection: ChoiceSelection, session_id: int, on_metadata: OnMetadata | None = None,
 	) -> dict | None:
-		project_id = self._project_id_for_session(session_id)
-		self._ensure_project_available(project_id)
-		if self._session_locks.get(str(session_id)).locked():
-			raise TurnServiceError(
-				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
-			)
-		async with self._session_scope(project_id, session_id):
-			automaton, source_state = self.__project_service.get_automaton_and_state_for_session(session_id)
-			session = self._require_active_session(session_id, project_id, source_state.key)
-			if selection.key not in source_state.choice_keys:
-				raise ValueError(f"'{selection.key}' is not a choice offered in state '{source_state.key}'.")
-			if selection.option not in self.choice_options_for(session["id"]).get(selection.key, []):
-				raise ValueError(f"'{selection.option}' is not among the current options of '{selection.key}'.")
-			tracking_engine, _ = self._tracking_engine_for_session(session["id"])
-			action = tracking_engine.evaluate_choice(automaton, source_state.key, selection, session["id"])
-			if action is None:
-				return None
-			transaction = self._transaction(session["id"])
-			async with transaction.exchange([]):
-				_, env_changed = tracking_engine.apply_transition(
-					automaton, source_state, action, None, selection, session["id"],
-					origin='manual', username=WebSession().user, project_id=project_id,
-				)
-				turn_result = await self._process_turn_body(session["id"], on_metadata=on_metadata)
-			return self._transition_result(
-				session["id"], source_state.key, action.name, env_changed, self._committed(transaction, turn_result),
-			)
+		return await self._processor_at(session_id).choice(selection, session_id, on_metadata)
 
-	def _transition_result(
-		self, session_id: int, source_state_key: str, action_name: str, env_changed: dict, turn_result: dict,
-	) -> dict:
-		_, state = self.__project_service.get_automaton_and_state_for_session(session_id)
-		self.__session_manager.touch_session(session_id, state.key)
-		fresh = turn_result["state"]
-		return {
-			"state": fresh,
-			"state_changed": True,
-			"from_state": source_state_key,
-			"new_state": fresh.get("key"),
-			"triggered_action": action_name,
-			"env_changed": env_changed,
-			"buttons": self.buttons_for(session_id, fresh),
-			"reply": turn_result["reply"],
-			"ai_model": self.get_ai_models_info(),
-			"session_id": session_id,
-		}
-
-	@staticmethod
-	def _committed(transaction: TurnTransaction, turn_result: dict) -> dict:
-		assistant_message = turn_result["assistant_message_id"]
-		return {
-			**turn_result,
-			"reply": [transaction.get_message(assistant_message)],
-			"assistant_message_id": assistant_message.id,
-			"user_message_id": row_id(turn_result["user_message_id"]),
-		}
-
-	def accept_user_message(self, session_id: int, text: str) -> RowHandle:
+	def accept_user_message(self, session_id: int, text: str) -> PendingMessage:
 		"""Persists a user message the moment its frame is read — before any
 		processing, ahead of the session lock — so the order of the messages
 		is the order they arrived on the wire (see BusChannel). Runs
@@ -844,21 +848,23 @@ class TurnService(object):
 			raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND, code="session_not_found")
 		project_id = session["project_id"]
 		self._ensure_project_available(project_id)
-		_, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
+		_, state = self._get_automaton_and_state_or_raise_unsupported(
+			session_id, session, TurnTransaction(self._db, session_id, []),
+		)
 		self._require_active_session(session_id, project_id, state.key)
 		if not state.chat_enabled:
 			raise TurnServiceError(
 				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT,
 				code="state_not_chat",
 			)
-		return self._transaction(session_id).accept(text)
+		return self._inbox(session_id).accept(text)
 
 	async def process_turn(
 		self,
 		session_id: int,
 		text: str | None = None,
 		on_metadata: OnMetadata | None = None,
-		user_messages: list[RowHandle] | None = None,
+		user_messages: list[PendingMessage] | None = None,
 	) -> dict:
 		"""`user_messages` are the messages this answer is for, already
 		persisted by whoever accepted them (see turn/input_listener.py).
@@ -868,19 +874,15 @@ class TurnService(object):
 		is persisted here, still before the session lock, so the bubble
 		appears at once and the order of the conversation is fixed before
 		anything waits."""
-		project_id = self._project_id_for_session(session_id)
 		if text is not None and not user_messages:
 			user_messages = [self.accept_user_message(session_id, text)]
 		operator = self._namespace_factory.get_human_operator(session_id)
 		if operator is not None:
 			return await self._process_human_turn(session_id, operator, on_metadata, user_messages)
-		transaction = self._transaction(session_id)
-		async with self._session_scope(project_id, session_id), transaction.exchange(user_messages or []):
-			turn_result = await self._process_turn_body(session_id, text, on_metadata, user_messages)
-		return self._committed(transaction, turn_result)
+		return await self._processor_at(session_id).text(session_id, text, on_metadata, user_messages)
 
 	async def _process_human_turn(
-		self, session_id: int, operator: str, on_metadata: OnMetadata | None, user_messages: list[RowHandle] | None,
+		self, session_id: int, operator: str, on_metadata: OnMetadata | None, user_messages: list[PendingMessage] | None,
 	) -> dict:
 		"""chat.switch_to_human's own turn path — no automaton, no
 		lock: while a session has an operator (see TaskNamespaceFactory.
@@ -890,15 +892,15 @@ class TurnService(object):
 		nothing else about this session (another customer message, a
 		manual action) should have to wait for it, which is exactly what
 		holding _session_scope's lock here would do."""
-		transaction = self._transaction(session_id)
+		transaction = self._exchange(session_id, user_messages)
 		session = transaction.get_chat_session(session_id)
 		if session is None:
 			raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 		project_id = session["project_id"]
 		self._ensure_project_available(project_id)
-		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
-		async with transaction.exchange(user_messages or []):
-			fragments = self._fragments(transaction, user_messages)
+		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session, transaction)
+		async with transaction:
+			fragments = fragments_of(transaction, user_messages)
 			text = "\n".join(m["content"] for _, m in fragments)
 			assistant_talker = self._tracking_service.build_human_talker(operator, session_id, session["type"], project_id)
 			accumulated = ""
@@ -913,48 +915,10 @@ class TurnService(object):
 			assistant_message = transaction.save_message("assistant", accumulated, session_id)
 			transaction.mark_messages_answered([h for h, _ in fragments], assistant_message)
 			self.__session_manager.touch_session(session_id, state.key)
-		return self._committed(transaction, {
-			"reply": [],
-			"user_message_id": (user_messages or [None])[-1],
-			"user_message_reaction": None,
-			"assistant_message_id": assistant_message,
-			"state": automaton.get_state_payload(state),
-			"buttons": self.buttons_for(session_id, automaton.get_state_payload(state)),
-			"state_changed": False,
-			"from_state": None,
-			"new_state": None,
-			"triggered_action": None,
-			"env_changed": {},
-			"ai_model": self.get_ai_models_info(),
-			"session_id": session_id,
-		})
+		return committed(transaction, plain_reply_result(
+			session_id, automaton, state, assistant_message, user_messages,
+			self.buttons_for(session_id, automaton.get_state_payload(state)), self.get_ai_models_info(),
+		))
 
-	@staticmethod
-	def _fragments(transaction: TurnTransaction, user_messages: list[RowHandle] | None) -> list[tuple[RowHandle, dict]]:
-		found = ((handle, transaction.get_message(handle)) for handle in user_messages or [])
-		return [(handle, message) for handle, message in found if message is not None]
-
-	async def _process_turn_body(
-		self,
-		session_id: int,
-		text: str | None = None,
-		on_metadata: OnMetadata | None = None,
-		user_messages: list[RowHandle] | None = None,
-	) -> dict:
-		transaction = self._transaction(session_id)
-		session = transaction.get_chat_session(session_id)
-		if session is None:
-			raise TurnServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
-		project_id = session["project_id"]
-		self._ensure_project_available(project_id)
-		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
-		automaton, state = self._get_automaton_and_state_or_raise_unsupported(session_id, session)
-		self._require_active_session(session_id, project_id, state.key)
-		fragments = self._fragments(transaction, user_messages)
-		reply = await self._tracking_service._process(
-			transaction, session_id, [m["content"] for _, m in fragments], ai_service, on_metadata,
-			user_messages=[handle for handle, _ in fragments],
-		)
-		self.__session_manager.touch_session(reply['session_id'], reply['state']['key'])
-		reply['buttons'] = self.buttons_for(session_id, reply['state'])
-		return reply
+	def _exchange(self, session_id: int, user_messages: list[PendingMessage] | None) -> AtomicTurnTransaction:
+		return AtomicTurnTransaction(self._db, session_id, user_messages or [], self._inbox(session_id))

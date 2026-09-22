@@ -17,6 +17,7 @@ import SessionDetailCard from '../../../../../components/skillkit/SessionDetailC
 import ModelMenu from '../../ModelMenu.vue'
 import ProfileMenu from '../../../../../components/ProfileMenu.vue'
 import AppHeader from '../../../../../components/AppHeader.vue'
+import { isSkillInstalled } from '../../../../../skillRoster.js'
 import { useLeaveConfirmation } from '../../../useLeaveConfirmation.js'
 import { useResizablePanel } from '../../../../../composables/useResizablePanel.js'
 import { useProjectFiles } from '../../../useProjectFiles.js'
@@ -204,10 +205,12 @@ const inspectorTabs = computed(() => {
   if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || mediaRootSelected.value || !isBehaviorNodeSelected.value)) {
     return [{ id: 'state', label: 'Info' }]
   }
+  const ioTab = selectedStateData.value == null || selectedStateData.value.inputProcessor === 'ai'
+    ? [{ id: 'output', label: 'I/O' }] : []
   return [
     { id: 'state', label: 'Info' },
     { id: 'design-signals', label: 'Signals' },
-    { id: 'output', label: 'I/O' }
+    ...ioTab
   ]
 })
 const inspectorActiveTab = ref('states')
@@ -449,7 +452,7 @@ async function handleSetSessionComment(sessionId, comment) {
     <AppHeader>
       <template #left>
         <button class="app-header-icon-btn" title="Back" @click="handleBack">«</button>
-        <ModelMenu :model-store="testChatModelStore" />
+        <ModelMenu v-if="isSkillInstalled('ai')" :model-store="testChatModelStore" />
       </template>
       <template #center>
         <ModeSegment :mode="modeId" :modes="modes" @update:mode="setMode" />

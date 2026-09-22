@@ -76,6 +76,7 @@ states:
         target: engaged
         trigger: "session.metric.engagement() >= 4"
 
+    input-processor: ai
   engaged:
     ui-label: Engaged
     ui-description: >
@@ -122,5 +123,6 @@ states:
         trigger: "session.metric.signal_stability() >= 1"
         task: |
           actuator.notify('Signal stability', actuator.prompt('Briefly acknowledge that the signal-stability trigger just fired.'))
+    input-processor: ai
 project:
   id: metrics_playground

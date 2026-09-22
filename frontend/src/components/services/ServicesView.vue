@@ -2,8 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import AppHeader from '../AppHeader.vue'
 import DocInfoButton from '../DocInfoButton.vue'
+import ExplorerSplitView from '../ExplorerSplitView.vue'
 import ProfileMenu from '../ProfileMenu.vue'
-import AiUsageTrendsChart from './AiUsageTrendsChart.vue'
+import TrendLineChart from './TrendLineChart.vue'
 import ServicesProviderCard from '../skillkit/ServicesProviderCard.vue'
 import ServicesFieldList from '../skillkit/ServicesFieldList.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
@@ -42,10 +43,48 @@ const activeDescription = computed(() => tabs.value.find((tab) => tab.id === act
 
 
 const activeTab = ref(CORE_TABS[0].id)
+
+const CHAT_FIELDS_KEPT_IN_CHAT = ['max-session-duration-in-minutes', 'project-file-cache-bytes']
+const chatFieldsMovedToAi = computed(() => Object.keys(services.value?.chat ?? {})
+  .filter((key) => !key.startsWith('ui-') && !CHAT_FIELDS_KEPT_IN_CHAT.includes(key)))
+
+const AI_SUBTABS = [
+  { id: 'configuration', label: 'Configuration' },
+  { id: 'providers', label: 'Providers' },
+  { id: 'observability', label: 'Observability' }
+]
+const aiSubTab = ref(AI_SUBTABS[0].id)
+
 const services = ref(null)
 const loading = ref(true)
 
-const aiUsage = ref({ today: {}, today_cache_read: {}, history: [], cache_read_ratio: {} })
+const aiUsage = ref({ today: {}, today_cache_read: {}, history: [], provider_changes: [], error_history: [], cache_read_ratio: {} })
+const LATENCY_SERIES = [
+  { suffix: ':total', label: 'total', values: (entry) => entry.duration },
+  { suffix: ':first-chunk', label: 'first chunk', values: (entry) => entry.time_to_first_chunk },
+]
+const aiLatencyHistory = computed(() => aiUsage.value.history.map((entry) => ({
+  timestamp: entry.timestamp,
+  values: Object.fromEntries(
+    LATENCY_SERIES.flatMap(({ suffix, values }) => Object.entries(values(entry))
+      .map(([provider, seconds]) => [`${provider}${suffix}`, seconds]))
+  ),
+})))
+const aiLatencyLabels = computed(() => Object.fromEntries(
+  Object.entries(aiProviderLabels.value).flatMap(([provider, label]) =>
+    LATENCY_SERIES.map(({ suffix, label: seriesLabel }) => [`${provider}${suffix}`, `${label} (${seriesLabel})`]))
+))
+const aiProviderChanges = computed(() =>
+  aiUsage.value.provider_changes.map((change) => ({
+    timestamp: change.timestamp,
+    key: `${change.provider_label}:total`,
+    label: aiProviderLabels.value[change.provider_label] ?? change.provider_label,
+  }))
+)
+const aiErrorOutcomeLabels = computed(() => Object.fromEntries(
+  [...new Set(aiUsage.value.error_history.flatMap((entry) => Object.keys(entry.values)))]
+    .map((outcome) => [outcome, outcome.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())])
+))
 
 const TASK_STATUSES = ['pending', 'dispatched', 'done', 'failed', 'canceled']
 const taskStatus = ref(TASK_STATUSES[0])
@@ -172,100 +211,128 @@ function providerStatusTitle(index) {
       </template>
     </AppHeader>
 
-    <div class="services-tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        class="services-tab-btn"
-        :class="{ 'services-tab-btn-active': activeTab === tab.id }"
-        @click="activeTab = tab.id"
-      >
-        <svg v-if="tab.id === 'ai'" class="services-tab-ai-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+    <div class="services-workspace">
+    <ExplorerSplitView :items="tabs" :active-id="activeTab" title="Services" @select="activeTab = $event">
+      <template #item-icon="{ item }">
+        <svg v-if="item.id === 'ai'" class="services-tab-ai-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
           <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z" />
         </svg>
-        {{ tab.label }}
-      </button>
-    </div>
+      </template>
 
-    <div class="services-body">
-      <p v-if="activeDescription" class="services-tab-description">{{ activeDescription }}</p>
-      <p v-if="loading" class="services-status">Loading…</p>
-      <template v-else-if="services">
-        <div v-show="activeTab === 'chat'" class="services-panel">
-          <ServicesFieldList :section="services.chat" />
-        </div>
+      <div class="services-body">
+        <p v-if="activeDescription && activeTab !== 'ai'" class="services-tab-description">{{ activeDescription }}</p>
+        <p v-if="loading" class="services-status">Loading…</p>
+        <template v-else-if="services">
+          <div v-show="activeTab === 'chat'" class="services-panel">
+            <ServicesFieldList :section="services.chat" :skip="chatFieldsMovedToAi" />
+          </div>
 
-        <div v-show="activeTab === 'scheduler'" class="services-panel">
-          <div class="services-scheduler-toolbar">
-            <div class="services-segmented">
+          <div v-show="activeTab === 'scheduler'" class="services-panel">
+            <div class="services-scheduler-toolbar">
+              <div class="services-segmented">
+                <button
+                  v-for="status in TASK_STATUSES"
+                  :key="status"
+                  type="button"
+                  class="services-segment-btn"
+                  :class="{ 'services-segment-active': taskStatus === status }"
+                  @click="taskStatus = status"
+                >{{ status }}</button>
+              </div>
               <button
-                v-for="status in TASK_STATUSES"
-                :key="status"
                 type="button"
-                class="services-segment-btn"
-                :class="{ 'services-segment-active': taskStatus === status }"
-                @click="taskStatus = status"
-              >{{ status }}</button>
+                class="services-sort-btn"
+                :title="taskOrder === 'asc' ? 'Sort ascending' : 'Sort descending'"
+                @click="taskOrder = taskOrder === 'asc' ? 'desc' : 'asc'"
+              >Time {{ taskOrder === 'asc' ? '↓' : '↑' }}</button>
             </div>
-            <button
-              type="button"
-              class="services-sort-btn"
-              :title="taskOrder === 'asc' ? 'Sort ascending' : 'Sort descending'"
-              @click="taskOrder = taskOrder === 'asc' ? 'desc' : 'asc'"
-            >Time {{ taskOrder === 'asc' ? '↓' : '↑' }}</button>
+            <p v-if="tasksLoading" class="services-status">Loading…</p>
+            <p v-else-if="!tasks.length" class="services-status">No {{ taskStatus }} tasks.</p>
+            <TaskCard v-for="task in tasks" :key="task.key" :task="task" />
           </div>
-          <p v-if="tasksLoading" class="services-status">Loading…</p>
-          <p v-else-if="!tasks.length" class="services-status">No {{ taskStatus }} tasks.</p>
-          <TaskCard v-for="task in tasks" :key="task.key" :task="task" />
-        </div>
 
-        <div v-show="activeTab === 'ai'" class="services-panel">
-          <div v-if="liveProviders.length && aiUsage.history.length >= 2" class="services-ai-usage-chart">
-            <AiUsageTrendsChart :history="aiUsage.history" :provider-labels="aiProviderLabels" />
-          </div>
-          <label class="services-checkbox-field services-checkbox-field-active">
-            <input type="checkbox" :checked="modelSelector().auto.value" @click.prevent="toggleAutoLive" />
-            Auto-live cascading enabled
-          </label>
-          <div class="services-field">
-            <label class="services-field-label">Max output tokens</label>
-            <input class="services-field-input" type="text" :value="services.ai['max-output-tokens']" disabled />
-          </div>
-          <div v-for="(provider, i) in liveProviders" :key="i" class="services-provider-row">
-            <ServicesProviderCard
-              class="services-provider-row-card"
-              :provider="provider"
-              :usage-today="aiUsage.today[providerLabel(provider)] ?? null"
-              :usage-today-cache-read="aiUsage.today_cache_read[providerLabel(provider)] ?? null"
-              :cache-read-ratio="aiUsage.cache_read_ratio[providerLabel(provider)] ?? null"
-            />
-            <StatusToggleButton
-              :status="isProviderActive(i) ? 'running' : 'manually_paused'"
-              :disabled="isProviderActive(i) || modelSelector().selectionLoading.value"
-              :title="providerStatusTitle(i)"
-              @click="selectModelWithConfirm(i)"
-            />
-          </div>
-        </div>
+          <div v-show="activeTab === 'ai'" class="services-panel">
+            <div class="services-ai-subtabs">
+              <button
+                v-for="subtab in AI_SUBTABS"
+                :key="subtab.id"
+                type="button"
+                class="services-ai-subtab-btn"
+                :class="{ 'services-ai-subtab-btn-active': aiSubTab === subtab.id }"
+                @click="aiSubTab = subtab.id"
+              >{{ subtab.label }}</button>
+            </div>
 
-        <div v-show="activeTab === 'database'" class="services-panel">
-          <ServicesFieldList :section="services.database" />
+            <div v-show="aiSubTab === 'configuration'" class="services-ai-subpanel">
+              <p v-if="activeDescription" class="services-tab-description">{{ activeDescription }}</p>
+              <div class="services-field">
+                <label class="services-field-label">Max output tokens</label>
+                <input class="services-field-input" type="text" :value="services.ai['max-output-tokens']" disabled />
+              </div>
+              <ServicesFieldList :section="services.chat" :skip="CHAT_FIELDS_KEPT_IN_CHAT" />
+            </div>
+
+            <div v-show="aiSubTab === 'providers'" class="services-ai-subpanel">
+              <label class="services-checkbox-field services-checkbox-field-active">
+                <input type="checkbox" :checked="modelSelector().auto.value" @click.prevent="toggleAutoLive" />
+                Auto-live cascading enabled
+              </label>
+              <div v-for="(provider, i) in liveProviders" :key="i" class="services-provider-row">
+                <ServicesProviderCard
+                  class="services-provider-row-card"
+                  :provider="provider"
+                  :usage-today="aiUsage.today[providerLabel(provider)] ?? null"
+                  :usage-today-cache-read="aiUsage.today_cache_read[providerLabel(provider)] ?? null"
+                  :cache-read-ratio="aiUsage.cache_read_ratio[providerLabel(provider)] ?? null"
+                />
+                <StatusToggleButton
+                  :status="isProviderActive(i) ? 'running' : 'manually_paused'"
+                  :disabled="isProviderActive(i) || modelSelector().selectionLoading.value"
+                  :title="providerStatusTitle(i)"
+                  @click="selectModelWithConfirm(i)"
+                />
+              </div>
+            </div>
+
+            <div v-show="aiSubTab === 'observability'" class="services-ai-subpanel">
+              <div v-if="liveProviders.length && aiUsage.history.length >= 2" class="services-ai-usage-chart">
+                <TrendLineChart :history="aiUsage.history" :provider-labels="aiProviderLabels">
+                  <template #value="{ value }">{{ Math.round(value).toLocaleString() }} tokens</template>
+                </TrendLineChart>
+              </div>
+              <div v-if="liveProviders.length && aiUsage.history.length >= 2" class="services-ai-usage-chart">
+                <TrendLineChart :history="aiLatencyHistory" :markers="aiProviderChanges" :provider-labels="aiLatencyLabels">
+                  <template #value="{ value }">{{ value.toFixed(2) }} s</template>
+                </TrendLineChart>
+              </div>
+              <div v-if="liveProviders.length && aiUsage.error_history.length >= 2" class="services-ai-usage-chart">
+                <TrendLineChart :history="aiUsage.error_history" :provider-labels="aiErrorOutcomeLabels">
+                  <template #value="{ value }">{{ value }} {{ value === 1 ? 'error' : 'errors' }}</template>
+                </TrendLineChart>
+              </div>
+            </div>
+          </div>
+
+          <div v-show="activeTab === 'database'" class="services-panel">
+            <ServicesFieldList :section="services.database" />
+
+            <component
+              v-for="entry in servicesTabActions.filter((e) => e.tab === 'database')"
+              :key="entry.id"
+              :is="entry.component"
+            />
+          </div>
 
           <component
-            v-for="entry in servicesTabActions.filter((e) => e.tab === 'database')"
-            :key="entry.id"
-            :is="entry.component"
+            v-for="tab in contributedTabs"
+            :key="tab.id"
+            :is="tab.component"
+            v-show="activeTab === tab.id"
+            :section="services[tab.id]"
           />
-        </div>
-
-        <component
-          v-for="tab in contributedTabs"
-          :key="tab.id"
-          :is="tab.component"
-          v-show="activeTab === tab.id"
-          :section="services[tab.id]"
-        />
-      </template>
+        </template>
+      </div>
+    </ExplorerSplitView>
     </div>
   </div>
 </template>
@@ -292,41 +359,17 @@ function providerStatusTitle(index) {
   margin-right: 0.5rem;
 }
 
-.services-tabs {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.5rem 1.25rem 0;
-  border-bottom: 1px solid #ddd;
-  flex-shrink: 0;
-}
-
-.services-tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.45rem 0.9rem;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: #666;
-}
-
 .services-tab-ai-icon {
   flex-shrink: 0;
   color: #8b5cf6;
 }
 
-.services-tab-btn:hover {
-  color: #333;
-}
-
-.services-tab-btn-active {
-  color: #2c4d7a;
-  font-weight: 600;
-  border-bottom-color: #4a6fa5;
+.services-workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  padding: 1rem;
+  padding-bottom: calc(1rem + var(--safe-area-bottom));
 }
 
 .services-body {
@@ -334,7 +377,6 @@ function providerStatusTitle(index) {
   min-height: 0;
   overflow-y: auto;
   padding: 1.25rem;
-  padding-bottom: calc(1.25rem + var(--safe-area-bottom));
 }
 
 .services-tab-description {
@@ -448,6 +490,39 @@ function providerStatusTitle(index) {
   color: #2c4d7a;
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.services-ai-subtabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid #ddd;
+  margin: 0 0 0.9rem;
+}
+
+.services-ai-subtab-btn {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: #666;
+}
+
+.services-ai-subtab-btn:hover {
+  color: #333;
+}
+
+.services-ai-subtab-btn-active {
+  color: #2c4d7a;
+  font-weight: 600;
+  border-bottom-color: #4a6fa5;
+}
+
+.services-ai-subpanel {
+  display: flex;
+  flex-direction: column;
 }
 
 .services-sort-btn {

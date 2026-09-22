@@ -17,8 +17,8 @@ def _automaton(signals: list[Signal]) -> Automaton:
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]),
-                "a": State(key="a", ui_label="A", final=True, contextual_prompt="hi")},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
+                "a": State(input_processor="ai", key="a", ui_label="A", final=True, contextual_prompt="hi")},
         general_prompt="",
         signals=signals,
         general_attachments={},

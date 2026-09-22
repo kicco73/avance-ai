@@ -20,6 +20,7 @@ YML = (
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hi\n"
     "    actions:\n"
     "      - name: go\n"
@@ -27,6 +28,7 @@ YML = (
     "        task: |\n"
     "          drive.write('reports/last.md', 'ciao')\n"
     "  b:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: there\n"
 )
 

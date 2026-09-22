@@ -26,14 +26,14 @@ def _automaton(
 ) -> Automaton:
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {
-        "": State(key="", ui_label="", final=False, actions=[init_action]),
+        "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
         "a": State(
-            key="a", ui_label="A", final=not actions_a, contextual_prompt="hi", actions=actions_a,
+            input_processor="ai", key="a", ui_label="A", final=not actions_a, contextual_prompt="hi", actions=actions_a,
             signal_tracking_strategy=strategy_a,
         ),
     }
     if actions_b is not None:
-        states["b"] = State(key="b", ui_label="B", final=not actions_b, contextual_prompt="bye", actions=actions_b)
+        states["b"] = State(input_processor="ai", key="b", ui_label="B", final=not actions_b, contextual_prompt="bye", actions=actions_b)
     return Automaton(
         init_action=init_action, states=states, general_prompt="", signals=signals,
         general_attachments={}, autotracking_on_ai_message=False,

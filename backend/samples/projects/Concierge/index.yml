@@ -15,6 +15,7 @@ states:
         on-exit: chat.notify('From Concierge', 'TTM prototype told me you are doing great. Congrats! Come and see me these days.')
         trigger: 'event.ttm_prototype.state == ''Contemplation'''
     ui-label: Hall
+    input-processor: ai
 env: {}
 project:
   ui-label: My Concierge

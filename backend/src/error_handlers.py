@@ -8,7 +8,7 @@ from http import HTTPStatus
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from ai import AIServiceError
+from system.cascade import ProviderError
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
 
@@ -59,8 +59,14 @@ class ApiErrorHandlers:
         return JSONResponse(status_code=HTTPStatus.FORBIDDEN, content=cls._body(str(exc)))
 
     @classmethod
-    async def ai_service_error(cls, request: Request, exc: AIServiceError) -> JSONResponse:
-        logger.exception("LLMProvider error on %s %s", request.method, request.url.path)
+    async def provider_error(cls, request: Request, exc: ProviderError) -> JSONResponse:
+        """Covers every provider-cascade error — a language model call, a
+        talk/listen call, any future one — in one handler: they all share
+        this shape (system/cascade.py), and Starlette resolves handlers by
+        walking the exception's MRO rather than requiring an exact type
+        match, so a skill's own provider error is covered without this
+        file needing to name that skill."""
+        logger.exception("Provider error on %s %s", request.method, request.url.path)
         return JSONResponse(status_code=exc.status_code, content=cls._body(exc.message, exc.detail))
 
     @classmethod
@@ -79,5 +85,5 @@ class ApiErrorHandlers:
         app.add_exception_handler(PermissionError, cls.permission_error)
         app.add_exception_handler(FileNotFoundError, cls.file_not_found_error)
         app.add_exception_handler(ValueError, cls.value_error)
-        app.add_exception_handler(AIServiceError, cls.ai_service_error)
+        app.add_exception_handler(ProviderError, cls.provider_error)
         app.add_exception_handler(ServiceError, cls.service_error)

@@ -16,8 +16,8 @@ def _automaton(*triggers: str | None) -> Automaton:
     return Automaton(
         init_action=init_action,
         states={
-            "": State(key="", ui_label="", final=False, actions=[init_action]),
-            "a": State(key="a", ui_label="a", final=not actions, contextual_prompt="hi", actions=actions),
+            "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
+            "a": State(input_processor="ai", key="a", ui_label="a", final=not actions, contextual_prompt="hi", actions=actions),
         },
         general_prompt="",
         signals=[],

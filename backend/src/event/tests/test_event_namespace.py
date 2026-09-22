@@ -36,6 +36,7 @@ init-action:
 states:
   a:
     ui-label: A
+    input-processor: ai
     contextual-prompt: hi
 """
 
@@ -52,6 +53,7 @@ init-action:
 states:
   a:
     ui-label: A
+    input-processor: ai
     contextual-prompt: hi
 """
 

@@ -4,7 +4,7 @@ this person has accepted the terms.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 from automaton.automaton import (
     Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload,
@@ -24,9 +24,6 @@ from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .project_import_bundle_job import ProjectImportBundleJob
 
-if TYPE_CHECKING:
-    from ai import AiService
-
 __all__ = ["ProjectService"]
 
 
@@ -36,7 +33,7 @@ class ProjectService(object):
         db: Db, 
         automaton_loader: AutomatonLoader,
         session_manager: SessionManager,
-        ai_service: "AiService | None" = None,
+        ai_service: Any = None,
         project_locks: ProjectLocks | None = None,
         invite_valid_days: int = 7, invite_max_shares: int = 3, whatsapp_number: str | None = None,
         whatsapp_invite_prefix: str = "Invitation code: ",
@@ -104,6 +101,9 @@ class ProjectService(object):
 
     def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
         return self.inspector.get_automaton_and_state_for_session(session_id)
+
+    def get_automaton_and_state_as_recorded(self, session_id: int, state_key: str | None) -> tuple[Automaton, State]:
+        return self.inspector.get_automaton_and_state_as_recorded(session_id, state_key)
 
     def get_automaton_and_state_for_observer(
         self, project_id: str, username: str

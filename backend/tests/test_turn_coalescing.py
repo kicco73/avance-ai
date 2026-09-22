@@ -221,9 +221,11 @@ async def _listening(turn_service, db, session_id):
 async def test_messages_arriving_while_a_turn_generates_are_answered_together_by_the_next_one(turn_service_for):
     """A is already being answered when B and C arrive: A is answered
     alone, and B and C are answered together as ONE user message of two
-    blocks. Accepting is immediate — all three are on disk in arrival
-    order before the first answer exists — and which of them an answer is
-    for is decided when they are accepted (see turn/input_listener.py)."""
+    blocks. Accepting is immediate — all three are in the transcript, in
+    arrival order, before the first answer exists, and none is on disk
+    until the answer that covers it is (see turn/turn_transaction.py) —
+    and which of them an answer is for is decided when they are accepted
+    (see turn/input_listener.py)."""
     provider = _GatedProvider()
     turn_service = turn_service_for(one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider)
     db = turn_service_for.db
@@ -235,8 +237,9 @@ async def test_messages_arriving_while_a_turn_generates_are_answered_together_by
     await _wait_for(provider.first_round_started.is_set)
     await say("B")
     await say("C")
-    await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "user"]) == 3)
-    assert [m["role"] for m in db.get_messages(session_id)] == ["user", "user", "user"]
+    await _wait_for(lambda: len([m for m in turn_service.read_history(session_id) if m["role"] == "user"]) == 3)
+    assert [m["role"] for m in turn_service.read_history(session_id)] == ["user", "user", "user"]
+    assert db.get_messages(session_id) == []
 
     provider.release.set()
     await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "assistant"]) == 2)
@@ -245,7 +248,7 @@ async def test_messages_arriving_while_a_turn_generates_are_answered_together_by
     assert _last_user_content(provider.histories[1]) == ["B", "C"]
     assert len(provider.histories) == 2
     persisted = db.get_messages(session_id)
-    assert [m["role"] for m in persisted] == ["user", "user", "user", "assistant", "assistant"]
+    assert [m["role"] for m in persisted] == ["user", "assistant", "user", "user", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["A", "B", "C"]
 
 
@@ -266,7 +269,7 @@ async def test_the_coalesced_turn_binds_to_its_last_fragment(turn_service_for):
     await _wait_for(provider.first_round_started.is_set)
     await say("B")
     await say("C")
-    await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "user"]) == 3)
+    await _wait_for(lambda: len([m for m in turn_service.read_history(session_id) if m["role"] == "user"]) == 3)
     provider.release.set()
     await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "assistant"]) == 2)
     reloaded = [entry["content"] for entry in db.get_turn_history(session_id, None, None)]
@@ -286,7 +289,7 @@ async def test_the_history_reloaded_afterwards_is_the_one_the_model_was_sent(tur
     await _wait_for(provider.first_round_started.is_set)
     await say("B")
     await say("C")
-    await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "user"]) == 3)
+    await _wait_for(lambda: len([m for m in turn_service.read_history(session_id) if m["role"] == "user"]) == 3)
     provider.release.set()
     await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "assistant"]) == 2)
 

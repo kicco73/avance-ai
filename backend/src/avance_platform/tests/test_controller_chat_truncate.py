@@ -14,11 +14,13 @@ WELCOME_YML = (
     "init-action:\n  target: welcome\n"
     "states:\n"
     "  welcome:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hola\n"
     "    actions:\n"
     "      - name: unit-subjuntive\n"
     "        target: subjuntive\n"
     "  subjuntive:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: som-hi\n"
 )
 

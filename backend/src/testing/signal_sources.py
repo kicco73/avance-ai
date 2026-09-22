@@ -5,22 +5,23 @@ BatchLiteSignalSource is the same batching with an even lighter,
 one-sided transcript (see its own docstring)."""
 from __future__ import annotations
 
+from typing import Any
+
 from turn.sessions.env_for_session import env_for_session
 from db import Db
-from ai import AiService
 from automaton.automaton import Automaton
+from system import bus
+from system.bus import POINT_CORE_SERVICES
 from tracking.definitions import Signals
 from tracking.env import Env
-from tracking.env_prompt_block import EnvPromptBlock
 from tracking.fixed_project_context import FixedProjectContext
-from tracking.prompt import (
-    MemoryBatchPrompt, MemoryPrompt, OutputBatchPrompt, OutputPrompt, Prompt, SignalsBatchPrompt, SignalsPrompt,
-    TextPrompt, build_output_definition_for_names,
-)
 from tracking.tracking_service import TrackingService
-from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from testing.replay_messages import next_assistant_message_id
 from turn.turn_transaction import TurnTransaction
+
+
+def _kit():
+    return bus.collect(POINT_CORE_SERVICES, {})["ai_turn_kit"]
 
 
 class TurnByTurnSignalSource:
@@ -28,7 +29,7 @@ class TurnByTurnSignalSource:
     contextual_prompt — same fidelity as production's auto-tracking, just replayed."""
 
     def __init__(
-        self, ai_service: AiService, tracking_service: TrackingService, db: Db, automaton: Automaton, session_id: int,
+        self, ai_service: Any, tracking_service: TrackingService, db: Db, automaton: Automaton, session_id: int,
         env: Env, messages: list[dict],
     ) -> None:
         self._ai_service = ai_service
@@ -41,6 +42,7 @@ class TurnByTurnSignalSource:
         self.calls_made = 0
 
     async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict, dict]:
+        kit = _kit()
         signal_names = set(self._automaton.tracked_signal_names(current_state))
 
         expected_row = self._db.get_signal_row_by_message(message_id)
@@ -57,18 +59,20 @@ class TurnByTurnSignalSource:
         base_prompt = f"{self._automaton.general_prompt}\n\n{state.contextual_prompt}"
         if signal_definition:
             base_prompt = f"{base_prompt}\n\n{signal_definition}"
-        env_block = EnvPromptBlock.for_state(self._env, self._automaton, state)
+        env_block = kit.EnvPromptBlock.for_state(self._env, self._automaton, state)
         if env_block is not None:
             base_prompt = f"{base_prompt}\n\n{env_block.text()}"
-        output_definition = build_output_definition_for_names(self._automaton, state.output, state.input)
+        output_definition = kit.build_output_definition_for_names(self._automaton, state.output, state.input)
         if output_definition:
             base_prompt = f"{base_prompt}\n\n{output_definition}"
 
-        protocol = TurnProtocolUsingSchema(self._ai_service)
+        protocol = kit.TurnProtocolUsingSchema(self._ai_service)
 
         chat_history = self._build_chat_history(message_id)
-        output_prompt = OutputPrompt(None) if state.output else None
-        prompt = Prompt.chain(output_prompt, SignalsPrompt(None), MemoryPrompt(Env()), TextPrompt(base_prompt))
+        output_prompt = kit.OutputPrompt(None) if state.output else None
+        prompt = kit.Prompt.chain(
+            output_prompt, kit.SignalsPrompt(None), kit.MemoryPrompt(Env()), kit.TextPrompt(base_prompt),
+        )
         signal_values: dict = {}
         stored_memory: dict = {}
         output_values: dict = {}
@@ -131,7 +135,7 @@ class BatchSignalSource(object):
     an earlier design that grew its signal set turn by turn."""
 
     def __init__(
-        self, ai_service: AiService, tracking_service: TrackingService, db: Db, automaton: Automaton, session_id: int,
+        self, ai_service: Any, tracking_service: TrackingService, db: Db, automaton: Automaton, session_id: int,
         env: Env, messages: list[dict],
     ) -> None:
         self._ai_service = ai_service
@@ -156,6 +160,7 @@ class BatchSignalSource(object):
         if all(mid in self._covered for mid in turn_ids):
             return
 
+        kit = _kit()
         signal_names = {s.name for s in self._automaton.signals}
         signal_definition = Signals(FixedProjectContext(self._automaton), self._db).get_definition(signal_names)
 
@@ -164,24 +169,24 @@ class BatchSignalSource(object):
         base_prompt = f"{base_prompt}\n\nStarting memory (read-only context):\n{Env(memory=seed_memory).memory_as_text()}"
         if signal_definition:
             base_prompt = f"{base_prompt}\n\n{signal_definition}"
-        env_block = EnvPromptBlock.for_states(self._env, self._automaton, self._automaton.states.values())
+        env_block = kit.EnvPromptBlock.for_states(self._env, self._automaton, self._automaton.states.values())
         if env_block is not None:
             base_prompt = f"{base_prompt}\n\n{env_block.text()}"
         output_names = {name for state in self._automaton.states.values() for name in state.output}
         input_names = {name for state in self._automaton.states.values() for name in state.input}
-        output_definition = build_output_definition_for_names(self._automaton, output_names, input_names)
+        output_definition = kit.build_output_definition_for_names(self._automaton, output_names, input_names)
         if output_definition:
             base_prompt = f"{base_prompt}\n\n{output_definition}"
         base_prompt = f"{base_prompt}\n\nConversation transcript:\n{self._build_conversation_text(turn_ids)}"
 
-        protocol = TurnProtocolUsingSchema(self._ai_service)
+        protocol = kit.TurnProtocolUsingSchema(self._ai_service)
         chat_history = [{"role": "user", "content": "Produce the structured output described above now."}]
-        output_prompt = OutputBatchPrompt(expected_turns=len(turn_ids)) if output_names else None
-        prompt = Prompt.chain(
+        output_prompt = kit.OutputBatchPrompt(expected_turns=len(turn_ids)) if output_names else None
+        prompt = kit.Prompt.chain(
             output_prompt,
-            SignalsBatchPrompt(None, expected_turns=len(turn_ids)),
-            MemoryBatchPrompt(expected_turns=len(turn_ids)),
-            TextPrompt(base_prompt),
+            kit.SignalsBatchPrompt(None, expected_turns=len(turn_ids)),
+            kit.MemoryBatchPrompt(expected_turns=len(turn_ids)),
+            kit.TextPrompt(base_prompt),
         )
         signals_by_turn: list[dict] = []
         memory_by_turn: list[dict] = []
@@ -216,7 +221,7 @@ class BatchSignalSource(object):
         session = self._db.get_chat_session(self._session_id)
         if session is None or session['datetime_start'] is None:
             return {}
-        return env_for_session(TurnTransaction(self._db, session["id"]), session).memory(until=session['datetime_start'])
+        return env_for_session(TurnTransaction(self._db, session["id"], []), session).memory(until=session['datetime_start'])
 
     def _user_message_ids(self) -> list[int]:
         return [m['id'] for m in self._messages if m['role'] == 'user']

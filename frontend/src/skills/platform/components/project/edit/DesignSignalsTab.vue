@@ -25,7 +25,7 @@ defineExpose({ loadSignals, refresh })
 
 <template>
   <div class="inspector-signals-section">
-    <div v-if="stateKey != null && stateData" class="design-signals-strategy">
+    <div v-if="stateKey != null && stateData?.inputProcessor === 'ai'" class="design-signals-strategy">
       <span class="design-signals-strategy-label">Tracking</span>
       <SegmentedControl
         :model-value="stateData.signalTrackingStrategy"

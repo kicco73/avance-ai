@@ -31,14 +31,17 @@ class TestAddState:
         assert payload["ui_label"] == "New State"
         assert payload["ui_description"] is None
         assert payload["final"] is True
-        assert payload["chat_enabled"] is True
+        assert payload["input_processor"] == "system"
+        assert payload["chat_enabled"] is False
         assert payload["actions"] == []
 
         second = editor.add_state()
         assert second["ui_label"] == "New State 2"
-        assert payload["key"] in builds(editor.serialize()).states
+        built = builds(editor.serialize())
+        assert built.states[payload["key"]].input_processor == "system"
+        assert "input-processor: system" in editor.serialize()
 
-        continuing = make_editor(BASE_YAML + "  state-0:\n    ui-label: Pre-existing\n    contextual-prompt: x\n")
+        continuing = make_editor(BASE_YAML + "  state-0:\n    ui-label: Pre-existing\n    input-processor: ai\n    contextual-prompt: x\n")
         assert continuing.add_state()["key"] == "state-1"
 
 
@@ -227,12 +230,14 @@ init-action:
 states:
   a:
     ui-label: A
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: go-b
         target: b
   b:
     ui-label: B
+    input-processor: ai
     contextual-prompt: there
 """)
         editor.delete_state("a")
@@ -275,6 +280,7 @@ signals:
 states:
   a:
     ui-label: A
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: go-b
@@ -285,6 +291,7 @@ states:
         trigger: signal.foo >= 50 or signal.foo <= 0
   b:
     ui-label: B
+    input-processor: ai
     contextual-prompt: there
 """)
         editor.delete_signal("foo")

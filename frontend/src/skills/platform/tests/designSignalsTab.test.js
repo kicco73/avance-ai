@@ -35,7 +35,7 @@ function segments(host) {
 describe('the design Signals tab', () => {
   it('lists every signal with no relevance filter and marks the ones this state does not track', async () => {
     const { host } = await mount(DesignSignalsTab, {
-      stateKey: 's1', stateData: { signalTrackingStrategy: 'relevant' }, editableFiles: [],
+      stateKey: 's1', stateData: { inputProcessor: 'ai', signalTrackingStrategy: 'relevant' }, editableFiles: [],
     })
 
     expect(host.querySelectorAll('input[type=checkbox]').length).toBe(0)
@@ -48,7 +48,7 @@ describe('the design Signals tab', () => {
     const setStateField = vi.fn()
     const { host, current } = await mount(
       DesignSignalsTab,
-      { stateKey: 's1', stateData: { signalTrackingStrategy: 'relevant' }, editableFiles: [] },
+      { stateKey: 's1', stateData: { inputProcessor: 'ai', signalTrackingStrategy: 'relevant' }, editableFiles: [] },
       { onSetStateField: setStateField },
     )
 
@@ -58,7 +58,7 @@ describe('the design Signals tab', () => {
     host.querySelectorAll('.segmented-control-option')[1].click()
     expect(setStateField).toHaveBeenCalledWith('signal-tracking-strategy', 'all')
 
-    current.value = { stateKey: 's1', stateData: { signalTrackingStrategy: 'all' }, editableFiles: [] }
+    current.value = { stateKey: 's1', stateData: { inputProcessor: 'ai', signalTrackingStrategy: 'all' }, editableFiles: [] }
     await nextTick()
     expect(segments(host).map((s) => s.active)).toEqual([false, true])
 

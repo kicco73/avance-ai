@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, AsyncIterator, Protocol
+from typing import Any, Protocol, Sequence, TYPE_CHECKING
 
-from db import Db
+from db import Db, _utc_iso
 from db.messages import _TIMESTAMP_UNSET
+
+if TYPE_CHECKING:
+    from tracking.actuators import TaskNamespace
 
 OPENING_USER_TURN = {"role": "user", "content": "..."}
 
@@ -17,11 +19,89 @@ class RowHandle(object):
         self.id = id
 
     def __repr__(self) -> str:
-        return f"RowHandle({self.id})"
+        return f"{type(self).__name__}({self.id})"
+
+    def read(self, db: Db) -> dict | None:
+        return db.get_message(self.id) if self.id is not None else None
+
+
+class PendingMessage(RowHandle):
+    __slots__ = (
+        "role", "content", "session_id", "timestamp", "audio_text", "tokens", "cache_read_tokens", "reaction",
+        "answered_by",
+    )
+
+    def __init__(
+        self, role: str, content: str, session_id: int, timestamp: datetime, audio_text: str | None = None,
+        tokens: int | None = None,
+    ) -> None:
+        super().__init__(None)
+        self.role = role
+        self.content = content
+        self.session_id = session_id
+        self.timestamp = timestamp
+        self.audio_text = audio_text
+        self.tokens = tokens
+        self.cache_read_tokens = 0
+        self.reaction: str | None = None
+        self.answered_by: RowHandle | None = None
+
+    def read(self, db: Db) -> dict | None:
+        return db.get_message(self.id) if self.id is not None else self.as_dict()
+
+    def as_dict(self) -> dict:
+        return {
+            'id': self.id, 'role': self.role, 'content': self.content, 'audio_text': self.audio_text,
+            'reaction': self.reaction, 'tokens': self.tokens, 'cache_read_tokens': self.cache_read_tokens,
+            'answered_by': row_id(self.answered_by), 'timestamp': _utc_iso(self.timestamp),
+            'session_id': self.session_id,
+        }
+
+    def land(self, db: Db) -> None:
+        self.id = db.save_message(
+            self.role, self.content, self.session_id, audio_text=self.audio_text, reaction=self.reaction,
+            timestamp=self.timestamp, tokens=self.tokens,
+        )
+        for tokens in filter(None, [self.tokens]):
+            db.set_message_tokens(self.id, tokens, self.cache_read_tokens)
 
 
 def row_id(handle: RowHandle | None) -> int | None:
     return handle.id if handle is not None else None
+
+
+class Inbox(object):
+    def __init__(self, session_id: int) -> None:
+        self._session_id = session_id
+        self._entries: list[PendingMessage] = []
+
+    def accept(self, text: str) -> PendingMessage:
+        entry = PendingMessage("user", text, self._session_id, datetime.utcnow())
+        self._entries.append(entry)
+        return entry
+
+    def pending(self) -> list[dict]:
+        return [entry.as_dict() for entry in self._entries]
+
+    def forget(self, entries: Sequence[RowHandle]) -> None:
+        self._entries = [entry for entry in self._entries if entry not in entries]
+
+
+class Outbox(object):
+    """What the automaton's own scripts wrote for the person and nobody
+    has delivered yet — chat.write's side of the conversation, per
+    session like the Inbox, because the init-action writes outside any
+    exchange and the opening turn is the one that delivers it."""
+
+    def __init__(self) -> None:
+        self._written: list[str] = []
+
+    def write(self, text: str) -> None:
+        self._written.append(text)
+
+    def take(self) -> str:
+        written, self._written = self._written, []
+        return "\n\n".join(written)
 
 
 class TurnDbInterface(Protocol):
@@ -32,7 +112,7 @@ class TurnDbInterface(Protocol):
     def get_message(self, message: RowHandle) -> dict | None: ...
     def get_messages(self, session_id: int, last_n: int | None = None, since: datetime | None = None) -> list[dict]: ...
     def get_turn_history(self, session_id: int, since: datetime | None, token_budget: int | None) -> list[dict]: ...
-    def mark_messages_answered(self, messages: list[RowHandle], assistant_message: RowHandle) -> None: ...
+    def mark_messages_answered(self, messages: Sequence[RowHandle], assistant_message: RowHandle) -> None: ...
     def set_message_reaction(self, message: RowHandle, reaction: str | None) -> dict | None: ...
     def set_message_tokens(self, message: RowHandle, tokens: int, cache_read_tokens: int = 0) -> None: ...
     def has_messages_since(self, session_id: int, since: datetime | None) -> bool: ...
@@ -59,6 +139,7 @@ class TurnDbInterface(Protocol):
     def get_latest_signal_snapshot(self, project_id: str) -> dict | None: ...
     def get_last_transition_timestamp(self, project_id: str, until: datetime | None = None) -> datetime | None: ...
     def get_last_entry_timestamp_for_session(self, session_id: int, state_key: str) -> datetime | None: ...
+    def get_current_state_for_session(self, session_id: int) -> str | None: ...
     def history_cutoff_for_session(self, session_id: int, needs_cutoff: bool) -> datetime | None: ...
     def get_env(self, project_id: str, user: str, until: datetime | None = None) -> dict: ...
     def set_env(self, session_id: int, env: dict, message_id: RowHandle | None = None) -> None: ...
@@ -98,36 +179,33 @@ class TurnDbInterface(Protocol):
 
 
 class TurnTransaction(object):
-    def __init__(self, db: Db, session_id: int) -> None:
+    def __init__(self, db: Db, session_id: int, answering: Sequence[RowHandle]) -> None:
         self._db = db
         self._session_id = session_id
-        self._answering: list[RowHandle] = []
+        self._answering = list(answering)
 
     @property
     def session_id(self) -> int:
         return self._session_id
 
-    def accept(self, text: str) -> RowHandle:
-        return self.save_message("user", text, self._session_id)
+    @property
+    def answering(self) -> Sequence[RowHandle]:
+        return list(self._answering)
 
-    def pending_messages(self) -> list[dict]:
-        return []
+    async def __aenter__(self) -> "TurnTransaction":
+        return self
 
-    @asynccontextmanager
-    async def exchange(self, answering: list[RowHandle]) -> AsyncIterator["TurnTransaction"]:
-        self._answering = list(answering)
-        try:
-            yield self
-        except BaseException:
-            self.discard()
-            raise
-        self.commit()
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        (self.discard if exc_type is not None else self.commit)()
 
     def commit(self) -> None:
-        self._answering = []
+        return None
 
     def discard(self) -> None:
-        self._answering = []
+        return None
+
+    def task_namespace(self, namespace: "TaskNamespace") -> "TaskNamespace":
+        return namespace
 
     def save_message(
         self, role: str, content: str, session_id: int, audio_text: str | None = None, reaction: str | None = None,
@@ -138,7 +216,7 @@ class TurnTransaction(object):
         ))
 
     def get_message(self, message: RowHandle) -> dict | None:
-        return self._db.get_message(message.id) if message.id is not None else None
+        return message.read(self._db)
 
     def get_messages(self, session_id: int, last_n: int | None = None, since: datetime | None = None) -> list[dict]:
         return self._db.get_messages(session_id, last_n=last_n, since=since)
@@ -147,7 +225,7 @@ class TurnTransaction(object):
         history = self._db.get_turn_history(session_id, since, token_budget)
         return history + [dict(OPENING_USER_TURN)] * (not self._answering)
 
-    def mark_messages_answered(self, messages: list[RowHandle], assistant_message: RowHandle) -> None:
+    def mark_messages_answered(self, messages: Sequence[RowHandle], assistant_message: RowHandle) -> None:
         self._db.mark_messages_answered([m.id for m in messages if m.id is not None], _required(assistant_message))
 
     def set_message_reaction(self, message: RowHandle, reaction: str | None) -> dict | None:
@@ -205,6 +283,9 @@ class TurnTransaction(object):
 
     def get_last_entry_timestamp_for_session(self, session_id: int, state_key: str) -> datetime | None:
         return self._db.get_last_entry_timestamp_for_session(session_id, state_key)
+
+    def get_current_state_for_session(self, session_id: int) -> str | None:
+        return self._db.get_current_state_for_session(session_id)
 
     def history_cutoff_for_session(self, session_id: int, needs_cutoff: bool) -> datetime | None:
         return self._db.history_cutoff_for_session(session_id, needs_cutoff)

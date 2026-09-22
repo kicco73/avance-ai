@@ -20,11 +20,13 @@ YML = (
     "init-action:\n  target: a\n  task: task.send_mail(user.email, 'hi')\n"
     "states:\n"
     "  a:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hi\n"
     "    actions:\n"
     "      - name: go\n"
     "        target: b\n"
     "  b:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: there\n"
 )
 
@@ -81,11 +83,13 @@ CHATLESS_FINAL_YML = (
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hi\n"
     "    actions:\n"
     "      - name: go\n"
     "        target: crisis\n"
     "  crisis:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: bye\n"
     "    chat-enabled: false\n"
     "    actions: []\n"
@@ -126,6 +130,7 @@ RESTART_YML = (
     "init-action:\n  target: a\n  task: task.send_mail(user.email, 'hi')\n"
     "states:\n"
     "  a:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hi\n"
     "    actions:\n"
     "      - name: go\n"
@@ -133,6 +138,7 @@ RESTART_YML = (
     "        env:\n"
     "          counter: 5\n"
     "  b:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: there\n"
 )
 

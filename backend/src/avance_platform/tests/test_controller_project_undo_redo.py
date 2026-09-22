@@ -21,7 +21,7 @@ def _zip_of(files: dict[str, str]) -> bytes:
 
 
 def _yml(prompt: str = "hi") -> str:
-    return f"project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: {prompt}\n"
+    return f"project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: {prompt}\n"
 
 
 MINIMAL_YML = _yml()
@@ -143,6 +143,7 @@ TWO_STATE_YML = (
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hi\n"
     "    actions:\n"
     "      - name: go\n"
@@ -150,6 +151,7 @@ TWO_STATE_YML = (
     "        ui-button: Go\n"
     "        target: b\n"
     "  b:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: there\n"
 )
 
@@ -167,7 +169,7 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     assert resp.status_code == 200, resp.text
     session_id = session_of(enter_chat(client, "proj2"))
     assert chat_action(client, session_id, "go")["state"]["key"] == "b"
-    yml_v2 = TWO_STATE_YML + "  c:\n    contextual-prompt: extra\n"
+    yml_v2 = TWO_STATE_YML + "  c:\n    input-processor: ai\n    contextual-prompt: extra\n"
     resp = client.put("/api/skills/platform/projects/proj2/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
     assert client.get("/api/core/state").json()["key"] == "b"

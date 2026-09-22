@@ -43,6 +43,7 @@ sources:
 {source}
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 {state}
 """

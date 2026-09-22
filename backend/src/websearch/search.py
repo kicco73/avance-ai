@@ -5,12 +5,9 @@ import io
 import json
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Any
 
 from .crawler import CrawledPage, WebCrawler
-
-if TYPE_CHECKING:
-    from ai import AiService
 
 MAX_CORPUS_CHARS = 60000
 MIN_COLUMNS = 1
@@ -37,7 +34,7 @@ class WebSearch:
     in one call; the three steps it composes are public so a caller that
     reports progress can run them one at a time."""
 
-    def __init__(self, ai_service: "AiService", crawler: WebCrawler | None = None) -> None:
+    def __init__(self, ai_service: Any, crawler: WebCrawler | None = None) -> None:
         self._ai_service = ai_service
         self._crawler = crawler if crawler is not None else WebCrawler()
 

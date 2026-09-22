@@ -10,6 +10,7 @@ from automaton.builder.build_cursor import BuildCursor
 from automaton.build_error import AutomatonBuildError
 from automaton.env_types import ENV_TYPE_NAMES, STORED_ENV_TYPES, UNDECLARED_ENV_TYPE
 from automaton.identifier_registry import IdentifierRegistry
+from automaton.input_processor_kind import AiKind, kind_of
 from automaton.builder.project_metadata import ProjectMetadata, load_yaml, peek_declared_revision, read_declared_project_id
 from automaton.trigger_namespaces import TriggerNamespaces
 from typing import Any
@@ -42,13 +43,23 @@ LEGACY_STATE_SOURCE_FIELDS = {
 
 REMOVED_STATE_SOURCE_FIELDS = {"ai-may-write-sources"}
 
+REMOVED_STATE_FIELDS = {
+    "fixed-message": (
+        "State '{key}': 'fixed-message' is no longer a field — set 'input-processor: system' and write "
+        "the message with chat.write(...) in the on-exit of every action that reaches this state."
+    ),
+}
+
 STATE_FIELDS = {
-    "ui-label", "ui-description", "contextual-prompt", "fixed-message", "actions",
+    "ui-label", "ui-description", "contextual-prompt", "input-processor", "actions",
     "attachments", "chat-enabled", "history-cutoff", "reactions-enabled",
     "transition-log-level", "signal-tracking-strategy", "ai-memory-scope", "input", "output",
-} | {field for field, _ in STATE_SOURCE_FIELDS} | set(LEGACY_STATE_SOURCE_FIELDS) | REMOVED_STATE_SOURCE_FIELDS
+} | {field for field, _ in STATE_SOURCE_FIELDS} | set(LEGACY_STATE_SOURCE_FIELDS) | REMOVED_STATE_SOURCE_FIELDS \
+  | set(REMOVED_STATE_FIELDS)
 
-STATE_SUGGESTED_FIELDS = STATE_FIELDS - set(LEGACY_STATE_SOURCE_FIELDS) - REMOVED_STATE_SOURCE_FIELDS
+STATE_SUGGESTED_FIELDS = (
+    STATE_FIELDS - set(LEGACY_STATE_SOURCE_FIELDS) - REMOVED_STATE_SOURCE_FIELDS - set(REMOVED_STATE_FIELDS)
+)
 
 SIGNAL_FIELDS = {"ui-label", "ui-description", "definition", "attachments"}
 REACTION_FIELDS = {"ui-label", "ui-description", "definition"}
@@ -250,17 +261,12 @@ class AutomatonBuilder(object):
             action_names_by_ui_label[action.ui_label] = action.name
             actions.append(action)
         self._at(line, f"states.{key}")
-        fixed_message = raw_state.get("fixed-message")
+        for removed_field, message in REMOVED_STATE_FIELDS.items():
+            for _ in filter(None, [removed_field in raw_state]):
+                raise ValueError(message.format(key=key))
         contextual_prompt = raw_state.get("contextual-prompt")
-
-        if fixed_message and contextual_prompt is not None:
-            raise ValueError(
-                f"State '{key}': 'fixed-message' and 'contextual-prompt' are mutually "
-                "exclusive — a fixed-message state never generates free-form content, "
-                "so it has no use for a contextual-prompt."
-            )
-        if not fixed_message and contextual_prompt is None:
-            raise ValueError(f"State '{key}': 'contextual-prompt' is required unless 'fixed-message' is set.")
+        kind = kind_of(key, raw_state.get("input-processor"))
+        kind.check_prompt(key, contextual_prompt)
 
         transition_log_level = raw_state.get("transition-log-level", "WARNING")
         if transition_log_level not in VALID_LOG_LEVELS:
@@ -289,16 +295,16 @@ class AutomatonBuilder(object):
             key=key,
             ui_label=raw_state.get("ui-label", key),
             final=len(actions) == 0,
+            input_processor=kind.name,
             ui_description=raw_state["ui-description"].strip() if raw_state.get("ui-description") else None,
             contextual_prompt=contextual_prompt.strip() if contextual_prompt else None,
             actions=actions,
-            fixed_message=fixed_message.strip() if fixed_message else None,
             transition_log_level=transition_log_level,
             signal_tracking_strategy=signal_tracking_strategy,
             ai_memory_scope=ai_memory_scope,
             attachments=archives.require(raw_state.get("attachments", []), f"state '{key}'"),
             history_cutoff=raw_state.get("history-cutoff", False),
-            chat_enabled=raw_state.get("chat-enabled", True),
+            chat_enabled=kind.chat_enabled(raw_state.get("chat-enabled", True)),
             reactions_enabled=raw_state.get("reactions-enabled", False),
             ai_may_read_sources=tuple(raw_source_lists["ai-may-read-sources"]),
             ai_must_read_sources=tuple(raw_source_lists["ai-must-read-sources"]),
@@ -437,7 +443,9 @@ class AutomatonBuilder(object):
 
         init_action = self._build_init_action(raw)
         states: dict[str, State] = {}
-        states[""] = State(key="", ui_label="", final=False, ui_description="", actions=[init_action])
+        states[""] = State(
+            key="", ui_label="", final=False, input_processor=AiKind.name, ui_description="", actions=[init_action],
+        )
 
         state_keys_by_ui_label: dict[str, str] = {}
         for key, raw_state in raw_states.items():
@@ -466,7 +474,7 @@ class AutomatonBuilder(object):
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
             self._validator.check_state(
-                context_key, state, set(raw_states.keys()), registry, env_keys, sources, archives, namespaces,
+                context_key, state, states, registry, env_keys, sources, archives, namespaces,
             )
 
         general_attachments = archives.require(raw.get('attachments', []), for_field="global")

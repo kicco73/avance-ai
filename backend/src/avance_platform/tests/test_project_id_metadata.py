@@ -10,7 +10,7 @@ from db.db import Db
 
 pytestmark = pytest.mark.contract
 
-MINIMAL = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+MINIMAL = "init-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
 
 
 def _upload(client, yml: str):

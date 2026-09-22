@@ -80,7 +80,7 @@ annotating one. Even reading a transcript opens nothing
 | `state.changed` | `{state, from_state, new_state, triggered_action}` — said only **when it moves**: a reader keeps the last one it was told. `from_state` is where it moved from, so a listener can tell a real transition (`from_state != new_state`) from a self-loop |
 | `env.changed` | `{key, value}` — one env key an action wrote, one message per key: whoever cares that a key moved does not care how many others moved with it. Same envelope as `state.changed` |
 | `state.buttons` | `{actions}` — what can be done now, and the **only** place the choices are: no state payload carries them. The pressable actions first, then — for every `list` env key a trigger of the state reads — one entry per current option, named `choice:<key>:<index>` with the option as its `ui_button`/`ui_label` and `target` `""`; pressing one sends that `name` back as `input.button` unchanged |
-| `turn.translation` | `{key, text, translation, src_lang, dst_lang}` — one label whoever contributed to `turn.translatable_labels` asked translated, translated by the same `translations` channel a turn's own manual button labels ride (`tracking/tracking_processor.py`). `key` is the context the contributor gave (an env key's name, say), returned unchanged so a listener can match its own contribution. `src_lang`/`dst_lang` are this turn's own answer from `LangPrompt` (`tracking/prompt.py`) — the full locale tag (IETF BCP 47, e.g. `it-IT`) the labels were authored in and the one the user's last message is written in; empty when the model's answer was missing, unparseable, or not a full locale tag (a bare language code is rejected too). Neither is persisted anywhere: a conversation's language is free to change turn to turn, so this is asked fresh every time, never assumed from an earlier turn. One message per label, same reason `env.changed` is one per key: whoever asked for one label does not care about the others. Published once the reply is generated, so whoever contributed reads the answer off the Bus instead of it being threaded back as a return value. Never reaches a client |
+| `turn.translation` | `{key, text, translation, src_lang, dst_lang}` — one label whoever contributed to `turn.translatable_labels` asked translated, translated by the same `translations` channel a turn's own manual button labels ride (`ai/turn/tracking_processor.py`). `key` is the context the contributor gave (an env key's name, say), returned unchanged so a listener can match its own contribution. `src_lang`/`dst_lang` are this turn's own answer from `LangPrompt` (`ai/turn/prompt.py`) — the full locale tag (IETF BCP 47, e.g. `it-IT`) the labels were authored in and the one the user's last message is written in; empty when the model's answer was missing, unparseable, or not a full locale tag (a bare language code is rejected too). Neither is persisted anywhere: a conversation's language is free to change turn to turn, so this is asked fresh every time, never assumed from an earlier turn. One message per label, same reason `env.changed` is one per key: whoever asked for one label does not care about the others. Published once the reply is generated, so whoever contributed reads the answer off the Bus instead of it being threaded back as a return value. Never reaches a client |
 
 ## Notifications and tools
 
@@ -121,6 +121,13 @@ whatever went wrong: a refusal the turn could name carries its `code`, and an
 exception that escapes the turn is turned into `output.error` (`message`
 `Unexpected server error.`) by `turn/outbound.py`'s `publishing`, the seam
 every exchange runs inside — no exchange ends in silence.
+
+An exchange that ends in `output.error` persisted nothing. What a person
+sent, the transition it decided, the env it wrote, the reply it was writing
+— all of it lived in the exchange's own `TurnTransaction`
+(`turn/turn_transaction.py`, `turn/atomic_turn_transaction.py`), the DB as
+the turn sees it, and is dropped with the error. The person repeats what
+they did: the text with the resend control, the button by pressing it again.
 
 A reader does not wait for a final payload; it assembles what was
 published. `conftest.chat_turn` does the same, so a test reads what a
@@ -322,10 +329,11 @@ written here.
 | `core.services` | the assembled core | `main.py` |
 | `automaton.loader` | which loader answers "give me this automaton". Nobody claiming it is itself an answer — see `project/archive/loader_choice.py` | `main.py` |
 | `project.published` | the report a publish answers with, once whoever can turn a revision into a package has added what it made of this one | the publishing service |
-| `turn.spoken_reply` | `SpokenReply` — `want()` from whoever runs the interface, `ask()` from whoever can speak | `tracking/tracking_processor.py` |
+| `turn.spoken_reply` | `SpokenReply` — `want()` from whoever runs the interface, `ask()` from whoever can speak | `ai/turn/tracking_processor.py` |
 | `session.services` | `SessionServices` — `offers(name, installed)`: what each service can do for **one** conversation. The session's own project can only narrow the server's switch | `turn/turn_service.py` |
 | `trigger.namespaces` | `TriggerNamespaces` — `declare(namespace)`: one more root name a `trigger:` may reference, with what it checks at build time, what it resolves to at run time and what the editor lists for it (`automaton/trigger_namespaces.py`) | `automaton/automaton_builder.py`, `tracking/evaluation_scope.py`, `project/inspector.py` |
-| `turn.translatable_labels` | `TranslatableLabels` — `contribute(key, text)`: one more label, not an `Action.ui_button`, that the turn's own translation call should also cover; answered with `{state_key, session_id}` in hand. The result comes back as `turn.translation`, one message per label | `turn/turn_service.py` (the current `list` env key options), asked by `tracking/tracking_processor.py` |
+| `turn.translatable_labels` | `TranslatableLabels` — `contribute(key, text)`: one more label, not an `Action.ui_button`, that the turn's own translation call should also cover; answered with `{state_key, session_id}` in hand. The result comes back as `turn.translation`, one message per label | `turn/turn_service.py` (the current `list` env key options), asked by `ai/turn/tracking_processor.py` |
+| `turn.input_processors` | `dict[str, type[InputProcessor]]` — one more `input-processor:` kind a state may declare (`turn/input_processor.py`'s own `InputProcessor` subclasses; keyed by `.name`). Core seeds it with `system` alone; the ai skill's `skill.py` contributes `ai`, so a build without it still validates `input-processor: ai` at build time (`automaton/input_processor_kind.py`) but has nothing that answers a state declaring it — `TurnService.processor_for` raises a clear, typed error instead of a `KeyError` | `turn/turn_service.py`, `project/inspector.py` |
 
 ## Queued work
 

@@ -18,11 +18,13 @@ TWO_STATE_YML = (
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hi\n"
     "    actions:\n"
     "      - name: go\n"
     "        target: b\n"
     "  b:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: there\n"
 )
 

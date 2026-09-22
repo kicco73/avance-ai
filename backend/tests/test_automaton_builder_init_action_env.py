@@ -28,6 +28,7 @@ init-action:
     greeting: "'hi'"
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 """)
     assert automaton.init_action.env == {"greeting": "'hi'"}
@@ -46,6 +47,7 @@ init-action:
     a: "99"
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 """)
     assert automaton.init_action.env == {"a": "99"}
@@ -61,6 +63,7 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 """)
     assert automaton.init_action.env is None
@@ -75,6 +78,7 @@ init-action:
     never_declared: "1"
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 """)
 
@@ -91,5 +95,6 @@ init-action:
     a: "'one'"
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 """)

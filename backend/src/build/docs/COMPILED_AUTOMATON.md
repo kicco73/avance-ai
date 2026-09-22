@@ -146,8 +146,13 @@ source's `ai_definition`. These are the part of a compiled product a
 human still reads, tunes and translates, and the part that changes
 without changing behaviour — editing one is a one-file diff instead of a
 diff inside generated control flow. It is generated like everything else:
-recompiling overwrites it. `fixed_message` stays inline; it is a canned
-reply for the user, not something the model reads.
+recompiling overwrites it.
+
+A package compiled before a `State` field existed builds `State(...)`
+without it, and a field with no default (`input_processor`) makes that a
+`TypeError` at import. The boot pass that settles stored revisions
+(`project/archive/index_yml_migration.py`) discards every package when it
+rewrites one; a product already delivered is rebuilt.
 
 **`data/`** holds the archive files, verbatim. Nothing is loaded at
 import: `AUTOMATON.archives_dir` points here, and the platform's own

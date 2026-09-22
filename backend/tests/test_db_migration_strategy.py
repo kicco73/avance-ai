@@ -141,10 +141,11 @@ def test_upgrade_readds_a_dropped_invite_column_and_preserves_data(tmp_path):
 
 
 def test_upgrade_renames_a_column_back_and_adds_new_not_null_default_columns_via_the_generic_paths_preserving_data(tmp_path):
-    """AiTokenUsage.cache_read_tokens/cache_creation_tokens are new,
+    """AiUsage.cache_read_tokens/cache_creation_tokens/duration are new,
     NOT NULL-with-default columns (see db/models.py) — added via the same
     generic add-column path as any other new column, never a bespoke
-    migration script."""
+    migration script; the table itself was AiTokenUsage, renamed in
+    place (SchemaMigrator._TABLE_RENAMES) rather than dropped."""
     renamed = tmp_path / "renamed.db"
     Db(_url(renamed))
     _run_sql(renamed, [
@@ -161,18 +162,19 @@ def test_upgrade_renames_a_column_back_and_adds_new_not_null_default_columns_via
     tokens = tmp_path / "tokens.db"
     Db(_url(tokens))
     _run_sql(tokens, [
-        "DROP TABLE AiTokenUsage",
+        "DROP TABLE AiUsage",
         "CREATE TABLE AiTokenUsage (id INTEGER PRIMARY KEY, provider_label TEXT, timestamp TEXT, "
         "input_tokens INTEGER, output_tokens INTEGER)",
         "INSERT INTO AiTokenUsage (provider_label, timestamp, input_tokens, output_tokens) "
         "VALUES ('anthropic/claude-x', '2026-01-01 00:00:00', 100, 20)",
     ])
     Db(_url(tokens), migration_strategy="upgrade")
-    assert {"cache_read_tokens", "cache_creation_tokens"} <= _columns(tokens, "AiTokenUsage")
+    assert _query(tokens, "SELECT name FROM sqlite_master WHERE name LIKE 'Ai%Usage'") == [("AiUsage",)]
+    assert {"cache_read_tokens", "cache_creation_tokens", "duration", "time_to_first_chunk", "outcome"} <= _columns(tokens, "AiUsage")
     assert _query(
         tokens,
-        "SELECT provider_label, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens FROM AiTokenUsage",
-    ) == [("anthropic/claude-x", 100, 20, 0, 0)]
+        "SELECT provider_label, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, duration FROM AiUsage",
+    ) == [("anthropic/claude-x", 100, 20, 0, 0, 0.0)]
 
 
 def test_upgrade_survives_the_leftovers_of_an_interrupted_column_rebuild(tmp_path):

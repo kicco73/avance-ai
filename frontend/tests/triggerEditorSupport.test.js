@@ -3,7 +3,7 @@ import { EditorState } from '@codemirror/state'
 import { CompletionContext } from '@codemirror/autocomplete'
 import { installTriggerNamespaces } from '../src/triggerNamespaces.js'
 import {
-  completeIdentifiers, completionInfo, excludingNamespaces, isProxyNamespace, namespaceOf, namespaceColor
+  completeIdentifiers, completionInfo, excludingNamespaces, excludingIdentifiers, isProxyNamespace, namespaceOf, namespaceColor
 } from '../src/triggerEditorSupport.js'
 
 const contributed = {
@@ -220,5 +220,18 @@ describe('excludingNamespaces', () => {
     expect(filtered.task).toBeDefined()
     expect(filtered.session).toBeUndefined()
     expect(filtered['session.metric']).toBeUndefined()
+  })
+})
+
+describe('excludingIdentifiers', () => {
+  it('drops one identifier from its own namespace, leaving the rest and every other namespace untouched', () => {
+    const registry = { ...REGISTRY, chat: { write: 'Writes the reply.', notify: 'Shows a toast.' } }
+    const filtered = excludingIdentifiers(registry, ['chat.write'])
+    expect(Object.keys(filtered.chat)).toEqual(['notify'])
+    expect(filtered.signal).toBe(registry.signal)
+
+    expect(excludingIdentifiers(registry, [])).toBe(registry)
+    expect(excludingIdentifiers(registry, undefined)).toBe(registry)
+    expect(excludingIdentifiers(registry, ['unknown.thing'])).toEqual(registry)
   })
 })

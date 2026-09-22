@@ -19,6 +19,8 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from ai import turn_kit
+from ai.ai_input_processor import AiInputProcessor
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from turn.turn_service import TurnService
@@ -32,7 +34,7 @@ from db.models import User
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from system import bus, skills
-from system.bus import POINT_CORE_SERVICES
+from system.bus import POINT_CORE_SERVICES, POINT_INPUT_PROCESSORS
 from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from scheduler import SchedulerService
 from metrics.metric_service import MetricService
@@ -373,8 +375,16 @@ def _reset_ephemeral_env_registry():
 @pytest.fixture(autouse=True)
 def _reset_bus():
     """bus's listener registry is a process-global, like events' — a
-    decoder registered by one test must not answer another's messages."""
+    decoder registered by one test must not answer another's messages.
+
+    The `ai` input processor is seeded back in on every reset — the same
+    default every test had before it became a skill contribution
+    (turn/input_processor.py's own POINT_INPUT_PROCESSORS): most tests
+    still assume a state declaring `input-processor: ai` gets answered. A
+    test of the ai skill's own absence can withdraw it explicitly."""
     bus._reset_for_tests()
+    bus.contribute(POINT_INPUT_PROCESSORS, lambda registry: registry.update({"ai": AiInputProcessor}))
+    bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({"ai_turn_kit": turn_kit.DEFAULT}))
     yield
     bus._reset_for_tests()
 

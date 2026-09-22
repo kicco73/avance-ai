@@ -27,6 +27,7 @@ states:
         ui-button: "Human agent"
         target: handoff_human
         trigger: "signal.hostility > 70 or signal.legal_threat > 70"
+    input-processor: ai
   locate_booking:
     ui-label: "Booking lookup"
     ui-description: "Request the PNR or flight details."
@@ -46,6 +47,7 @@ states:
         ui-label: "Booking not found"
         target: booking_not_found
         trigger: "signal.pnr_provided and not signal.pnr_format_valid"
+    input-processor: ai
   verify_entitlement:
     ui-label: "Entitlement verification"
     ui-description: "Identity and purchase channel check."
@@ -69,6 +71,7 @@ states:
         ui-button: "I am not the purchaser"
         target: not_entitled
         trigger: "not signal.is_purchaser and signal.confidence > 80"
+    input-processor: ai
   assess_eligibility:
     ui-label: "Eligibility assessment"
     ui-description: "Check the cause and fare conditions."
@@ -89,6 +92,7 @@ states:
         ui-label: "Not eligible"
         target: not_eligible
         trigger: "signal.cause_carrier < 30 and not signal.within_ticket_validity"
+    input-processor: ai
   compute_amount:
     ui-label: "Amount calculation"
     ui-description: "Define the breakdown and the refund due."
@@ -101,6 +105,7 @@ states:
         task: ''
         trigger: '1'
     chat-enabled: true
+    input-processor: ai
   propose:
     ui-label: "Proposal and consent"
     ui-description: "Present the offer to the customer."
@@ -119,6 +124,7 @@ states:
         trigger: "signal.user_disputes_amount"
         task: |
           task.send_mail(user.email, 'We have received your dispute regarding the proposed Vueling refund amount. Our team will review your case.')
+    input-processor: ai
   collect_payout:
     ui-label: "Payout details collection"
     ui-description: "Enter and validate the payment details."
@@ -132,33 +138,43 @@ states:
         trigger: "signal.payout_method_card > 50 or (signal.iban_valid and signal.payout_confirmed)"
         task: |
           task.send_mail(user.email, 'Your Vueling refund has been successfully issued.')
+    input-processor: ai
   pending_approval:
     chat-enabled: false
     fixed-message: "Your refund request has been successfully processed and forwarded. Thank you for choosing Vueling."
+    input-processor: ai
   out_of_scope:
     chat-enabled: false
     fixed-message: "Your request falls outside the scope of automatic refunds. Please contact customer support through the dedicated channels."
+    input-processor: ai
   booking_not_found:
     chat-enabled: false
     fixed-message: "We could not find a booking matching the details provided. Please check the PNR or the route and try again."
+    input-processor: ai
   redirect_agency:
     chat-enabled: false
     fixed-message: "Since the ticket was purchased through an agency or an intermediary, please contact them directly to handle the refund."
+    input-processor: ai
   not_entitled:
     chat-enabled: false
     fixed-message: "Sorry, the request can only be submitted by the registered purchaser of the booking."
+    input-processor: ai
   not_eligible:
     chat-enabled: false
     fixed-message: "Based on the fare conditions and the stated cause, the ticket is not refundable."
+    input-processor: ai
   blocked_chargeback:
     chat-enabled: false
     fixed-message: "There is already an active dispute (chargeback) on this transaction. The automatic refund process is temporarily blocked."
+    input-processor: ai
   dispute_amount:
     chat-enabled: false
     fixed-message: "We have recorded your dispute regarding the proposed amount. An agent will take charge of your report."
+    input-processor: ai
   handoff_human:
     chat-enabled: false
     fixed-message: "We are connecting you with one of our human agents. Please wait a moment."
+    input-processor: ai
 signals:
   intent_refund:
     ui-label: "Refund intent"

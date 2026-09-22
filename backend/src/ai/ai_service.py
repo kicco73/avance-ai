@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import threading
@@ -12,7 +13,12 @@ import partial_json_parser
 from turn.errors import TurnServiceError
 from ai.llm_provider import (
 	AIServiceConfig,
+	AIServiceError,
 	AIServiceProviderOutputTruncatedError,
+	AIServiceProviderPermanentError,
+	AIServiceProviderRateLimitedError,
+	AIServiceProviderUnavailableError,
+	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
 	SystemPrompt,
@@ -332,17 +338,17 @@ class AiService(object):
 	def is_provider_with_schema(self) -> bool:
 		return isinstance(self._current_leaf_provider, LLMProvider)
 
-	def _tap_token_usage(self, on_metadata: MetadataCallback, provider_label: str) -> MetadataCallback:
+	def _tap_usage(self, on_metadata: MetadataCallback, provider_label: str) -> "_UsageTap | _UntappedMetadata":
 		"""Wraps `on_metadata` to also persist input_tokens/output_tokens/
 		cache_read_tokens/cache_creation_tokens (see each LLMProvider's own
-		on_metadata calls) as one AiTokenUsage row once both input_tokens
-		and output_tokens have arrived — a no-op passthrough when this
-		AiService wasn't built with a `db` (most tests). `provider_label`
-		is the entry-time active provider, not re-read live off the
-		cascade's own pointer: a *different* concurrent call through the
-		same cascade could have already advanced that pointer past a
-		failover by the time these events actually fire. `captured` is
-		reset right after each write, not just left to accumulate: a
+		on_metadata calls) plus the call's duration as one AiUsage row once
+		both input_tokens and output_tokens have arrived — a passthrough
+		when this AiService wasn't built with a `db` (most tests).
+		`provider_label` is the entry-time active provider, not re-read
+		live off the cascade's own pointer: a *different* concurrent call
+		through the same cascade could have already advanced that pointer
+		past a failover by the time these events actually fire. `captured`
+		is reset right after each write, not just left to accumulate: a
 		tool-calling turn fires this same tap once per round (see
 		generate_stream_with_metadata's own loop below), and without the
 		reset, round 2's own input_tokens would pair with round 1's still-
@@ -353,24 +359,12 @@ class AiService(object):
 		generate_stream_with_schema), so both are already in `captured`
 		by the time the pair completes and the row is written; a provider
 		that emits neither defaults both to 0 here rather than never
-		writing the row at all."""
+		writing the row at all. The duration runs from `round_started()`,
+		called right before each provider call, so a tool round's own
+		tool execution never counts against the next round."""
 		if self._db is None:
-			return on_metadata
-		db = self._db
-		captured: dict[str, int] = {}
-
-		def tap(name: str, value: Any) -> None:
-			if name in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"):
-				captured[name] = value
-				if "input_tokens" in captured and "output_tokens" in captured:
-					db.record_ai_token_usage(
-						provider_label, captured["input_tokens"], captured["output_tokens"],
-						captured.get("cache_read_tokens", 0), captured.get("cache_creation_tokens", 0),
-					)
-					captured.clear()
-			on_metadata(name, value)
-
-		return tap
+			return _UntappedMetadata(on_metadata)
+		return _UsageTap(on_metadata, self._db, provider_label)
 
 	def _enforce_input_budget(
 		self, system_prompt: "str | SystemPrompt", turn_history: list[dict[str, Any]], tool_set: "ToolSet",
@@ -422,98 +416,108 @@ class AiService(object):
 		ToolCallsRequested streams outward, so the partial-JSON parser
 		below never has to reason about a tool-only interruption."""
 		provider_label = self._current_provider_label
-		tapped_on_metadata = self._tap_token_usage(on_metadata, provider_label)
+		tapped_on_metadata = self._tap_usage(on_metadata, provider_label)
 
-		if tool_set is None:
-			logger.info(f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())}")
+		try:
+			if tool_set is None:
+				logger.info(f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())}")
+				tapped_on_metadata.round_started()
+				response_stream = self._deadline.streaming(self._active_provider.generate_stream_with_schema(
+					system_prompt, history, schema=schema, on_metadata=tapped_on_metadata,
+				), provider_label) # type: ignore
+				async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
+					yield chunk
+				return
+			turn_history = list(history)
+			tool_specs = tool_set.specs()
+			required_specs = tool_set.required_specs()
+			input_tokens_by_round: list[int] = []
+			cache_read_tokens_by_round: list[int] = []
+			cache_creation_tokens_by_round: list[int] = []
+			tool_call_records: list[dict[str, Any]] = []
+
+			def _tally_input_tokens(name: str, value: Any) -> None:
+				if name == "input_tokens":
+					input_tokens_by_round.append(value)
+				elif name == "cache_read_tokens":
+					cache_read_tokens_by_round.append(value)
+				elif name == "cache_creation_tokens":
+					cache_creation_tokens_by_round.append(value)
+				tapped_on_metadata(name, value)
+
+			for round_number in range(1, MAX_TOOL_ROUNDS + 1):
+				self._enforce_input_budget(system_prompt, turn_history, tool_set, tool_call_records, round_number)
+				required_this_round = required_specs if (round_number == 1 and force_required_tools and required_specs) else None
+				logger.info(
+					f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())} "
+					f"tool_round={round_number} tools={[spec.name for spec in tool_specs]} "
+					f"required_tools={[spec.name for spec in required_this_round] if required_this_round else []}"
+				)
+				tapped_on_metadata.round_started()
+				response_stream = self._deadline.tool_round(self._active_provider.generate_stream_with_schema(
+					system_prompt, turn_history, schema=schema, on_metadata=_tally_input_tokens, tools=tool_specs,
+					tool_round=round_number, required_tools=required_this_round,
+				), provider_label) # type: ignore
+				try:
+					round_chunks = [chunk async for chunk in self._within_deadline(response_stream, tapped_on_metadata)]
+				except ToolCallsRequested as requested:
+					turn_history.append({
+						"role": "assistant", "tool_calls": requested.calls, "content": requested.assistant_content,
+					})
+					for call in requested.calls:
+						tapped_on_metadata("tool", tool_set.tool_event(call.name, call.arguments, "start", round=round_number))
+						call_started = time.monotonic()
+						result = await tool_set.call(call.name, call.arguments)
+						elapsed_ms = round((time.monotonic() - call_started) * 1000)
+						event = tool_set.tool_event(
+							call.name, call.arguments, "result", round=round_number, result=result, duration_ms=elapsed_ms,
+						)
+						logger.info(
+							f"tool call: session={tool_set.session_id} round={event['round']} name={event['name']} "
+							f"arguments={event['arguments']} result_chars={len(event['result'])} duration_ms={event['duration_ms']}"
+						)
+						tapped_on_metadata("tool", event)
+						model_facing_result = result + _TOOL_ERROR_DIRECTIVE if result.startswith("error:") else result
+						turn_history.append({"role": "tool", "tool_call_id": call.id, "content": model_facing_result})
+						tool_call_records.append({"name": call.name, "arguments": call.arguments, "result": result})
+					continue
+
+				logger.info(
+					f"generate_stream_with_metadata: turn done, provider={provider_label} rounds={round_number} "
+					f"total_input_tokens={sum(input_tokens_by_round)} cache_read_tokens={sum(cache_read_tokens_by_round)} "
+					f"cache_creation_tokens={sum(cache_creation_tokens_by_round)}"
+				)
+				async for chunk in self._stream_final_answer(
+					self._as_async_iter(round_chunks), schema, tapped_on_metadata, provider_label,
+				):
+					yield chunk
+				return
+
+			logger.info(
+				f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())} "
+				f"exceeded {MAX_TOOL_ROUNDS} tool-call rounds, forcing a final answer with tools disabled"
+			)
+			tapped_on_metadata.round_started()
 			response_stream = self._deadline.streaming(self._active_provider.generate_stream_with_schema(
-				system_prompt, history, schema=schema, on_metadata=tapped_on_metadata,
+				system_prompt, turn_history, schema=schema, on_metadata=tapped_on_metadata,
 			), provider_label) # type: ignore
 			async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
 				yield chunk
-			return
-		turn_history = list(history)
-		tool_specs = tool_set.specs()
-		required_specs = tool_set.required_specs()
-		input_tokens_by_round: list[int] = []
-		cache_read_tokens_by_round: list[int] = []
-		cache_creation_tokens_by_round: list[int] = []
-		tool_call_records: list[dict[str, Any]] = []
-
-		def _tally_input_tokens(name: str, value: Any) -> None:
-			if name == "input_tokens":
-				input_tokens_by_round.append(value)
-			elif name == "cache_read_tokens":
-				cache_read_tokens_by_round.append(value)
-			elif name == "cache_creation_tokens":
-				cache_creation_tokens_by_round.append(value)
-			tapped_on_metadata(name, value)
-
-		for round_number in range(1, MAX_TOOL_ROUNDS + 1):
-			self._enforce_input_budget(system_prompt, turn_history, tool_set, tool_call_records, round_number)
-			required_this_round = required_specs if (round_number == 1 and force_required_tools and required_specs) else None
-			logger.info(
-				f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())} "
-				f"tool_round={round_number} tools={[spec.name for spec in tool_specs]} "
-				f"required_tools={[spec.name for spec in required_this_round] if required_this_round else []}"
-			)
-			response_stream = self._deadline.tool_round(self._active_provider.generate_stream_with_schema(
-				system_prompt, turn_history, schema=schema, on_metadata=_tally_input_tokens, tools=tool_specs,
-				tool_round=round_number, required_tools=required_this_round,
-			), provider_label) # type: ignore
-			try:
-				round_chunks = [chunk async for chunk in self._within_deadline(response_stream)]
-			except ToolCallsRequested as requested:
-				turn_history.append({
-					"role": "assistant", "tool_calls": requested.calls, "content": requested.assistant_content,
-				})
-				for call in requested.calls:
-					tapped_on_metadata("tool", tool_set.tool_event(call.name, call.arguments, "start", round=round_number))
-					call_started = time.monotonic()
-					result = await tool_set.call(call.name, call.arguments)
-					elapsed_ms = round((time.monotonic() - call_started) * 1000)
-					event = tool_set.tool_event(
-						call.name, call.arguments, "result", round=round_number, result=result, duration_ms=elapsed_ms,
-					)
-					logger.info(
-						f"tool call: session={tool_set.session_id} round={event['round']} name={event['name']} "
-						f"arguments={event['arguments']} result_chars={len(event['result'])} duration_ms={event['duration_ms']}"
-					)
-					tapped_on_metadata("tool", event)
-					model_facing_result = result + _TOOL_ERROR_DIRECTIVE if result.startswith("error:") else result
-					turn_history.append({"role": "tool", "tool_call_id": call.id, "content": model_facing_result})
-					tool_call_records.append({"name": call.name, "arguments": call.arguments, "result": result})
-				continue
-
-			logger.info(
-				f"generate_stream_with_metadata: turn done, provider={provider_label} rounds={round_number} "
-				f"total_input_tokens={sum(input_tokens_by_round)} cache_read_tokens={sum(cache_read_tokens_by_round)} "
-				f"cache_creation_tokens={sum(cache_creation_tokens_by_round)}"
-			)
-			async for chunk in self._stream_final_answer(
-				self._as_async_iter(round_chunks), schema, tapped_on_metadata, provider_label,
-			):
-				yield chunk
-			return
-
-		logger.info(
-			f"generate_stream_with_metadata: provider={provider_label} fields={list(schema.keys())} "
-			f"exceeded {MAX_TOOL_ROUNDS} tool-call rounds, forcing a final answer with tools disabled"
-		)
-		response_stream = self._deadline.streaming(self._active_provider.generate_stream_with_schema(
-			system_prompt, turn_history, schema=schema, on_metadata=tapped_on_metadata,
-		), provider_label) # type: ignore
-		async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
-			yield chunk
+		except (AIServiceError, AIServiceProviderOutputTruncatedError) as exc:
+			tapped_on_metadata.record_failure(exc)
+			raise
 
 	@staticmethod
 	async def _as_async_iter(items: list[str]) -> AsyncIterator[str]:
 		for item in items:
 			yield item
 
-	async def _within_deadline(self, stream: AsyncIterator[str]) -> AsyncIterator[str]:
+	async def _within_deadline(
+		self, stream: AsyncIterator[str], tap: "_UsageTap | _UntappedMetadata",
+	) -> AsyncIterator[str]:
 		try:
 			async for chunk in stream:
+				tap.first_chunk_received()
 				yield chunk
 		except StreamStalled:
 			self._active_provider.advance()
@@ -523,7 +527,7 @@ class AiService(object):
 		self,
 		response_stream: AsyncIterator[str],
 		schema: dict[str, str],
-		on_metadata: MetadataCallback,
+		on_metadata: "_UsageTap | _UntappedMetadata",
 		provider_label: str,
 	) -> AsyncIterator[str]:
 		"""The model's own actual answer to `schema` — incremental
@@ -538,7 +542,7 @@ class AiService(object):
 		last_text_length = 0
 
 		try:
-			async for chunk in self._within_deadline(response_stream):
+			async for chunk in self._within_deadline(response_stream, on_metadata):
 				accumulated_json += chunk
 				parsed = partial_json_parser.parse_json(accumulated_json)
 				if not isinstance(parsed, dict):
@@ -574,3 +578,98 @@ class AiService(object):
 		last_inserted = next(reversed(final_parsed))
 		if last_inserted != 'text' and last_inserted not in emitted:
 			on_metadata(last_inserted, final_parsed[last_inserted])
+
+
+_OUTCOME_BY_ERROR: tuple[tuple[type[Exception], str], ...] = (
+	(AIServiceProviderRateLimitedError, "rate_limited"),
+	(AIServiceProviderPermanentError, "permanent"),
+	(AIServiceRequestError, "request_error"),
+	(AIServiceProviderUnavailableError, "unavailable"),
+	(AIServiceProviderOutputTruncatedError, "truncated"),
+)
+
+
+def _outcome_for(exc: Exception) -> str:
+	"""The AiUsage.outcome an escaped call failure is filed under —
+	ordered most- to least-specific since AIServiceProviderUnavailableError
+	is also StreamStalled's own base (see stream_deadline.py): a stall
+	files as "unavailable", the same as every other transient overload,
+	rather than needing its own category. Anything not one of these
+	(never expected — generate_stream_with_metadata only catches
+	AIServiceError/AIServiceProviderOutputTruncatedError) files as the
+	generic "error" rather than raising a second exception out of the
+	failure-recording path itself."""
+	for error_type, outcome in _OUTCOME_BY_ERROR:
+		if isinstance(exc, error_type):
+			return outcome
+	return "error"
+
+
+class _UntappedMetadata:
+	def __init__(self, on_metadata: MetadataCallback) -> None:
+		self._on_metadata = on_metadata
+
+	def round_started(self) -> None:
+		pass
+
+	def first_chunk_received(self) -> None:
+		pass
+
+	def record_failure(self, exc: Exception) -> None:
+		pass
+
+	def __call__(self, name: str, value: Any) -> None:
+		self._on_metadata(name, value)
+
+
+class _UsageTap:
+	def __init__(self, on_metadata: MetadataCallback, db: Db, provider_label: str) -> None:
+		self._on_metadata = on_metadata
+		self._db = db
+		self._provider_label = provider_label
+		self._captured: dict[str, int] = {}
+		self._started = 0.0
+		self._first_chunk_at: float | None = None
+
+	def round_started(self) -> None:
+		self._started = asyncio.get_running_loop().time()
+		self._captured.clear()
+		self._first_chunk_at = None
+
+	def first_chunk_received(self) -> None:
+		"""Marks the first byte this round's stream ever produced — a no-op
+		past the first call, so replaying an already-collected round's
+		chunks through `_stream_final_answer` (see the tool-round loop in
+		generate_stream_with_metadata) doesn't overwrite the timing the
+		live pass already captured."""
+		if self._first_chunk_at is None:
+			self._first_chunk_at = asyncio.get_running_loop().time()
+
+	def _time_to_first_chunk(self) -> float | None:
+		if self._first_chunk_at is None:
+			return None
+		return self._first_chunk_at - self._started
+
+	def record_failure(self, exc: Exception) -> None:
+		"""Files the round `round_started()` most recently opened as a
+		failed call — its own row, input/output tokens 0 since a call that
+		raised never reported either (see __call__ below, which would
+		have already written and cleared `_captured` had both arrived)."""
+		self._db.record_ai_usage(
+			self._provider_label, 0, 0, 0, 0,
+			asyncio.get_running_loop().time() - self._started,
+			time_to_first_chunk=self._time_to_first_chunk(), outcome=_outcome_for(exc),
+		)
+
+	def __call__(self, name: str, value: Any) -> None:
+		if name in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"):
+			self._captured[name] = value
+			if "input_tokens" in self._captured and "output_tokens" in self._captured:
+				self._db.record_ai_usage(
+					self._provider_label, self._captured["input_tokens"], self._captured["output_tokens"],
+					self._captured.get("cache_read_tokens", 0), self._captured.get("cache_creation_tokens", 0),
+					asyncio.get_running_loop().time() - self._started,
+					time_to_first_chunk=self._time_to_first_chunk(),
+				)
+				self._captured.clear()
+		self._on_metadata(name, value)

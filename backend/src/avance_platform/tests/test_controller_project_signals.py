@@ -26,6 +26,7 @@ signals:
 
 states:
   a:
+    input-processor: ai
     contextual-prompt: "hi"
     actions:
       - name: advance
@@ -33,6 +34,7 @@ states:
         target: b
         trigger: "signal.progress == 100"
   b:
+    input-processor: ai
     contextual-prompt: "bye"
 """
 TWO_STATE_PROJECT = """
@@ -49,6 +51,7 @@ signals:
 
 states:
   a:
+    input-processor: ai
     contextual-prompt: "hi"
     actions:
       - name: advance
@@ -56,6 +59,7 @@ states:
         target: b
         trigger: "signal.progressSignal == 100"
   b:
+    input-processor: ai
     contextual-prompt: "middle"
     actions:
       - name: finish
@@ -63,6 +67,7 @@ states:
         target: c
         trigger: "signal.moodSignal >= 50"
   c:
+    input-processor: ai
     contextual-prompt: "bye"
 """
 
@@ -150,7 +155,7 @@ def test_an_unknown_state_key_falls_back_to_every_states_triggers_combined(clien
 
 def test_a_state_tracking_all_signals_reports_every_one_relevant_and_leaves_the_others_scoped(client):
     project = TWO_STATE_PROJECT.replace(
-        '  b:\n    contextual-prompt: "middle"', '  b:\n    signal-tracking-strategy: all\n    contextual-prompt: "middle"',
+        '  b:\n    input-processor: ai\n    contextual-prompt: "middle"', '  b:\n    signal-tracking-strategy: all\n    input-processor: ai\n    contextual-prompt: "middle"',
     )
     project_id = _upload(client, "two_state_all_test", project)
 
@@ -200,3 +205,33 @@ def test_signal_tracking_strategy_is_a_state_field_the_editor_sets_and_the_graph
     response = client.put(f"/api/skills/platform/projects/{project_id}/states/b/signal-tracking-strategy", json={"value": "some"})
     assert response.status_code == 400
     assert strategy_of("b") == "all"
+
+
+def test_input_processor_is_a_state_field_the_editor_sets_and_the_graph_reports(client):
+    project_id = _upload(client, "input_processor_edit_test", TWO_STATE_PROJECT)
+
+    def processor_of(state_key):
+        nodes = client.get(f"/api/skills/platform/projects/{project_id}/graph").json()["nodes"]
+        return next(n["state"]["input_processor"] for n in nodes if n["state"]["key"] == state_key)
+
+    assert processor_of("c") == "ai"
+
+    response = client.put(f"/api/skills/platform/projects/{project_id}/states/c/input-processor", json={"value": "system"})
+    assert response.status_code == 200, response.text
+    assert processor_of("c") == "system"
+    assert "input-processor: system" in client.get(f"/api/skills/platform/projects/{project_id}/files/index.yml").json()["content"]
+
+    response = client.put(f"/api/skills/platform/projects/{project_id}/states/c/input-processor", json={"value": "human"})
+    assert response.status_code == 400
+    assert processor_of("c") == "system"
+
+
+def test_a_state_added_from_the_editor_is_the_automaton_s_own(client):
+    project_id = _upload(client, "new_state_processor_test", TWO_STATE_PROJECT)
+
+    added = client.post(f"/api/skills/platform/projects/{project_id}/states").json()
+
+    assert added["input_processor"] == "system"
+    assert added["chat_enabled"] is False
+    nodes = client.get(f"/api/skills/platform/projects/{project_id}/graph").json()["nodes"]
+    assert next(n["state"]["input_processor"] for n in nodes if n["state"]["key"] == added["key"]) == "system"

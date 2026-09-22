@@ -29,8 +29,15 @@ SRC = Path(__file__).resolve().parent.parent / "src"
 def _core_service_names() -> set[str]:
     """The keys main.py contributes to bus.POINT_CORE_SERVICES, read off
     its source. Read rather than imported because importing main.py
-    builds an application; what is wanted here is only what it promises."""
+    builds an application; what is wanted here is only what it promises.
+
+    main.py contributes in two calls, not one: `db` early — before
+    skills.start_all(), the one core object a skill's own start_service
+    may already need (see ai/skill.py) — and everything else once it
+    exists. Both count."""
     tree = ast.parse((SRC / "main.py").read_text())
+    names: set[str] = set()
+    found = False
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -41,8 +48,11 @@ def _core_service_names() -> set[str]:
             continue
         for inner in ast.walk(node):
             if isinstance(inner, ast.Dict) and inner.keys:
-                return {key.value for key in inner.keys if isinstance(key, ast.Constant)}
-    raise AssertionError("main.py no longer contributes a literal registry to POINT_CORE_SERVICES.")
+                found = True
+                names |= {key.value for key in inner.keys if isinstance(key, ast.Constant)}
+    if not found:
+        raise AssertionError("main.py no longer contributes a literal registry to POINT_CORE_SERVICES.")
+    return names
 
 
 def _controller_classes():

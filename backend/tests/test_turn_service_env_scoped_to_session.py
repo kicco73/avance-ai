@@ -48,6 +48,7 @@ init-action:
 states:
   a:
     ui-label: a
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: advance

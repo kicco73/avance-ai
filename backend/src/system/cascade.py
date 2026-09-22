@@ -1,9 +1,9 @@
 """Generic fallback cascade: ordered providers behind a "current" pointer,
 retried in place on transient failure, advanced to the next provider on
 rate limits — full call_with_retry() policy used by CascadingTalkProvider
-and CascadingListenProvider. AutoLiveLLMProvider/AutoTestLLMProvider (see
-ai/_providers/cascading_llm_provider.py) use only the pointer bookkeeping below
-(current/advance/providers) and implement their own retry policy.
+and CascadingListenProvider. The AI skill's own live/test provider
+cascades use only the pointer bookkeeping below (current/advance/
+providers) and implement their own retry policy.
 """
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ class ProviderCascade(Generic[Provider]):
     cascade instance is shared process-wide (built once in main.py) and
     reached both by coroutines on the main event loop and by whichever
     other OS thread happens to be mid-call (e.g. PromptContext's own
-    per-call thread, see ai/_providers/gemini_provider_v2.py's own docstring on the
+    per-call thread, one provider implementation's own docstring covers the
     same hazard) — `_lock` guards `_index` against a genuine cross-thread
     race, not just a same-loop one (coroutines on one loop never
     preempt each other mid-statement, so they'd never have needed this)."""

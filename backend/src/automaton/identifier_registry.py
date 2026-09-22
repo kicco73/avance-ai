@@ -49,6 +49,7 @@ class IdentifierRegistry:
         "switch_to_ai": "Hands a session back to the AI after switch_to_human — e.g. chat.switch_to_ai(). Only available in an action's own on-exit script.",
         "chart": "Shows a bar chart in the frontend — e.g. chat.chart('Scores', {'line': 'Empathy', 'value': 7.5}, {'line': 'Focus', 'value': 4}, max_scale=10). One {'line': ..., 'value': ...} dict per bar, each its own argument. `max_scale` is the value a full bar stands for: without it the chart scales to its own values, so the largest bar is always full — give it when the values are scores out of a known maximum. Only available in an action's own on-exit script, and only reaches a connection showing this conversation.",
         "progress": "Shows a progress bar in the chat, under the current turn's own message — e.g. chat.progress('Uploading', 42). `percentage` is 0-100; the bar stays until a later call reaches 100 or higher. Only available in an action's own on-exit script, and only reaches a connection showing this conversation.",
+        "write": "Writes body_md as the reply of the input-processor: system state this action leads to — e.g. chat.write('Step %d of %d' % (env.step + 1, len(env.questions))). Several calls join as paragraphs; the text is saved in the transcript like any reply. Only available in the on-exit script of an action whose target state declares input-processor: system.",
     }
 
     DRIVE: dict[str, str] = {

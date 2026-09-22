@@ -28,6 +28,7 @@ init-action:
 general-prompt: hello
 states:
   start:
+    input-processor: ai
     contextual-prompt: go
 """
 
@@ -167,6 +168,7 @@ signals:
 states:
   start:
     signal-tracking-strategy: all
+    input-processor: ai
     contextual-prompt: go
     actions:
       - name: advance
@@ -174,6 +176,7 @@ states:
         target: end
         trigger: signal.mood > 50
   end:
+    input-processor: ai
     contextual-prompt: bye
 """
 

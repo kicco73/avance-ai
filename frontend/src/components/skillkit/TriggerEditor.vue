@@ -22,11 +22,12 @@ import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
 import { identifierRegistry, refreshIdentifierRegistry } from '../../identifierRegistry.js'
-import { namespaceColor, referencePatternSource, completeIdentifiers as completeIdentifiersFor, excludingNamespaces } from '../../triggerEditorSupport.js'
+import { namespaceColor, referencePatternSource, completeIdentifiers as completeIdentifiersFor, excludingNamespaces, excludingIdentifiers } from '../../triggerEditorSupport.js'
 
 const model = defineModel({ type: String, default: '' })
 const props = defineProps({
   excludeNamespaces: { type: Array, default: () => [] },
+  excludeIdentifiers: { type: Array, default: () => [] },
   large: { type: Boolean, default: false },
   tooltipParent: { type: Object, default: null }
 })
@@ -37,7 +38,8 @@ const editorHost = ref(null)
 let view = null
 
 function completeIdentifiers(context) {
-  return completeIdentifiersFor(context, excludingNamespaces(identifierRegistry.value, props.excludeNamespaces))
+  const registry = excludingIdentifiers(excludingNamespaces(identifierRegistry.value, props.excludeNamespaces), props.excludeIdentifiers)
+  return completeIdentifiersFor(context, registry)
 }
 
 function namespaceHighlighter() {

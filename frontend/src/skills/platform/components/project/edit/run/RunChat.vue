@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import SessionsPanel from '../../../../../../components/chat/SessionsPanel.vue'
 import AspectMenu from './AspectMenu.vue'
 import { aspectFor } from './aspects.js'
-import { getHistory, deleteSession, getProjectFiles, putProjectFileBinary } from '../../../../api.js'
+import { getHistory, getProjectFiles, putProjectFileBinary } from '../../../../api.js'
 import { totalTokenBudgetPerSession } from '../../../../../../chatStoreFactory.js'
 import { infoDialog } from '../../../../../../dialogStore.js'
 import { testStore } from '../../../../testChatStore.js'
@@ -55,6 +55,7 @@ function onSelectMessage(rawMessage) {
 }
 
 let pendingSnapshotResolve = null
+let pendingRestartResolve = null
 
 function onEmbedMessage(event) {
   if (event.origin !== window.location.origin) return
@@ -63,6 +64,11 @@ function onEmbedMessage(event) {
   if (data.type === 'snapshot-captured') {
     pendingSnapshotResolve?.(data.blob)
     pendingSnapshotResolve = null
+    return
+  }
+  if (data.type === 'session-restarted') {
+    pendingRestartResolve?.(data.sessionId)
+    pendingRestartResolve = null
     return
   }
   const rawMessage = testStore.messages.value.find((m) => m.messageId === data.messageId)
@@ -196,12 +202,17 @@ async function onDeleteSession(session) {
 }
 
 async function onClearSession() {
-  const sessionId = currentSessionId.value
-  try {
-    if (sessionId != null) await deleteSession(sessionId)
-  } catch {
-  }
-  await handleNewSession()
+  if (!chatIframeEl.value?.contentWindow) return
+  const newSessionId = await new Promise((resolve) => {
+    pendingRestartResolve = resolve
+    chatIframeEl.value.contentWindow.postMessage({ source: 'run-chat-parent', type: 'restart-session' }, window.location.origin)
+    setTimeout(() => {
+      if (pendingRestartResolve === resolve) pendingRestartResolve = null
+      resolve(null)
+    }, 10000)
+  })
+  if (newSessionId == null) return
+  await selectSession({ id: newSessionId, current: true })
   await loadSessions()
 }
 

@@ -16,8 +16,8 @@ Durable per-user data (e.g. active_project) lives in the User table
 
 Backed by a ContextVar rather than a plain instance attribute: the app
 mixes sync `def` endpoints (run by Starlette in a threadpool) and
-`async def` ones, and ai/cascade.py hops onto asyncio.to_thread for
-provider calls — a single request's own execution can cross real OS
+`async def` ones, and a provider call can hop onto asyncio.to_thread
+of its own — a single request's own execution can cross real OS
 threads. ContextVar is correctly propagated across run_in_threadpool/
 asyncio.to_thread (both copy the current context into the new one);
 threading.local would not be — a threadpool worker reused across requests

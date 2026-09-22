@@ -231,6 +231,7 @@ init-action:
 states:
   a:
     ui-label: A
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: advance
@@ -239,6 +240,7 @@ states:
         target: b
   b:
     ui-label: B
+    input-processor: ai
     contextual-prompt: bye
 """
 

@@ -43,7 +43,7 @@ def _automaton(autotracking_on_ai_message: bool) -> Automaton:
     init_action = Action(name="init", ui_label="init", ui_button="", target="")
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action])},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action])},
         general_prompt="general",
         signals=[Signal(name="mood", ui_label="Mood", definition="whatever")],
         general_attachments={},

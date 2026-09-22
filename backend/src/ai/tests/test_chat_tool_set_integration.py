@@ -1,0 +1,190 @@
+"""End-to-end: a state's own `ai-may-read-sources:` (see automaton.
+State.ai_may_read_sources) produces a real, working ToolSet, threaded all the way from
+TrackingProcessor down to AiService — proven with a fake AiService that
+actually drives it mid-turn, resolving a real source.<name>.select_rows_containing()
+call against a real (file-backed) archive.
+"""
+from __future__ import annotations
+
+import pytest
+
+from automaton.automaton import Action, Automaton, Source, State
+from turn.turn_service import TurnService
+from turn.sessions.session_manager import SessionManager
+from conftest import make_test_namespace_factory, make_test_scheduler_service
+from turn_harness import PROJECT_ID, FakeProjectService
+from db.db import Db
+from metrics.metric_service import MetricService
+from tracking.tracking_service import TrackingService
+
+class FakeToolAwareAiService:
+    """Like test_turn_service_evaluation_points.py's own
+    FakeSchemaAiService, but — when handed a real ToolSet — actually
+    calls it once before "answering", the way a real provider asking for
+    exactly one tool and then completing the turn would. Proves the
+    ToolSet TrackingProcessor built is the real thing, not a stand-in:
+    its own call() resolves against the real automaton/db/session."""
+
+    def __init__(self, metadata_per_call: list[dict], tool_call: tuple[str, dict] | None = None) -> None:
+        self._metadata_per_call = metadata_per_call
+        self._tool_call = tool_call
+        self.call_count = 0
+        self.tool_results: list[str] = []
+
+    def get_models_info(self) -> dict:
+        return {"auto": True, "current_index": 0, "models": []}
+
+    def select_model(self, index: int | None) -> None:
+        pass
+
+    def is_provider_with_schema(self) -> bool:
+        return True
+
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
+        if self._tool_call is not None and tool_set is not None and self.call_count == 0:
+            name, arguments = self._tool_call
+            on_metadata("tool", tool_set.tool_event(name, arguments, "start", round=1))
+            result = await tool_set.call(name, arguments)
+            self.tool_results.append(result)
+            on_metadata("tool", tool_set.tool_event(name, arguments, "result", round=1, result=result, duration_ms=5))
+        index = min(self.call_count, len(self._metadata_per_call) - 1)
+        metadata = self._metadata_per_call[index]
+        self.call_count += 1
+        for key, value in metadata.items():
+            if key in schema:
+                on_metadata(key, value)
+        yield "Hi!"
+
+
+@pytest.fixture
+def file_db(tmp_path) -> Db:
+    return Db(f"sqlite:///{tmp_path / 'chat_tool_set.db'}")
+
+
+def _automaton_with_a_tool() -> Automaton:
+    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a")
+    state_a = State(
+        input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
+        ai_may_read_sources=("flights",),
+    )
+    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
+    states = {"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a}
+    automaton = Automaton(
+        init_action=init_action, states=states, general_prompt="", signals=[], general_attachments={}, autotracking_on_ai_message=True,
+        sources=[Source(name="flights", url="avance:flights.csv", ui_label="Flights", ai_definition="One row per flight.")],
+        project_id=PROJECT_ID,
+    )
+    return automaton
+
+
+@pytest.fixture
+def turn_service_for(file_db):
+    file_db.ensure_project(PROJECT_ID)
+    file_db.save_project_files(PROJECT_ID, {"flights.csv": b"city,country\nParis,France\n"}, {"flights.csv": "text/csv"})
+    file_db.publish_project(PROJECT_ID)
+
+    def make(automaton: Automaton, *, ai_service) -> TurnService:
+        automaton.set_storage_location(file_db.get_project_revision(PROJECT_ID))
+        project_service = FakeProjectService(automaton, db=file_db)
+        metric_service = MetricService(file_db, project_service)
+        scheduler_service = make_test_scheduler_service(file_db)
+        namespace_factory = make_test_namespace_factory(file_db, scheduler_service)
+        tracking_service = TrackingService(file_db, project_service, metric_service, namespace_factory)
+        return TurnService(
+            ai_service=ai_service, ai_test_service=ai_service, project_service=project_service, db=file_db,
+            session_manager=SessionManager(file_db), tracking_service=tracking_service,
+            metric_service=metric_service, scheduler_service=scheduler_service, namespace_factory=namespace_factory,
+        )
+
+    return make
+
+
+async def _bootstrap_session(turn_service: TurnService) -> int:
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
+    return session["id"]
+
+
+@pytest.mark.regression
+async def test_a_real_chat_turn_resolves_a_tool_call_against_the_state_s_own_declared_source(turn_service_for):
+    ai_service = FakeToolAwareAiService(
+        [{"memory": "stage: greeted"}], tool_call=("source_flights_select_rows_containing", {"values": ["paris"]}),
+    )
+    turn_service = turn_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
+
+    result = await turn_service.process_turn(session_id, "where's my flight to Paris?")
+    assert [m["content"] for m in result["reply"]] == ["Hi!"]
+    assert ai_service.tool_results == ["city,country\nParis,France\n"]
+
+
+@pytest.mark.regression
+async def test_a_real_chat_turn_persists_its_own_tool_calls_onto_the_assistant_message(turn_service_for, file_db):
+    ai_service = FakeToolAwareAiService(
+        [{"memory": "stage: greeted"}], tool_call=("source_flights_select_rows_containing", {"values": ["paris"]}),
+    )
+    turn_service = turn_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
+
+    result = await turn_service.process_turn(session_id, "where's my flight to Paris?")
+
+    tool_calls_by_message = file_db.get_tool_calls_by_message(session_id)
+    assert tool_calls_by_message[result["assistant_message_id"]] == [
+        {
+            "name": "source_flights_select_rows_containing", "arguments": {"values": ["paris"]},
+            "result": "city,country\nParis,France\n", "label": "Flights", "rows": 1, "error": False,
+            "duration_ms": 5,
+        },
+    ]
+
+
+@pytest.mark.regression
+async def test_get_messages_surfaces_the_persistent_tool_call_record_on_reload(turn_service_for, file_db):
+    """A tool call's own persisted {name, arguments, result, label, rows,
+    error, duration_ms} record (see ToolSet.tool_event and
+    TrackingProcessor.on_receiving_metadata's own 'tool' branch) rides
+    along in Tracking.tool_calls with no separate storage of its own —
+    TurnService.get_messages must surface it again on every reload, keyed
+    to the right message."""
+    ai_service = FakeToolAwareAiService([{"memory": "stage: greeted"}])
+    turn_service = turn_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
+    assistant_message_id = file_db.save_message("assistant", "Paris it is.", session_id)
+    tool_call_entry = {
+        "name": "source_flights_select_rows_containing", "arguments": {"values": ["paris"]},
+        "result": "city,country\nParis,France\n", "label": "Flights", "rows": 1, "error": False, "duration_ms": 5,
+    }
+    file_db.record_tool_calls(session_id, [tool_call_entry], message_id=assistant_message_id)
+
+    messages = turn_service.read_history(session_id)
+
+    reloaded = next(m for m in messages if m["id"] == assistant_message_id)
+    assert reloaded["tool_calls"] == [tool_call_entry]
+
+
+@pytest.mark.regression
+async def test_get_messages_omits_tool_calls_for_a_message_with_none(turn_service_for, file_db):
+    ai_service = FakeToolAwareAiService([{"memory": "stage: greeted"}])
+    turn_service = turn_service_for(_automaton_with_a_tool(), ai_service=ai_service)
+    session_id = await _bootstrap_session(turn_service)
+    plain_message_id = file_db.save_message("assistant", "no tools here", session_id)
+
+    messages = turn_service.read_history(session_id)
+
+    reloaded = next(m for m in messages if m["id"] == plain_message_id)
+    assert "tool_calls" not in reloaded
+
+
+def test_build_tool_set_is_none_for_a_state_with_neither_field(file_db):
+    from tracking.env import Env
+    from ai.turn.tracking_processor import TrackingProcessor
+    from tracking.user_variables import UserVariables
+
+    automaton = _automaton_with_a_tool()
+    user = UserVariables(automaton=automaton, state=automaton.states[""], project_id=PROJECT_ID, session_id=1)
+    processor = TrackingProcessor.__new__(TrackingProcessor)
+    processor.transaction = file_db
+    processor.user = user
+    processor.env = Env()
+
+    assert processor.build_tool_set(automaton.states[""]) is None
+    assert processor.build_tool_set(automaton.states["a"]) is not None

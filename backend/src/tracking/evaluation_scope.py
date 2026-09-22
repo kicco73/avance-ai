@@ -7,7 +7,7 @@ signal values."""
 from __future__ import annotations
 
 import datetime
-from typing import Any, Protocol, TYPE_CHECKING
+from typing import Any, Protocol
 
 from simpleeval import ModuleWrapper
 
@@ -19,8 +19,8 @@ from metrics.metric_service import MetricService
 from system.web_session import WebSession
 from tracking.actuators.drive_namespace import DriveFiles
 from tracking.actuators import (
-    AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, MediaNamespace, TaskNamespace,
-    drive_namespace_for,
+    AttachmentNamespace, ChatNamespace, FakeChatNamespace, FakeTaskNamespace, MediaNamespace, MutedReply, ReplySink,
+    TaskNamespace, drive_namespace_for,
 )
 from tracking.env import Env
 from tracking.project_files import ProjectArchives, project_files_for
@@ -29,9 +29,6 @@ from tracking.session_facts import SessionFacts
 from tracking.sources import SourceNamespace
 from tracking.sources.websearch import WebsearchArchives, websearch_archive_for
 from tracking.user_facts import UserFacts
-
-if TYPE_CHECKING:
-    from ai import AiService
 
 
 class ScopeDb(ProjectArchives, DriveFiles, WebsearchArchives, Protocol):
@@ -48,7 +45,8 @@ class EvaluationScopeBuilder(object):
         db: "ScopeDb",
         task_namespace: TaskNamespace | None = None,
         chat_namespace: ChatNamespace | None = None,
-        ai_service: "AiService | None" = None,
+        ai_service: Any = None,
+        reply: ReplySink | None = None,
     ) -> None:
         self._env = env
         self._metrics = metrics
@@ -58,6 +56,7 @@ class EvaluationScopeBuilder(object):
         self._task_namespace = task_namespace if task_namespace is not None else FakeTaskNamespace()
         self._chat_namespace = chat_namespace if chat_namespace is not None else FakeChatNamespace(project_id="")
         self._ai_service = ai_service
+        self._reply = reply if reply is not None else MutedReply()
 
     def build(
         self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None,
@@ -103,7 +102,8 @@ class EvaluationScopeBuilder(object):
             "datetime": ModuleWrapper(datetime, allowed_attrs={"datetime", "timedelta", "timezone"}),
         }
         scope.update(TriggerNamespaces.collect().scope(automaton, selection))
-        scope["chat"] = self._chat_namespace.with_session(session_id) if session_id is not None else self._chat_namespace
+        chat = self._chat_namespace.with_session(session_id) if session_id is not None else self._chat_namespace
+        scope["chat"] = chat.with_reply(self._reply)
         task_namespace = self._task_namespace.with_services(automaton.services).with_websearch_archive(
             websearch_archive_for(self._db, automaton, session_id)
         )

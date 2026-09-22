@@ -68,7 +68,7 @@ def test_one_row_carries_the_same_badge_the_whole_listing_draws(client, app, app
 
     response = client.post(
         "/api/skills/platform/projects/upload",
-        content=b"project:\n  id: stale_row\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n",
+        content=b"project:\n  id: stale_row\ninit-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n",
         headers={"Content-Type": "application/x-yaml"},
     )
     assert response.status_code == 200, response.text

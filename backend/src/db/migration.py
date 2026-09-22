@@ -183,6 +183,13 @@ class SchemaMigrator:
     _COLUMN_RENAMES: tuple[tuple[str, str, str], ...] = (
         ('CoreSession', 'summary', 'ai_summary'),
     )
+    _TABLE_RENAMES: tuple[tuple[str, str], ...] = (
+        ('AiTokenUsage', 'AiUsage'),
+    )
+
+    def rename_table(self, old_name: str, new_name: str) -> None:
+        migrator = SqliteMigrator(self._database)
+        migrate(migrator.rename_table(old_name, new_name))
 
     def migrate_archive_content_to_file(self, actual: dict[str, set[str]]) -> None:
         """One-off migration for the Archive/File split: Archive.content
@@ -217,6 +224,10 @@ class SchemaMigrator:
         migrator = SqliteMigrator(self._database)
         models_by_table = {model._meta.table_name: model for model in self._models}
         self.migrate_archive_content_to_file(actual)
+        for old_table, new_table in self._TABLE_RENAMES:
+            if old_table in actual and new_table not in actual:
+                self.rename_table(old_table, new_table)
+                actual[new_table] = actual.pop(old_table)
         for table, old_column, new_column in self._COLUMN_RENAMES:
             if table in actual and old_column in actual[table] and new_column not in actual[table]:
                 self.rename_column(table, old_column, new_column)

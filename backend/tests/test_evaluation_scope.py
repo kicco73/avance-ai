@@ -37,12 +37,12 @@ def _automaton_with_trigger(
     trigger_expr: str, env: dict | None = None, sources: list[Source] | None = None,
 ) -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger_expr, env=env)
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
-    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="bye", actions=[])
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
+    state_b = State(input_processor="ai", key="b", ui_label="B", final=True, contextual_prompt="bye", actions=[])
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
         general_prompt="",
         signals=[],
         general_attachments={},

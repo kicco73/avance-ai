@@ -48,7 +48,11 @@ class FakeProjectService:
         return self._automaton
 
     def get_automaton_and_state_for_session(self, session_id: int):
-        return self._automaton, self._automaton.states[self._state_key]
+        recorded = self._db.get_current_state_for_session(session_id) if self._db is not None else None
+        return self.get_automaton_and_state_as_recorded(session_id, recorded)
+
+    def get_automaton_and_state_as_recorded(self, session_id: int, state_key: str | None):
+        return self._automaton, self._automaton.states[state_key if state_key is not None else self._state_key]
 
     def get_active_project_id(self) -> str:
         return PROJECT_ID
@@ -66,10 +70,9 @@ class FakeProjectService:
         return (False, None)
 
     def resolve_manual_action(self, action_name: str, session_id: int):
-        action = self._automaton.move(self._state_key, action_name)
-        source_key, self._state_key = self._state_key, action.target
-        state = self._automaton.states[self._state_key]
-        return self._automaton.get_state_payload(state), action, source_key
+        _, state = self.get_automaton_and_state_for_session(session_id)
+        action = self._automaton.move(state.key, action_name)
+        return self._automaton.get_state_payload(self._automaton.get_state(action.target)), action, state.key
 
 
 def one_state_automaton(*, with_sources: bool, autotracking_on_ai_message: bool) -> Automaton:
@@ -77,11 +80,11 @@ def one_state_automaton(*, with_sources: bool, autotracking_on_ai_message: bool)
     source the AI may read — the smallest automaton a turn can run on."""
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a")
     state_a = State(
-        key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
+        input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
         ai_may_read_sources=("flights",) if with_sources else (),
     )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
-    states = {"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a}
+    states = {"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a}
     return Automaton(
         init_action=init_action, states=states, general_prompt="", signals=[], general_attachments={},
         autotracking_on_ai_message=autotracking_on_ai_message,

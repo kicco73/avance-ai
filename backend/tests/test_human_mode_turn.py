@@ -22,7 +22,7 @@ from conftest import make_test_namespace_factory, make_test_scheduler_service
 from db.db import Db
 from metrics.metric_service import MetricService
 from talker.base_talker import BaseTalker
-from test_chat_tool_set_integration import FakeProjectService, PROJECT_ID
+from ai.tests.test_chat_tool_set_integration import FakeProjectService, PROJECT_ID
 from turn_harness import PROJECT_ID, drive_turn, one_state_automaton
 from tracking.tracking_service import TrackingService
 

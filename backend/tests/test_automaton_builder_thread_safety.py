@@ -20,6 +20,7 @@ def _index_yml(n: int) -> str:
     states = "\n".join(
         f"""  s{i}:
     ui-label: State {i}
+    input-processor: ai
     contextual-prompt: |
       Prompt for state {i} of project p{n}.
       Second line, long enough to give the scanner some work.

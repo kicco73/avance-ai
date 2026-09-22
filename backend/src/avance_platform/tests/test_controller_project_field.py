@@ -12,7 +12,7 @@ from conftest import parse_sse_result
 pytestmark = pytest.mark.contract
 
 
-BARE_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+BARE_YML = "init-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
 
 
 class TestGetProjectMetadata:
@@ -139,7 +139,7 @@ class TestPutProjectField:
         the whole edit is rejected rather than silently clearing the key."""
         client.post(
             "/api/skills/platform/projects/upload",
-            content=b"project:\n  id: taken\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n",
+            content=b"project:\n  id: taken\ninit-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n",
             headers={"Content-Type": "application/x-yaml"},
         )
 

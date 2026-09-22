@@ -20,6 +20,7 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: go

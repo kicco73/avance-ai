@@ -24,6 +24,7 @@ init-action:
 general-prompt: hello
 states:
   start:
+    input-processor: ai
     contextual-prompt: go
 """
 

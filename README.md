@@ -194,7 +194,7 @@ secrets). Top-level sections:
   by the bound, and explicitly whenever a project is saved, renamed or
   deleted.
 - **`turn-service.first-chunk-seconds`**, **`next-chunk-seconds`**,
-  **`silent-round-seconds`** — optional, default to `5`, `10` and `30`.
+  **`silent-round-seconds`** — optional, default to `10`, `10` and `30`.
   How long the model may stay silent before the call is given up (see
   `ai/stream_deadline.py`): a stall is an `AIServiceProviderUnavailableError`,
   so the cascade moves to the next provider for the next request, the
@@ -203,8 +203,8 @@ secrets). Top-level sections:
   waited 13 minutes on a provider that never sent a byte). The three
   bound three different silences. *First chunk*: nothing has arrived
   since the request was sent; the eight complete replies of that session
-  took 1.1–2.9 s, so a provider that has not started after 5 s is not
-  going to. *Next chunk*: nothing has arrived since the last byte of a
+  took 1.1–2.9 s, so a provider that has not started after 10 s is not
+  going to, and a slow start under load still fits. *Next chunk*: nothing has arrived since the last byte of a
   reply under way — reset on every byte, so a long reply is never cut for
   its length. *Silent round*: a round the model spends deciding on a
   tool call, which arrives whole and yields nothing until it ends, so the

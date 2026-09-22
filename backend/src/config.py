@@ -6,7 +6,6 @@ from urllib.parse import urlsplit, urlunsplit
 from ruamel.yaml import YAML
 
 from system import bus
-from ai import AIServiceConfig, StreamDeadline
 from system.bus import POINT_CONFIG_SERVICES
 from system.config_services import ui_section
 DEFAULT_APPS_DIR = Path(__file__).resolve().parent.parent / "apps"
@@ -44,6 +43,18 @@ class BuildServiceConfig:
     username: str | None
     token: str | None
     apps_dir: Path
+
+
+@dataclass(frozen=True)
+class ReplyDeadline:
+    """How long a turn may go without a new streamed chunk before the
+    browser gives up — parsed here (turn-service is core), handed to
+    ai.StreamDeadline(**dataclasses.asdict(...)) by the ai skill, whose
+    own field names and defaults this deliberately mirrors, since this
+    module must stay importable in a build without the ai skill at all."""
+    first_chunk_seconds: float = 10.0
+    next_chunk_seconds: float = 10.0
+    silent_round_seconds: float = 30.0
 
 
 @dataclass(frozen=True)
@@ -201,9 +212,9 @@ class AppConfig:
         return entries
 
     @classmethod
-    def _parse_stream_deadline(cls, raw: dict, path: Path) -> StreamDeadline:
-        default = StreamDeadline()
-        return StreamDeadline(
+    def _parse_stream_deadline(cls, raw: dict, path: Path) -> ReplyDeadline:
+        default = ReplyDeadline()
+        return ReplyDeadline(
             first_chunk_seconds=cls._get_optional_positive_float(
                 raw, "turn-service", "first-chunk-seconds", path, default.first_chunk_seconds,
             ),
@@ -216,7 +227,7 @@ class AppConfig:
         )
 
     @classmethod
-    def _parse_reply_silence_seconds(cls, raw: dict, path: Path, deadline: StreamDeadline) -> float:
+    def _parse_reply_silence_seconds(cls, raw: dict, path: Path, deadline: ReplyDeadline) -> float:
         seconds = cls._get_optional_positive_float(
             raw, "turn-service", "reply-silence-seconds", path, REPLY_SILENCE_SECONDS,
         )
@@ -266,65 +277,6 @@ class AppConfig:
             apps_dir=Path(apps_dir) if apps_dir else DEFAULT_APPS_DIR,
         )
 
-    _AI_SERVICE_MODES = ("live", "test")
-    _AI_SERVICE_NO_AUTO_MODE = "no-auto"
-    _AI_SERVICE_VALID_MODES = _AI_SERVICE_MODES + (_AI_SERVICE_NO_AUTO_MODE,)
-
-    @classmethod
-    def _parse_ai_service_modes(cls, entry: dict, i: int, path: Path) -> tuple[str, ...]:
-        """None (the key absent entirely) means both live and test — the
-        default every entry had before `modes` existed at all. An
-        explicit empty list is different: it deliberately puts the entry
-        in neither cascade, rather than falling back to that default."""
-        modes = entry.get("modes")
-        if modes is None:
-            return cls._AI_SERVICE_MODES
-        if not isinstance(modes, list) or not all(isinstance(m, str) for m in modes):
-            raise ConfigError(f"{path}: 'ai-service.providers[{i}].modes' must be a list of strings if present.")
-        invalid = sorted(set(modes) - set(cls._AI_SERVICE_VALID_MODES))
-        if invalid:
-            raise ConfigError(
-                f"{path}: 'ai-service.providers[{i}].modes' contains invalid entr{'y' if len(invalid) == 1 else 'ies'} "
-                f"{invalid} — must be 'live', 'test', and/or 'no-auto'."
-            )
-        return tuple(dict.fromkeys(modes))
-
-    @classmethod
-    def _parse_ai_services(cls, raw: dict, path: Path) -> list[AIServiceConfig]:
-        entries = cls._get_providers(raw, "ai-service", path)
-        max_output_tokens = cls._get_optional_positive_int(
-            raw, "ai-service", "max-output-tokens", path, default=4096
-        )
-
-        services = []
-        for i, entry in enumerate(entries):
-            prefix = cls._provider_prefix(entry, "ai-service", i, path)
-            url = entry.get("url")
-            driver = cls._require_str_in(entry, prefix, "driver", path)
-            model = cls._require_str_in(entry, prefix, "model", path)
-            key = entry.get("key")
-            if not isinstance(key, str):
-                raise ConfigError(f"{path}: '{prefix}.key' must be a string.")
-            ui_label, ui_description = cls._parse_ui_fields(entry, driver, "ai-service", i, path)
-            modes = cls._parse_ai_service_modes(entry, i, path)
-            token_budget_per_day = cls._positive_int_in(entry, prefix, "token-budget-per-day", path, 1_000_000)
-            services.append(AIServiceConfig(
-                driver=driver, model=model, key=key, url=url,
-                ui_label=ui_label, ui_description=ui_description,
-                max_output_tokens=max_output_tokens, modes=modes,
-                token_budget_per_day=token_budget_per_day,
-            ))
-        for mode in cls._AI_SERVICE_MODES:
-            matching = [service for service in services if mode in service.modes]
-            if not matching:
-                raise ConfigError(f"{path}: 'ai-service.providers' has no entry left for mode {mode!r}.")
-            if all(cls._AI_SERVICE_NO_AUTO_MODE in service.modes for service in matching):
-                raise ConfigError(
-                    f"{path}: 'ai-service.providers' has no entry left for mode {mode!r} that isn't "
-                    f"{cls._AI_SERVICE_NO_AUTO_MODE!r} — its auto cascade would be empty."
-                )
-        return services
-
     def __init__(self) -> None:
 
         raw, path = self._load_yml()
@@ -364,7 +316,6 @@ class AppConfig:
         self.invite_max_shares = self._get_optional_positive_int(
             raw, "project-service", "invite-max-shares", path, default=3
         )
-        self.ai_services = self._parse_ai_services(raw, path)
         self.auth_token_ttl_in_hours = self._get_optional_positive_int(
             raw, "auth-service", "token-ttl-in-hours", path, default=24 * 7
         )
@@ -372,15 +323,6 @@ class AppConfig:
 
         self.build_service_config = self._parse_build_service_config(raw, path)
         self.allowed_origins = self._parse_allowed_origins(raw, path)
-
-    @staticmethod
-    def _public_provider_fields(entry) -> dict:
-        return {
-            "driver": entry.driver,
-            "model": entry.model,
-            "ui-label": entry.ui_label,
-            "ui-description": entry.ui_description,
-        }
 
     def public_services_snapshot(self) -> dict:
         """Read-only projection of this config's service sections — same
@@ -402,16 +344,6 @@ class AppConfig:
                 "next-chunk-seconds": self.stream_deadline.next_chunk_seconds,
                 "silent-round-seconds": self.stream_deadline.silent_round_seconds,
                 "reply-silence-seconds": self.reply_silence_seconds,
-            }),
-            "ai": ui_section("AI", "Language model providers and the live cascade between them.", {
-                "max-output-tokens": self.ai_services[0].max_output_tokens,
-                "providers": [
-                    {
-                        **self._public_provider_fields(p), "url": p.url, "modes": list(p.modes),
-                        "token-budget-per-day": p.token_budget_per_day,
-                    }
-                    for p in self.ai_services
-                ],
             }),
             "database": ui_section("Data", "Database connection, backups and stored sessions.", {
                 "url": _redact_database_url(self.database_url),
@@ -441,6 +373,10 @@ def optional_providers(raw: dict, section: str, path: Path) -> list | None:
 
 def optional_section(raw: dict, section: str, path: Path) -> dict:
     return AppConfig._get_optional_section(raw, section, path)
+
+
+def providers(raw: dict, section: str, path: Path) -> list:
+    return AppConfig._get_providers(raw, section, path)
 
 
 def provider_prefix(entry: object, section: str, i: int, path: Path) -> str:

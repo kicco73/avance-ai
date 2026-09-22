@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import Any, TYPE_CHECKING, TypeVar
+from typing import Any, Protocol, TYPE_CHECKING, TypeVar
 
 from automaton.automaton import Action, DeferredExpression, JsSnippet
 from automaton.project_services import ProjectServices
@@ -23,7 +23,6 @@ from websearch import WebCrawler, WebSearch
 from .action_task import AnnouncedActionTask, ScopeHydrator
 
 if TYPE_CHECKING:
-    from ai import AiService
     from tracking.actuators.factory import TaskNamespaceFactory
     from tracking.sources import ToolSet
 
@@ -64,10 +63,10 @@ class TaskNamespace(ABC):
     script may call them now."""
 
     def __init__(
-        self, dispatcher: "TaskDispatcher | None" = None, factory: "TaskNamespaceFactory | None" = None,
+        self, dispatcher: "Dispatch | None" = None, factory: "TaskNamespaceFactory | None" = None,
         crawler: WebCrawler | None = None,
     ) -> None:
-        self._ai_service: "AiService | None" = None
+        self._ai_service: Any = None
         self._tool_set: "ToolSet | None" = None
         self._dispatcher = dispatcher
         self._factory = factory
@@ -108,7 +107,7 @@ class TaskNamespace(ABC):
         self._websearch_archive.write(csv_text)
         return csv_text
 
-    def with_ai_service(self, ai_service: "AiService", tool_set: "ToolSet | None" = None) -> "TaskNamespace":
+    def with_ai_service(self, ai_service: Any, tool_set: "ToolSet | None" = None) -> "TaskNamespace":
         """A copy of this namespace bound to `ai_service` (and,
         optionally, the tool catalog of whichever state this task is
         being evaluated for — see EvaluationScopeBuilder.build) — never
@@ -132,6 +131,11 @@ class TaskNamespace(ABC):
         bound._websearch_archive = archive
         return bound
 
+    def deferring(self, scheduled: list["ScheduledTask"]) -> "TaskNamespace":
+        bound = copy.copy(self)
+        bound._dispatcher = DeferredDispatch(self._dispatcher, scheduled)
+        return bound
+
     def with_session(self, session_id: int) -> "TaskNamespace":
         """A copy of this namespace bound to the session whose
         task is actually running — see ScopeHydrator.build_scope,
@@ -153,6 +157,52 @@ class TaskNamespace(ABC):
     @abstractmethod
     def defer(self, act: Callable[[], None], when: datetime) -> JsSnippet | None:
         raise NotImplementedError
+
+
+class Dispatch(Protocol):
+    @property
+    def project_id(self) -> str: ...
+    def schedule_now(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None: ...
+    def schedule_later(self, act: DeferredExpression, when: datetime) -> None: ...
+
+
+class ScheduledTask(object):
+    def __init__(self, dispatcher: Dispatch, action: Action, scope: EvaluationScope, session_id: int | None) -> None:
+        self._dispatcher = dispatcher
+        self._action = action
+        self._scope = scope
+        self._session_id = session_id
+
+    def run(self) -> None:
+        self._dispatcher.schedule_now(self._action, self._scope, session_id=self._session_id)
+
+
+class ScheduledDeferral(object):
+    def __init__(self, dispatcher: Dispatch, act: DeferredExpression, when: datetime) -> None:
+        self._dispatcher = dispatcher
+        self._act = act
+        self._when = when
+
+    def run(self) -> None:
+        self._dispatcher.schedule_later(self._act, self._when)
+
+
+class DeferredDispatch(object):
+    def __init__(self, dispatcher: Dispatch | None, scheduled: list) -> None:
+        self._dispatcher = dispatcher
+        self._scheduled = scheduled
+
+    @property
+    def project_id(self) -> str:
+        return self._dispatcher.project_id if self._dispatcher is not None else ""
+
+    def schedule_now(self, action: Action, scope: EvaluationScope, *, session_id: int | None) -> None:
+        for dispatcher in filter(None, [self._dispatcher]):
+            self._scheduled.append(ScheduledTask(dispatcher, action, scope, session_id))
+
+    def schedule_later(self, act: DeferredExpression, when: datetime) -> None:
+        for dispatcher in filter(None, [self._dispatcher]):
+            self._scheduled.append(ScheduledDeferral(dispatcher, act, when))
 
 
 class TaskDispatcher(object):
@@ -203,7 +253,7 @@ class LiveTaskNamespace(TaskNamespace):
     deferred call runs (see action_task.py)."""
 
     def __init__(
-        self, dispatcher: "TaskDispatcher", factory: "TaskNamespaceFactory | None" = None,
+        self, dispatcher: "Dispatch", factory: "TaskNamespaceFactory | None" = None,
         crawler: WebCrawler | None = None,
     ) -> None:
         super().__init__(dispatcher, factory, crawler)

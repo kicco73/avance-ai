@@ -32,10 +32,12 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 {state_extra}    actions:
 {actions_yaml}
   b:
+    input-processor: ai
     contextual-prompt: there
 """
 
@@ -111,8 +113,8 @@ def _automaton() -> Automaton:
     return Automaton(
         init_action=init_action,
         states={
-            "": State(key="", ui_label="", final=False, actions=[init_action]),
-            "a": State(key="a", ui_label="A", final=True, contextual_prompt="hi"),
+            "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
+            "a": State(input_processor="ai", key="a", ui_label="A", final=True, contextual_prompt="hi"),
         },
         general_prompt="", signals=[], general_attachments=(), autotracking_on_ai_message=False,
         env_keys=[EnvKey(name="slot", type="list"), EnvKey(name="other", type="list"), EnvKey(name="n", type="number")],

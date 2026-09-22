@@ -63,8 +63,8 @@ function openSourcesDialog() {
 
 const open = ref(false)
 watch(elementIdentity, (identity) => {
-  open.value = identity != null && props.recentlyAddedKey === identity
-})
+  open.value = identity != null && (props.selectedElement.kind === 'state' || props.recentlyAddedKey === identity)
+}, { immediate: true })
 
 </script>
 

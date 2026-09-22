@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
 from automaton.file_types import media_doc_id_for
@@ -14,12 +14,9 @@ from .archive.automaton_loader import AutomatonLoader
 from .health import ProjectHealthChecker, broken_fields
 from .archive.layout import CACHE_DIR, LEGAL_TERMS_FILE_NAME
 
-if TYPE_CHECKING:
-    from ai import AiService
-
 
 class ProjectInspector:
-    def __init__(self, db: Db, automaton_loader: AutomatonLoader, ai_service: "AiService | None" = None) -> None:
+    def __init__(self, db: Db, automaton_loader: AutomatonLoader, ai_service: Any = None) -> None:
         self._db = db
         self._automaton_loader = automaton_loader
         self._ai_service = ai_service
@@ -37,6 +34,9 @@ class ProjectInspector:
             state_key = self._db.get_current_state_for_user(project_id, username, type=type)
         else:
             state_key = self._db.get_current_state(project_id, type=type)
+        return self.state_recorded_as(project_id, automaton, state_key)
+
+    def state_recorded_as(self, project_id: str, automaton: Automaton, state_key: str | None) -> State:
         if state_key is None:
             state_key = automaton.init_action.target
         elif state_key not in automaton.states:
@@ -132,6 +132,13 @@ class ProjectInspector:
             raise FileNotFoundError(f"Session {session_id} does not exist.")
         automaton = self.get_automaton_for_session(session_id)
         return automaton, self._resolve_state(session["project_id"], automaton, session_id=session_id)
+
+    def get_automaton_and_state_as_recorded(self, session_id: int, state_key: str | None) -> tuple[Automaton, State]:
+        session = self._db.get_chat_session(session_id)
+        if session is None:
+            raise FileNotFoundError(f"Session {session_id} does not exist.")
+        automaton = self.get_automaton_for_session(session_id)
+        return automaton, self.state_recorded_as(session["project_id"], automaton, state_key)
 
     def get_automaton_and_state_for_observer(
         self, project_id: str, username: str
@@ -279,8 +286,8 @@ class ProjectInspector:
             raise ValueError(f"Project '{project_id}' has no state '{state_key}'.")
         state = automaton.get_state(state_key)
         from tracking.project_files import project_files_for
-        from tracking.tracking_processor import estimate_state_prompt
-        prompt = estimate_state_prompt(
+        from turn.input_processor import processors
+        prompt = processors()[state.input_processor].estimate(
             automaton, state, project_files_for(self._db, automaton),
         )
         return self._ai_service.get_input_tokens(prompt)

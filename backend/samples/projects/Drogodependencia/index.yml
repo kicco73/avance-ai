@@ -147,6 +147,7 @@ states:
           signal.alianza_terapéutica >= 45
           and (signal.intención_comprometida >= 34 or signal.reconocimiento_del_problema >= 45)
 
+    input-processor: ai
   Precontemplación:
     ui-label: Precontemplación
 
@@ -168,6 +169,7 @@ states:
           and signal.reconocimiento_del_problema >= 45
           and (signal.intención_comprometida >= 34 or signal.reconocimiento_del_problema >= 55)
 
+    input-processor: ai
   Contemplación:
     ui-label: Contemplación
 
@@ -191,6 +193,7 @@ states:
           and signal.balance_decisional > 40
           and signal.perfil_de_procesos_de_cambio > 25
 
+    input-processor: ai
   Preparación:
     ui-label: Preparación
 
@@ -214,6 +217,7 @@ states:
           and signal.reconocimiento_del_problema >= 30
           and signal.craving_nivel_e_inestabilidad < 70
 
+    input-processor: ai
   Acción:
     ui-label: Acción
 
@@ -235,6 +239,7 @@ states:
           and signal.acción_efectiva_magnitud_y_duración >= 80
           and signal.reconocimiento_del_problema >= 30
 
+    input-processor: ai
   Mantenimiento:
     ui-label: Mantenimiento
 
@@ -254,6 +259,7 @@ states:
         trigger: >-
           0 <= signal.acción_efectiva_magnitud_y_duración < 50
 
+    input-processor: ai
   Recaída:
     ui-label: Recaída
 
@@ -273,5 +279,6 @@ states:
         trigger: >-
           signal.alianza_terapéutica >= 45
           and signal.acción_efectiva_magnitud_y_duración >= 15
+    input-processor: ai
 project:
   id: drogodependencia

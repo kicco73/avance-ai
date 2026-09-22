@@ -14,11 +14,11 @@ transcribed asks the transcription service, not the talker."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
+
+from tracking.turn_callbacks import OnMetadata
 
 if TYPE_CHECKING:
-	from ai import MetadataCallback
-	from tracking.prompt import Prompt
 	from tracking.sources import ToolSet
 
 
@@ -32,9 +32,9 @@ class BaseTalker(ABC):
 	@abstractmethod
 	def chat(
 		self,
-		prompt: "Prompt",
+		prompt: Any,
 		chat_history: list[dict],
-		on_metadata: "MetadataCallback",
+		on_metadata: OnMetadata,
 		tool_set: "ToolSet | None" = None,
 		force_required_tools: bool = False,
 		env_block: str | None = None,

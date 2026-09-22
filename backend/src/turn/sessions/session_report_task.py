@@ -6,11 +6,13 @@ from typing import Any, TYPE_CHECKING
 
 from jobs import CancelableJob
 from scheduler import Task
+from system.logging_factory import LoggerFactory
 
 if TYPE_CHECKING:
-    from ai import AiService
     from db import Db
     from scheduler import SchedulerService
+
+logger = LoggerFactory.get_logger(__name__)
 
 SESSION_REPORT_INSTRUCTIONS = (
     "You are given the full transcript of a closed chat session, turn by turn, "
@@ -103,7 +105,7 @@ class SessionReportTask(Task):
 
 class SessionReportHydrator:
 
-    def __init__(self, db: "Db", ai_service: "AiService") -> None:
+    def __init__(self, db: "Db", ai_service: Any) -> None:
         self._db = db
         self._ai_service = ai_service
 
@@ -114,6 +116,9 @@ class SessionReportHydrator:
         return SessionReportTask(key, username, payload, self)
 
     async def run(self, session_id: int) -> None:
+        if self._ai_service is None:
+            logger.warning("Session %s closed with no AI service installed — no summary report generated.", session_id)
+            return
         session = self._db.get_chat_session(session_id)
         assert session is not None
         prompt_text = build_session_report_prompt(self._db, session_id)

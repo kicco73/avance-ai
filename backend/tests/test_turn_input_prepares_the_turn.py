@@ -51,8 +51,8 @@ class _FakeProvider:
 def _chat_blocked_automaton() -> Automaton:
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {
-        "": State(key="", ui_label="", final=False, actions=[init_action]),
-        "a": State(key="a", ui_label="A", final=True, chat_enabled=False, contextual_prompt="wrap up", actions=[]),
+        "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
+        "a": State(input_processor="ai", key="a", ui_label="A", final=True, chat_enabled=False, contextual_prompt="wrap up", actions=[]),
     }
     return Automaton(
         init_action=init_action, states=states, general_prompt="", signals=[], general_attachments={},

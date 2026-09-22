@@ -36,6 +36,19 @@ export function excludingNamespaces(registry, excluded) {
   return Object.fromEntries(Object.entries(registry).filter(([ns]) => !isExcluded(ns)))
 }
 
+export function excludingIdentifiers(registry, excluded) {
+  if (!excluded || !excluded.length) return registry
+  const result = { ...registry }
+  for (const spec of excluded) {
+    const dot = spec.indexOf('.')
+    const ns = dot === -1 ? spec : spec.slice(0, dot)
+    const name = dot === -1 ? null : spec.slice(dot + 1)
+    if (name === null || !result[ns]) continue
+    result[ns] = Object.fromEntries(Object.entries(result[ns]).filter(([key]) => key !== name))
+  }
+  return result
+}
+
 const VALUE_NAMESPACES = new Set(['signal', 'env', 'user', 'choice', 'datetime.timezone'])
 
 const CORE_PATTERN_SOURCE = 'signal|env|session(?:\\.metric)?|user|source|task|chat|drive|metric|choice|datetime(?:\\.timezone)?'

@@ -38,7 +38,7 @@ def _automaton(
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     automaton = Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action])},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action])},
         general_prompt="", signals=[], general_attachments={},
         autotracking_on_ai_message=False, project_id=project_id, sources=sources, env_keys=env_keys,
     )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any
 
 from automaton.automaton import (
     ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, SourcePayload, StatePayload,
@@ -26,9 +26,6 @@ from .archive.layout import (
     BEHAVIOUR_DIR, ArchiveLayout, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, MEDIA_DIR,
     ROOT_FILE_NAMES, SOURCES_DIR,
 )
-
-if TYPE_CHECKING:
-    from ai import AiService
 
 logger = LoggerFactory.get_logger(__name__)
 _SPEC_PLACEHOLDER = "%%SPEC%%"
@@ -55,7 +52,7 @@ quoted string you open must be closed — never leave a `"` or `'` dangling.
 character, or is otherwise awkward to quote, use a YAML block scalar \
 (`|` for literal, `>` for folded) instead of a quoted flow scalar — it \
 needs no escaping and cannot produce an unbalanced-quote error.
-- Every piece of text in this file — `contextual-prompt`, `fixed-message`, \
+- Every piece of text in this file — `contextual-prompt`, \
 `ui-label`, `ui-description`, any of it — is plain prose or, where the \
 specification says so, Markdown. Never HTML: no `<div>`, `<span>`, or any \
 other markup tag anywhere in the file, including inside prompt/description \
@@ -119,7 +116,7 @@ _CODE_FENCE_RE = re.compile(r"```[a-zA-Z0-9_+-]*\s*\n(.*?)```", re.DOTALL)
 class ProjectEditor:
     def __init__(
         self, db: Db, automaton_loader: AutomatonLoader, inspector: ProjectInspector, manager: ProjectManager,
-        ai_service: "AiService | None" = None,
+        ai_service: Any = None,
     ) -> None:
         self._db = db
         self._automaton_loader = automaton_loader

@@ -111,10 +111,6 @@ function jumpToEnvKey(name) {
     </template>
 
     <template v-else>
-      <div class="inspector-io-section-header">
-        <span class="inspector-detail-badge inspector-detail-badge-env">Env</span>
-        <span class="inspector-signal-name">The variables this project declares</span>
-      </div>
       <InspectorEnvKeysList
         :env-keys="envKeys"
         :loading="envKeysLoading"
@@ -135,7 +131,6 @@ function jumpToEnvKey(name) {
 .inspector-io-strategy-label { font-size: 0.78rem; color: #555; }
 .inspector-io-block { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
 .inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.2rem; }
-.inspector-io-section-header { display: flex; align-items: center; gap: 0.4rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-env { background: #00838f; }
 .inspector-detail-badge-output { background: #004d40; }

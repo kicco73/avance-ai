@@ -12,6 +12,7 @@ import { needsLogin } from '../../../../../../authStore.js'
 import { activeChatMode } from '../../../../../../chatSkin.js'
 import { useAppBoot } from '../../../../../../composables/useAppBoot.js'
 import { testStore } from '../../../../testChatStore.js'
+import { deleteSession } from '../../../../api.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -122,10 +123,28 @@ async function captureSnapshot() {
   }
 }
 
+const expectedSessionId = ref(props.sessionId)
+let restartResolve = null
+
+async function restartSession() {
+  const oldSessionId = testStore.currentSessionId.value
+  if (oldSessionId != null) {
+    try {
+      await deleteSession(oldSessionId)
+    } catch {}
+  }
+  const newSessionId = await new Promise((resolve) => {
+    restartResolve = resolve
+    testStore.handleNewSession()
+  })
+  window.parent.postMessage({ source: 'run-chat-embed', type: 'session-restarted', sessionId: newSessionId }, window.location.origin)
+}
+
 function onParentMessage(event) {
   if (event.origin !== window.location.origin) return
   if (event.data?.source !== 'run-chat-parent') return
   if (event.data.type === 'capture-snapshot') captureSnapshot()
+  if (event.data.type === 'restart-session') restartSession()
 }
 
 let stopSessionWatch = null
@@ -134,7 +153,15 @@ onMounted(() => {
   activeChatMode.value = 'test'
   testStore.setProject(props.projectId)
   stopSessionWatch = watch(testStore.currentSessionId, (id) => {
-    if (id != null && String(id) !== props.sessionId) testStore.selectSession({ id: props.sessionId })
+    if (id == null) return
+    if (restartResolve) {
+      expectedSessionId.value = String(id)
+      const resolve = restartResolve
+      restartResolve = null
+      resolve(id)
+      return
+    }
+    if (String(id) !== expectedSessionId.value) testStore.selectSession({ id: expectedSessionId.value })
   })
   window.addEventListener('message', onParentMessage)
   startBootSequence()

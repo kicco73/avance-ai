@@ -94,6 +94,7 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     ai-may-write-sources: [flights]
     actions:

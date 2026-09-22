@@ -14,15 +14,14 @@ ever synthesizing one.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, AsyncIterator, Protocol
+from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol
 
-from ai import content_to_text
+from content_text import content_to_text
+from tracking.turn_callbacks import OnMetadata
 
 from .base_talker import BaseTalker
 
 if TYPE_CHECKING:
-	from ai import MetadataCallback
-	from tracking.prompt import Prompt
 	from tracking.sources import ToolSet
 
 
@@ -73,9 +72,9 @@ class HumanTalker(BaseTalker):
 
 	async def chat(
 		self,
-		prompt: "Prompt",
+		prompt: Any,
 		chat_history: list[dict],
-		on_metadata: "MetadataCallback",
+		on_metadata: OnMetadata,
 		tool_set: "ToolSet | None" = None,
 		force_required_tools: bool = False,
 		env_block: str | None = None,

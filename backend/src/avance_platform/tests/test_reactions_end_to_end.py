@@ -33,6 +33,7 @@ reactions:
 
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     reactions-enabled: true
     actions:
@@ -40,6 +41,7 @@ states:
         target: a
         trigger: "False"
   b:
+    input-processor: ai
     contextual-prompt: there
     reactions-enabled: false
 """
@@ -122,6 +124,7 @@ init-action:
 
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     reactions-enabled: true
     actions:

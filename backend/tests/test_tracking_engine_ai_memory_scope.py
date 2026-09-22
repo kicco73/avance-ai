@@ -26,6 +26,7 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 {state_yaml}"""})
 
@@ -64,14 +65,14 @@ class FakeScopeBuilder:
 def _automaton(target: str, target_scope: str) -> tuple[Automaton, State, Action]:
     action = Action(name="go", ui_label="Go", ui_button="Go", target=target)
     state_a = State(
-        key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
+        input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
         ai_memory_scope=target_scope if target == "a" else "none",
     )
-    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="bye", ai_memory_scope=target_scope)
+    state_b = State(input_processor="ai", key="b", ui_label="B", final=True, contextual_prompt="bye", ai_memory_scope=target_scope)
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     automaton = Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
         general_prompt="", signals=[], general_attachments={}, autotracking_on_ai_message=False,
     )
     return automaton, state_a, action

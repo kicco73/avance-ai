@@ -34,18 +34,18 @@ def _automaton(
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target=target, env=action_env)
     input_names = tuple(action_env or {}) if model_reads_env else ()
     state_a = State(
-        key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
+        input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
         input=input_names if target == "a" else (),
     )
     state_b = State(
-        key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[],
+        input_processor="ai", key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[],
         input=input_names if target == "b" else (),
         ai_memory_scope=target_memory,
     )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
         general_prompt="",
         signals=[],
         general_attachments={},

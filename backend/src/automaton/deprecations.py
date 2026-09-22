@@ -537,6 +537,39 @@ class LegacyEnvUiDescription(EnvKeyDeprecation):
                 editor.drop_key_preserving_comments(entry, self.KEY)
 
 
+class MissingInputProcessor(StateDeprecation):
+    """The one deprecation that adds a key. Before `input-processor`
+    existed every state answered through the model, so a state that does
+    not say is known to be 'ai' — this is a fact about the format's own
+    history, not a guess about the author."""
+
+    KEY = "input-processor"
+    VALUE = "ai"
+    MESSAGE = (
+        "State '{name}': declares no 'input-processor' — before the field existed every "
+        "state answered through the model, so it is 'ai'."
+    )
+
+    @property
+    def fix(self) -> str:
+        return f"{self.name}: {self.KEY}: {self.VALUE}"
+
+    @classmethod
+    def found_in(cls, raw) -> Sequence[Self]:
+        return [
+            cls(name, BuildCursor.own_line(entry))
+            for name, entry in cls.entries(raw)
+            if not owns(entry, cls.KEY)
+        ]
+
+    def mine(self, editor) -> list[MutableMapping]:
+        return [entry for _, entry in self.entries(editor.document()) if not owns(entry, self.KEY)]
+
+    def rewrite(self, editor) -> None:
+        for entry in self.mine(editor):
+            entry[self.KEY] = self.VALUE
+
+
 class RemovedEnvUiLabel(EnvKeyDeprecation, RemovedKey):
 
     KEY = "ui-label"
@@ -549,7 +582,7 @@ class RemovedEnvUiLabel(EnvKeyDeprecation, RemovedKey):
 PROJECT_KINDS = (LegacyTalkEnabled,)
 FIELD_KINDS = (
     LegacyOnEnter, LegacyActuatorField, LegacyActionPrompt, LegacyStateScript,
-    LegacyStateChat, LegacyAiMemoryStrategy, RemovedEnvAiAccess, RemovedEnvUiLabel,
+    LegacyStateChat, LegacyAiMemoryStrategy, MissingInputProcessor, RemovedEnvAiAccess, RemovedEnvUiLabel,
     RemovedEnvValue, LegacyChoiceEnvType, LegacyEnvUiDescription,
 )
 KINDS = PROJECT_KINDS + FIELD_KINDS + (LegacyActuatorCall,)

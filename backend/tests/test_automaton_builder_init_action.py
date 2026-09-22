@@ -20,6 +20,7 @@ init-action:
   ui-description: Where every session begins.
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
@@ -34,6 +35,7 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 """
     automaton = AutomatonBuilder().build({"index.yml": content})

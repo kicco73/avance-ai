@@ -80,10 +80,10 @@ def test_the_middleware_authenticates_and_declares_no_channel():
 
 def _automaton() -> Automaton:
     init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a")
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[])
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[])
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
         general_prompt="",
         signals=[],
         general_attachments={},

@@ -22,6 +22,7 @@ YML = (
     "init-action:\n  target: a\n"
     "states:\n"
     "  a:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hi\n"
     "    actions:\n"
     "      - name: finish\n"
@@ -29,11 +30,13 @@ YML = (
     "      - name: go\n"
     "        target: b\n"
     "  b:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: there\n"
     "    actions:\n"
     "      - name: back\n"
     "        target: a\n"
     "  end:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: bye\n"
 )
 
@@ -45,12 +48,14 @@ def _tracked_into_end(on_ai_message: bool) -> str:
         "init-action:\n  target: a\n"
         "states:\n"
         "  a:\n"
+        "    input-processor: ai\n"
         "    contextual-prompt: hi\n"
         "    actions:\n"
         "      - name: finish\n"
         "        target: end\n"
         "        trigger: \"True\"\n"
         "  end:\n"
+        "    input-processor: ai\n"
         "    contextual-prompt: bye\n"
     )
 
@@ -156,6 +161,7 @@ ONE_STATE_YML = (
     "init-action:\n  target: only\n"
     "states:\n"
     "  only:\n"
+    "    input-processor: ai\n"
     "    contextual-prompt: hi\n"
 )
 

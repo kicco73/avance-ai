@@ -18,11 +18,11 @@ PROJECT_ID = "proj"
 def _automaton() -> Automaton:
     manual_action = Action(name="manual", ui_label="Manual", ui_button="Manual", target="a")
     triggered_action = Action(name="auto", ui_label="Auto", ui_button="Auto", target="a", trigger="True")
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[manual_action, triggered_action])
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[manual_action, triggered_action])
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
         general_prompt="", signals=[], general_attachments={}, autotracking_on_ai_message=False,
     )
 
@@ -41,6 +41,9 @@ class _FakeProjectService:
         return self._automaton
 
     def get_automaton_and_state_for_session(self, session_id: int):
+        return self._automaton, self._automaton.states["a"]
+
+    def get_automaton_and_state_as_recorded(self, session_id: int, state_key: str | None):
         return self._automaton, self._automaton.states["a"]
 
     def get_automaton_for_session(self, session_id: int) -> Automaton:

@@ -1,4 +1,4 @@
-"""A provider that goes quiet costs the person five seconds, not thirteen minutes.
+"""A provider that goes quiet costs the person ten seconds, not thirteen minutes.
 
 Session 55 in production (2026-09-21, backend/src/stuck.db): Derek
 answered question 8, the transition to step 9 was persisted, Gemini
@@ -6,7 +6,7 @@ never sent a byte, and the exchange ended in silence — the person waited
 13 minutes for an answer that had already been discarded. Replayed here
 with a scripted provider on a clock the test moves (virtual_clock.py):
 the same choice, the same silence, and the answer arriving 13 minutes
-late. The exchange must end with `output.error` at 5.0 s and nothing
+late. The exchange must end with `output.error` at 10.0 s and nothing
 may land after it.
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ from virtual_clock import VirtualClockLoop
 
 pytestmark = pytest.mark.regression
 
-FIRST_BYTE_SECONDS = 5.0
+FIRST_BYTE_SECONDS = 10.0
 NEXT_BYTE_SECONDS = 10.0
 DEREK_WAITED_SECONDS = 13 * 60
 
@@ -37,9 +37,9 @@ def _automaton() -> Automaton:
     go = Action(name="go", ui_label="Go", ui_button="Go", target="b")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {
-        "": State(key="", ui_label="", final=False, actions=[init_action]),
-        "a": State(key="a", ui_label="Question 8", final=False, contextual_prompt="ask 8", actions=[go]),
-        "b": State(key="b", ui_label="Question 9", final=False, contextual_prompt="ask 9", actions=[], history_cutoff=True),
+        "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
+        "a": State(input_processor="ai", key="a", ui_label="Question 8", final=False, contextual_prompt="ask 8", actions=[go]),
+        "b": State(input_processor="ai", key="b", ui_label="Question 9", final=False, contextual_prompt="ask 9", actions=[], history_cutoff=True),
     }
     return Automaton(
         init_action=init_action, states=states, general_prompt="", signals=[], general_attachments=(),
@@ -108,7 +108,7 @@ def _run(clocked, scenario) -> None:
     clocked.run(scenario(clocked.get_loop().clock))
 
 
-def test_derek_is_told_at_five_seconds_and_nothing_lands_thirteen_minutes_later(clocked, turn_service_for):
+def test_derek_is_told_at_ten_seconds_and_nothing_lands_thirteen_minutes_later(clocked, turn_service_for):
     provider = ScriptedProvider(RepliesAfter(DEREK_WAITED_SECONDS, "Question 9: ..."))
 
     async def scenario(clock):
@@ -116,7 +116,7 @@ def test_derek_is_told_at_five_seconds_and_nothing_lands_thirteen_minutes_later(
         await derek.presses("go")
         await clock.advance(FIRST_BYTE_SECONDS - 0.1)
 
-        assert derek.persisted_state() == "b"
+        assert derek.persisted_state() == "a"
         assert "output.error" not in derek.frames.types()
         assert "output.text" not in derek.frames.types()
 
@@ -138,7 +138,7 @@ def test_derek_is_told_at_five_seconds_and_nothing_lands_thirteen_minutes_later(
     _run(clocked, scenario)
 
 
-def test_the_error_names_no_state_change_although_the_transition_was_persisted(clocked, turn_service_for):
+def test_the_error_names_no_state_change_and_the_transition_is_not_kept(clocked, turn_service_for):
     provider = ScriptedProvider(Stalled())
 
     async def scenario(clock):
@@ -146,7 +146,7 @@ def test_the_error_names_no_state_change_although_the_transition_was_persisted(c
         await derek.presses("go")
         await clock.advance(FIRST_BYTE_SECONDS)
 
-        assert derek.persisted_state() == "b"
+        assert derek.persisted_state() == "a"
         assert derek.frames.types() == ["output.text_stream", "output.error"]
 
     _run(clocked, scenario)
@@ -183,7 +183,8 @@ def test_a_text_turn_whose_provider_stalls_ends_the_same_way(clocked, turn_servi
 
         assert derek.frames.last().type == "output.error"
         assert f"sent nothing for {FIRST_BYTE_SECONDS:g}s" in derek.frames.last().body["detail"]
-        assert len(derek.db.get_messages(derek.session_id)) == 1
+        assert derek.db.get_messages(derek.session_id) == []
+        assert derek.turn_service.read_history(derek.session_id) == []
 
         await derek.says("hello?")
         await clock.settle()

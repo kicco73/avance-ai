@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from db import Db
 from scheduler import SchedulerService
@@ -10,7 +10,6 @@ from .action_task import TASK_NAMESPACE_FAKE, TASK_NAMESPACE_LIVE, ActionTask, S
 from .chat_namespace import ChatNamespace, FakeChatNamespace, LiveChatNamespace
 
 if TYPE_CHECKING:
-    from ai import AiService
     from project.project_service import ProjectService
 
 
@@ -30,7 +29,7 @@ class TaskNamespaceFactory:
 
     def __init__(
         self, db: Db, scheduler_service: SchedulerService,
-        project_service: "ProjectService", ai_service: "AiService | None" = None,
+        project_service: "ProjectService", ai_service: Any = None,
     ) -> None:
         self._db = db
         self._scheduler_service = scheduler_service

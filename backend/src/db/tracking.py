@@ -18,10 +18,12 @@ class TrackingMixin:
 
     def save_signal_snapshot(
         self, values: dict, session_id: int, message_id: int | None=None, output_values: dict | None = None,
+        timestamp: datetime | None = None,
     ) -> int:
         row = Tracking.create(
             session=session_id, values=json.dumps(values), message=message_id,
             output=json.dumps(output_values) if output_values else None,
+            **({'timestamp': timestamp} if timestamp is not None else {}),
         )
         return row.id
 
@@ -106,7 +108,7 @@ class TrackingMixin:
     def save_transition(
         self, old_state: str | None, action: str | None, new_state: str | None, session_id: int,
         transition_log_level: str, signal_values: dict | None=None, message_id: int | None=None,
-        origin: str | None=None, output_values: dict | None = None,
+        origin: str | None=None, output_values: dict | None = None, timestamp: datetime | None = None,
     ) -> int:
         if origin is not None and origin not in TRACKING_ORIGINS:
             raise ValueError(f"Unknown origin '{origin}' — expected one of {TRACKING_ORIGINS}.")
@@ -114,6 +116,7 @@ class TrackingMixin:
             session=session_id, old_state=old_state, action=action, new_state=new_state,
             values=json.dumps(signal_values) if signal_values is not None else None, message=message_id,
             origin=origin, output=json.dumps(output_values) if output_values else None,
+            **({'timestamp': timestamp} if timestamp is not None else {}),
         )
         trigger_type = 'auto' if signal_values is not None else 'manual'
         level = getattr(logging, transition_log_level)
@@ -268,8 +271,13 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.env) if row is not None else {}
 
-    def set_env(self, session_id: int, env: dict, message_id: int | None=None) -> None:
-        Tracking.create(session=session_id, env=json.dumps(env), message=message_id)
+    def set_env(
+        self, session_id: int, env: dict, message_id: int | None=None, timestamp: datetime | None = None,
+    ) -> None:
+        Tracking.create(
+            session=session_id, env=json.dumps(env), message=message_id,
+            **({'timestamp': timestamp} if timestamp is not None else {}),
+        )
 
     def get_action_env(self, project_id: str, user: str, until: datetime | None=None) -> dict:
         query = Tracking.select(Tracking.action_env).join(CoreSession, on=Tracking.session == CoreSession.id).where((CoreSession.project == project_id) & (CoreSession.username == user) & Tracking.action_env.is_null(False))
@@ -278,14 +286,20 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.action_env) if row is not None else {}
 
-    def set_action_env(self, session_id: int, action_env: dict, origin: str | None = None) -> int:
+    def set_action_env(
+        self, session_id: int, action_env: dict, origin: str | None = None, message_id: int | None = None,
+        timestamp: datetime | None = None,
+    ) -> int:
         """`origin`: None for an action's own `env:` write; 'tool' for one
         the model made through a source's own `update` write tool, so
         link_tool_env_writes_to_message
         below can find it once the turn's assistant message exists."""
         if origin is not None and origin not in TRACKING_ORIGINS:
             raise ValueError(f"Unknown origin '{origin}' — expected one of {TRACKING_ORIGINS}.")
-        row = Tracking.create(session=session_id, action_env=json.dumps(action_env), origin=origin)
+        row = Tracking.create(
+            session=session_id, action_env=json.dumps(action_env), origin=origin, message=message_id,
+            **({'timestamp': timestamp} if timestamp is not None else {}),
+        )
         return row.id
 
     def get_local_memory(self, session_id: int, until: datetime | None = None) -> dict:
@@ -297,8 +311,11 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.local_memory) if row is not None else {}
 
-    def set_local_memory(self, session_id: int, values: dict) -> None:
-        Tracking.create(session=session_id, local_memory=json.dumps(values))
+    def set_local_memory(self, session_id: int, values: dict, timestamp: datetime | None = None) -> None:
+        Tracking.create(
+            session=session_id, local_memory=json.dumps(values),
+            **({'timestamp': timestamp} if timestamp is not None else {}),
+        )
 
     def clear_local_memory(self, session_id: int) -> None:
         if not self.get_local_memory(session_id):
@@ -331,7 +348,7 @@ class TrackingMixin:
         self, session_id: int, tool_calls: list[dict], message_id: int | None = None, timestamp: datetime | None = None,
     ) -> int:
         """One row per turn that actually made at least one tool call
-        (see ai.ai_service.AiService's own tool-call loop) — `tool_calls`
+        (see the AI skill's own tool-call loop) — `tool_calls`
         is every {name, arguments, result} entry from that turn, in the
         order they ran. Same "its own row" shape as env/action_env above,
         never merged into a signals row (see get_signals' own

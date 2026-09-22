@@ -47,6 +47,7 @@ sources:
 states:
   Hello:
     ui-label: Hello
+    input-processor: ai
     contextual-prompt: hi
     chat-enabled: false
     actions:
@@ -56,6 +57,7 @@ states:
         on-exit: "env.question = env.questions[0]"
   Bye:
     ui-label: Bye
+    input-processor: ai
     contextual-prompt: bye
     chat-enabled: false
 """

@@ -45,7 +45,7 @@ class DeploymentInfoController(BaseController):
         """Each ai-service provider's own token spend, one point per
         minute over the trailing 24h (see db/ai_usage.py)."""
         labels = [f"{p['driver']}/{p['model']}" for p in self.services_config["ai"]["providers"]]
-        return self.db.get_ai_token_usage_snapshot(labels)
+        return self.db.get_ai_usage_snapshot(labels)
 
     @get("/api/core/settings/tasks", role="admin")
     def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):

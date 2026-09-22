@@ -9,7 +9,7 @@ from system.web_session import WebSession
 
 pytestmark = pytest.mark.regression
 
-MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
 
 
 def _build_zip(files: dict[str, bytes]) -> bytes:

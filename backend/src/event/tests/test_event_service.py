@@ -35,9 +35,11 @@ init-action:
 states:
   a:
     ui-label: A
+    input-processor: ai
     contextual-prompt: hi
   b:
     ui-label: B
+    input-processor: ai
     contextual-prompt: there
 """
 
@@ -47,6 +49,7 @@ init-action:
 states:
   x:
     ui-label: X
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: notice
@@ -201,6 +204,7 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
 """
 

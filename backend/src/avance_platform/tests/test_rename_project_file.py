@@ -17,6 +17,7 @@ init-action:
 
 states:
   Hello:
+    input-processor: ai
     contextual-prompt: |
       Ignore all user input. You always respond "hello, world!".
     attachments: [notes.md]

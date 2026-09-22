@@ -14,7 +14,7 @@ from automaton.automaton_builder import AutomatonBuilder
 
 pytestmark = pytest.mark.contract
 
-MINIMAL_STATES = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+MINIMAL_STATES = "init-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
 
 
 def _build(project_yaml: str = "project:\n  id: my_project\n") -> Automaton:

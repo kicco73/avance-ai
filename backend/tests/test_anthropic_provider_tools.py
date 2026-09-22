@@ -10,7 +10,7 @@ import pytest
 
 from ai.ai_service import AiService
 from ai.llm_provider import SystemPrompt, ToolCall, ToolCallsRequested
-from db.models import AiTokenUsage
+from db.models import AiUsage
 from provider_tools_helpers import (
     SELECT_SPEC, AnthropicFinalMessage, AnthropicHarness, AnthropicTextBlock, AnthropicToolUseBlock, AnthropicUsage,
     FakeToolSet, drain,
@@ -74,9 +74,9 @@ async def test_build_messages_round_trips_the_neutral_tool_history_shapes_omitti
 
 async def test_the_token_usage_tap_never_pairs_a_round_s_input_with_a_stale_output(db):
     """Regression: without resetting `captured` between rounds (see
-    AiService._tap_token_usage), round 2's own input_tokens would
+    AiService._tap_usage), round 2's own input_tokens would
     momentarily pair with round 1's still-cached output_tokens (and
-    round 3's with round 2's), writing an extra, wrong AiTokenUsage row
+    round 3's with round 2's), writing an extra, wrong AiUsage row
     before the correct pair overwrote it — inflating summed usage totals."""
     round_1 = AnthropicFinalMessage(
         "tool_use", content=[AnthropicToolUseBlock("call_1", "source_flights_select", {"value": "paris"})],
@@ -96,7 +96,7 @@ async def test_the_token_usage_tap_never_pairs_a_round_s_input_with_a_stale_outp
     ):
         pass
 
-    pairs = sorted((row.input_tokens, row.output_tokens) for row in AiTokenUsage.select())
+    pairs = sorted((row.input_tokens, row.output_tokens) for row in AiUsage.select())
     assert pairs == [(10, 20), (30, 40), (50, 60)]
 
 
@@ -147,5 +147,5 @@ async def test_a_row_is_recorded_with_the_normalized_input_total_and_both_cache_
     async for _ in ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}):
         pass
 
-    row = AiTokenUsage.get()
+    row = AiUsage.get()
     assert (row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_creation_tokens) == (130, 5, 100, 20)

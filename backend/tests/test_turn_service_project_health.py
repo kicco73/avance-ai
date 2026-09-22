@@ -25,11 +25,11 @@ PROJECT_ID = "proj"
 
 def _automaton() -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a")
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
         general_prompt="", signals=[], general_attachments={}, autotracking_on_ai_message=False,
     )
 
@@ -52,6 +52,11 @@ class _FakeProjectService:
         return self._automaton
 
     def get_automaton_and_state_for_session(self, session_id: int):
+        if self.session_lookup_error is not None:
+            raise self.session_lookup_error
+        return self._automaton, self._automaton.states["a"]
+
+    def get_automaton_and_state_as_recorded(self, session_id: int, state_key: str | None):
         if self.session_lookup_error is not None:
             raise self.session_lookup_error
         return self._automaton, self._automaton.states["a"]

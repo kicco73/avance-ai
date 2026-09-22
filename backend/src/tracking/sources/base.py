@@ -16,14 +16,21 @@ driver to remember."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Protocol, TYPE_CHECKING
+
+from tracking.project_files import ProjectArchives
 
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
-    from tracking.project_files import ProjectArchives
     from tracking.env import Env
     from tracking.project_files import ProjectFiles
 MAX_SOURCE_RESULT_CHARS = 8_000
+
+
+class SourceArchives(ProjectArchives, Protocol):
+    def write_archive_at_revision(
+        self, project_id: str, archive_name: str, revision: int, content: bytes, content_type: str,
+    ) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -40,7 +47,7 @@ class SourceContext:
     by SourceNamespace; a driver never asks which it got. Defaulted here
     so a context built by hand still works: it resolves to the same choice
     project_files_for would have made."""
-    db: "ProjectArchives | None"
+    db: "SourceArchives | None"
     automaton: "Automaton"
     session_id: int | None
     env: "Env"

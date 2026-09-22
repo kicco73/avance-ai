@@ -13,7 +13,7 @@ pytestmark = pytest.mark.contract
 SUPPORTIVE = "reactions:\n  supportive:\n    definition: Use when a verbal response would feel clinical.\n"
 
 
-def _build(reactions_yaml: str = "", states_yaml: str = "  a:\n    contextual-prompt: hi\n"):
+def _build(reactions_yaml: str = "", states_yaml: str = "  a:\n    input-processor: ai\n    contextual-prompt: hi\n"):
     content = f"""
 project:
   id: proj
@@ -59,11 +59,11 @@ def test_reactions_are_effectively_enabled_only_where_a_state_opts_in_and_the_pr
     state's raw, unguarded reactions_enabled flag."""
     assert _build().states["a"].reactions_enabled is False
 
-    per_state = _build(states_yaml="  a:\n    contextual-prompt: hi\n    reactions-enabled: true\n  b:\n    contextual-prompt: there\n    reactions-enabled: false\n")
+    per_state = _build(states_yaml="  a:\n    input-processor: ai\n    contextual-prompt: hi\n    reactions-enabled: true\n  b:\n    input-processor: ai\n    contextual-prompt: there\n    reactions-enabled: false\n")
     assert per_state.states["a"].reactions_enabled is True
     assert per_state.states["b"].reactions_enabled is False
     assert per_state.reactions_enabled_for(per_state.states["a"]) is False
 
-    declared = _build(SUPPORTIVE, states_yaml="  a:\n    contextual-prompt: hi\n    reactions-enabled: true\n  b:\n    contextual-prompt: there\n    reactions-enabled: false\n")
+    declared = _build(SUPPORTIVE, states_yaml="  a:\n    input-processor: ai\n    contextual-prompt: hi\n    reactions-enabled: true\n  b:\n    input-processor: ai\n    contextual-prompt: there\n    reactions-enabled: false\n")
     assert declared.reactions_enabled_for(declared.states["a"]) is True
     assert declared.reactions_enabled_for(declared.states["b"]) is False

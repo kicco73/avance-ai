@@ -80,12 +80,12 @@ def _automaton(
     action_target: str, action_env: dict | None = None, action_on_exit: str | None = None,
 ) -> tuple[Automaton, State, Action]:
     action = Action(name="go", ui_label="Go", ui_button="Go", target=action_target, env=action_env, on_exit=action_on_exit)
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
-    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="bye")
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
+    state_b = State(input_processor="ai", key="b", ui_label="B", final=True, contextual_prompt="bye")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     automaton = Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
         general_prompt="",
         signals=[],
         general_attachments={},

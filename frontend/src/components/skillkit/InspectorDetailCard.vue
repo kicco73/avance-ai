@@ -86,6 +86,8 @@ function commitTarget() {
 }
 
 function openScriptDialog(tab) {
+  const targetKey = props.selectedElement?.data.target
+  const targetIsAiState = props.availableStates.find((s) => s.key === targetKey)?.inputProcessor === 'ai'
   customDialog({
     component: ScriptEditDialog,
     wide: true,
@@ -94,6 +96,7 @@ function openScriptDialog(tab) {
       initialOnExit: props.selectedElement?.data.onExit ?? '',
       initialTask: props.selectedElement?.data.task ?? '',
       showTrigger: !props.selectedElement?.data.isInitEdge,
+      targetIsAiState,
       initialTab: tab,
       onCommit: (field, value) => props.saveField(field, value)
     }
@@ -102,6 +105,13 @@ function openScriptDialog(tab) {
 
 function commitBoolField(field, value) {
   emit('set-field', field, value)
+}
+
+const OTHER_PROCESSOR = { ai: 'system', system: 'ai' }
+const isAiState = computed(() => props.selectedElement?.data.inputProcessor === 'ai')
+
+function toggleInputProcessor() {
+  emit('set-field', 'input-processor', OTHER_PROCESSOR[props.selectedElement.data.inputProcessor])
 }
 
 const hasConfiguredSources = computed(() => {
@@ -150,8 +160,7 @@ const hasSelectedElementBadges = computed(() => {
   if (props.selectedElement.kind === 'state') {
     if (showEditForm.value) return true
     const d = props.selectedElement.data
-    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chatEnabled || d.historyCutoff ||
-      (d.reactionsEnabled && d.hasReactions) || hasConfiguredSources.value
+    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || isAiState.value
   }
   if (showEditForm.value) return true
   const d = props.selectedElement.data
@@ -213,18 +222,27 @@ function selectAttachment(fileName) {
           </template>
           <template v-if="showEditForm">
             <span
+              class="inspector-detail-badge inspector-detail-badge-toggle inspector-detail-badge-ai"
+              :class="isAiState ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+              title="Click to toggle: answered by the AI, or by the automaton's own scripts"
+              @click.stop="toggleInputProcessor"
+            >AI</span>
+            <span
+              v-if="isAiState"
               class="inspector-detail-badge inspector-detail-badge-toggle"
               :class="!selectedElement.data.chatEnabled ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
               title="Click to toggle"
               @click.stop="commitBoolField('chat-enabled', !selectedElement.data.chatEnabled)"
             >No chat</span>
             <span
+              v-if="isAiState"
               class="inspector-detail-badge inspector-detail-badge-toggle"
               :class="selectedElement.data.historyCutoff ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
               title="Click to toggle"
               @click.stop="commitBoolField('history-cutoff', !selectedElement.data.historyCutoff)"
             >History cutoff</span>
             <span
+              v-if="isAiState"
               class="inspector-detail-badge inspector-detail-badge-toggle"
               :class="[
                 selectedElement.data.reactionsEnabled ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off',
@@ -235,12 +253,13 @@ function selectAttachment(fileName) {
             >Reactions</span>
           </template>
           <template v-else>
-            <span v-if="!selectedElement.data.chatEnabled" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
-            <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
-            <span v-if="selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
+            <span v-if="isAiState" class="inspector-detail-badge inspector-detail-badge-neutral inspector-detail-badge-ai-on">AI</span>
+            <span v-if="isAiState && !selectedElement.data.chatEnabled" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
+            <span v-if="isAiState && selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
+            <span v-if="isAiState && selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
           </template>
           <button
-            v-if="showEditForm || hasConfiguredSources"
+            v-if="isAiState && (showEditForm || hasConfiguredSources)"
             type="button"
             class="inspector-detail-badge inspector-detail-badge-toggle inspector-sources-badge-btn"
             :class="hasConfiguredSources ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
@@ -298,13 +317,14 @@ function selectAttachment(fileName) {
               @click.stop
               @blur="commitUiDescription"
             ></textarea>
-            <label class="inspector-detail-form-label">
+            <label v-if="isAiState" class="inspector-detail-form-label">
               <span class="inspector-ai-field-icon" title="Read by the AI">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
               </span>
               Contextual prompt
             </label>
             <textarea
+              v-if="isAiState"
               v-model="editContextualPrompt"
               v-autosize
               class="inspector-detail-textarea"
@@ -312,7 +332,7 @@ function selectAttachment(fileName) {
               @click.stop
               @blur="commitContextualPrompt"
             ></textarea>
-            <div v-if="stateTokens != null" class="inspector-detail-tokens">
+            <div v-if="isAiState && stateTokens != null" class="inspector-detail-tokens">
               <span class="inspector-ai-field-icon" title="Estimated by the AI provider">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
               </span>
@@ -332,7 +352,7 @@ function selectAttachment(fileName) {
           </div>
           <div v-else key="readonly" class="inspector-detail-readonly">
             <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
-            <div v-if="stateTokens != null" class="inspector-detail-tokens">
+            <div v-if="isAiState && stateTokens != null" class="inspector-detail-tokens">
               <span class="inspector-ai-field-icon" title="Estimated by the AI provider">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
               </span>
@@ -430,6 +450,7 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
 .inspector-detail-badge-toggle-on { background: #4a6fa5; }
 .inspector-detail-badge-toggle-locked { cursor: not-allowed; opacity: 0.5; }
+.inspector-detail-badge-ai.inspector-detail-badge-toggle-on, .inspector-detail-badge-ai-on { background: #8b5cf6; }
 .inspector-detail-badge-trigger-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
 .inspector-detail-badge-trigger-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .inspector-detail-badge-trigger.inspector-detail-badge-toggle-on { background: #4b8bbe; }

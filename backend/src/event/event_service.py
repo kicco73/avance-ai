@@ -5,9 +5,10 @@ triggers. One handler serves both message types — neither carries
 anything the other doesn't."""
 from __future__ import annotations
 
+from typing import Any
+
 from automaton.choice import ChoiceSelection
 
-from ai import AiService
 from automaton.automaton import pressable_actions
 from db.db import Db
 from jobs import CancelableJob
@@ -58,7 +59,7 @@ class WakeupJob(CancelableJob):
 class EventService:
     def __init__(
         self, db: Db, project_service: ProjectService, scheduler_service: SchedulerService, namespace_factory: TaskNamespaceFactory,
-        ai_service: AiService | None = None,
+        ai_service: Any = None,
     ) -> None:
         self._db = db
         self._project_service = project_service
@@ -110,7 +111,7 @@ class EventService:
         automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
         with WebSession().impersonate(username):
             project_context = FixedProjectContext(project_id=observer_project_id)
-            env = PersistedEnv(TurnTransaction(self._db, session["id"]), project_context, session["id"])
+            env = PersistedEnv(TurnTransaction(self._db, session["id"], []), project_context, session["id"])
             metrics = MetricService(self._db, project_context)
             session_facts = SessionFacts(self._db, project_context)
             user_facts = UserFacts(self._db)
@@ -120,7 +121,7 @@ class EventService:
                 chat_namespace=self._namespace_factory.chat_live(project_id=observer_project_id),
                 ai_service=self._ai_service,
             )
-            tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
+            tracking_engine = TrackingEngine(DbTrackingSink(TurnTransaction(self._db, session["id"], [])), env, scope_builder)
 
             scope = scope_builder.build(automaton, state.key, {}, ChoiceSelection.NONE)
             action = automaton.evaluate_triggers_action(state.key, scope)

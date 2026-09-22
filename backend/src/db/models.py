@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 
-from peewee import AutoField, BlobField, BooleanField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
+from peewee import AutoField, BlobField, BooleanField, CharField, CompositeKey, DateTimeField, FloatField, ForeignKeyField, IntegerField, Model, Proxy, TextField
 
 
 database = Proxy()
@@ -277,12 +277,23 @@ class SystemWarning(BaseModel):
     class Meta:
         table_name = 'SystemWarning'
 
-class AiTokenUsage(BaseModel):
+class AiUsage(BaseModel):
     """One row per successful ai-service generate call (see AiService.
     generate_stream_with_metadata's on_metadata tap) — raw, un-aggregated,
     the same way Tracking rows are: day/provider totals for Manage
     services' own consumption bar and trend chart are grouped from these
-    at read time (db/ai_usage.py), not maintained as a running counter."""
+    at read time (db/ai_usage.py), not maintained as a running counter.
+    `duration` is the call's wall-clock seconds, from the request to the
+    provider's usage report at the end of its stream (or to the error
+    that ended it). `time_to_first_chunk` is the wall-clock seconds to
+    the first byte the provider sent back, null when none ever arrived
+    (a tool-call round the model answered with no preceding text, or a
+    call that failed before yielding anything — see
+    AiService._UsageTap.first_chunk_received). `outcome` is "success"
+    for a completed call, else one of AiService._outcome_for's
+    categories — a failed call still gets a row, with 0 tokens and
+    whatever duration elapsed before the error (see
+    AiService._UsageTap.record_failure)."""
     id = AutoField()
     provider_label = CharField(index=True)
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
@@ -290,9 +301,12 @@ class AiTokenUsage(BaseModel):
     output_tokens = IntegerField(default=0)
     cache_read_tokens = IntegerField(default=0)
     cache_creation_tokens = IntegerField(default=0)
+    duration = FloatField(default=0.0)
+    time_to_first_chunk = FloatField(null=True)
+    outcome = CharField(index=True, default='success')
 
     class Meta:
-        table_name = 'AiTokenUsage'
+        table_name = 'AiUsage'
 
 class Translation(BaseModel):
     """One label already translated, keyed by its own context (`key`) and

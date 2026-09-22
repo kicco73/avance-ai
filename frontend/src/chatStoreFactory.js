@@ -532,6 +532,7 @@ export function createChatStore({
       statusHold.cancel()
       actionLoading.value = false
       setApiError(frame.message, frame.detail)
+      markUnansweredFailed()
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx !== -1) {
         if (exchange.hasChunk) {
@@ -541,6 +542,15 @@ export function createChatStore({
         }
       }
       if (mine()) handleSessionInactiveError({ code: frame.code })
+    }
+
+    function markUnansweredFailed() {
+      for (let i = messages.value.length - 1; i >= 0; i--) {
+        const m = messages.value[i]
+        if (m.id === assistantMsgId) continue
+        if (m.role !== 'user') break
+        m.failed = true
+      }
     }
 
     function loadToolTrace(backendId) {

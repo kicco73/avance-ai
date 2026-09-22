@@ -15,6 +15,7 @@ states:
     output:
       - input_file
     input: []
+    input-processor: ai
   state-0:
     ui-label: MD
     contextual-prompt: 'convert the original data the user wrote into an MD tabular format to output_file, then print it to the user.'
@@ -22,6 +23,7 @@ states:
       - input_file
     output:
       - output_file
+    input-processor: ai
 project:
   ui-label: Table Converter
   id: table_converted

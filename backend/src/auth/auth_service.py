@@ -1,8 +1,8 @@
 """Orchestrates login (verify a credential, resolve/create the User row,
 issue a session JWT) and token verification (used by the auth middleware
-on every subsequent request). Not cascading like ai/ai_service.py's
-AiService — the client picks a provider explicitly at login, there's no
-automatic fallback between them.
+on every subsequent request). Not a cascade across providers — the
+client picks one explicitly at login, there's no automatic fallback
+between them.
 """
 from __future__ import annotations
 

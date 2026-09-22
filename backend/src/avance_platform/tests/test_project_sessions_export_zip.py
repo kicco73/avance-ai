@@ -16,7 +16,7 @@ from system.web_session import WebSession
 
 pytestmark = pytest.mark.contract
 
-MINIMAL_YML = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+MINIMAL_YML = "project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
 
 
 def _zip_of(files: dict[str, bytes]) -> bytes:
@@ -104,7 +104,7 @@ def test_uploading_a_zip_with_sessions_json_imports_them_automatically(client):
 
 
 def test_download_then_reupload_round_trips_the_imported_session(client):
-    yml = "project:\n  id: roundtrip\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+    yml = "project:\n  id: roundtrip\ninit-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
     resp = client.post(
         "/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"}
     )
@@ -132,7 +132,7 @@ def test_download_then_reupload_round_trips_the_imported_session(client):
 
 def test_download_then_reupload_round_trips_a_live_session_from_another_user(client, app_db):
     yml = (
-        "project:\n  id: roundtrip2\ninit-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+        "project:\n  id: roundtrip2\ninit-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
         "    actions:\n      - name: stay\n        target: a\n        trigger: \"False\"\n"
     )
     resp = client.post(

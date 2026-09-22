@@ -47,6 +47,16 @@ for all of them at once. The coalescer is `turn/input_listener.py`
 (`TurnInput._requests`, one `_Requests` per session), and it is **in
 memory**: what is still waiting when the process dies dies with it.
 
+Accepted is not persisted. A request waits in the session's `Inbox`
+(`turn/turn_transaction.py`), with its arrival time, and reaches the DB
+together with the reply that answers it — one atomic commit at the end of
+the exchange (`turn/atomic_turn_transaction.py`), which is also when the
+transition the exchange decided and the env it wrote land. A reply that
+fails leaves nothing behind: the DB never holds a user message without the
+reply that answered it. Until then, whoever reads the transcript
+(`session.messages`, the history route) sees the request all the same,
+served from the Inbox with no id yet.
+
 Only **consecutive** `input.text` requests merge. Anything else — a choice
 taken (`input.button`), a conversation opened — is a single thing done,
 answered on its own and never merged with a text. Three messages sent in a
@@ -126,7 +136,7 @@ project:
 | `revision` | no | non-negative integer | `0` | This project's own revision number, auto-stamped on every publish — don't hand-edit it going in. |
 | `ui-label` | no | string | — | The only "name" ever shown to a user; `id` is never displayed. |
 | `ui-description` | no | string | — | Shown in the frontend. |
-| `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §3.2). |
+| `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §3.2). Concerns `ai` states only — a `system` state (§4.1) runs no turn. |
 | `new-session-strategy` | no | `resume` \| `restart` | `resume` | What a **new live session** of a returning user inherits. `resume`: it opens in the state the previous session left, every env key and the model's own `global` memory (§5.3) intact, and nothing fires — unless the automaton has never run for that user in a live session, which is the automaton starting and fires `init-action` (§7). `restart`: it opens in `init-action.target` with the env keys and the `global` memory wiped — the declared defaults and `init-action`'s own `env:` apply afresh, and its `task` fires again (§7). Either way, a `local`-scope memory never carries over to a new session regardless: it's per-session by definition (§4). Test and preview sessions always start from `init-action`, whatever this says. |
 | `services` | no | mapping (service name → level) | `{}` | What this project asks of each platform service it can reach. §1.2. |
 
@@ -229,6 +239,7 @@ states:
     ui-label: Engaged
     ui-description: >
       The user is actively chatting.
+    input-processor: ai
     contextual-prompt: |
       Continue the conversation naturally.
     chat-enabled: true
@@ -242,28 +253,55 @@ states:
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `contextual-prompt` | conditionally | string | — | System-prompt text, combined with `general-prompt`. **Required unless `fixed-message` is set** — exactly one of the two. |
-| `fixed-message` | conditionally | string | — | Returned verbatim-in-meaning, translated to the user's language, instead of a free-form reply — §4.1. Mutually exclusive with `contextual-prompt`. |
+| `input-processor` | **yes** | `ai` \| `system` | — | Who answers in this state — §4.1. `ai`: the model. `system`: the automaton's own scripts, through `chat.write` (§5.3bis); no model call is made for this state. |
+| `contextual-prompt` | for `ai` | string | — | System-prompt text, combined with `general-prompt`. Required when `input-processor` is `ai`; ignored when it is `system`. |
 | `ui-label` | no | string | the state's key | Shown in the frontend. |
 | `ui-description` | no | string | `None` | Shown in the frontend; omitted entirely when absent. |
 | `actions` | no | list of actions | `[]` | Outgoing actions — §5. **No actions ⇒ automatically `final`** (derived, never declared). A turn that ends in a final state closes the session once its frames are out (`session.ended`, reason `final-state`): nothing more is accepted on it. A state to stay and chat in — a one-state project's — declares a self-loop action with `trigger: "True"`, which makes it not final. |
-| `chat-enabled` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation, and the chat shows no text input line. Independent of `final`/`fixed-message`. |
+| `chat-enabled` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation, and the chat shows no text input line. Independent of `final`. Always `false` in a `system` state, whatever is declared. |
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
 | `signal-tracking-strategy` | no | `relevant` \| `all` | `relevant` | Which signals a turn in this state computes (§3.1). `relevant`: only the ones this state's own actions read — in a `trigger`, an `env:` expression or an `on-exit` assignment. `all`: every declared signal, whether or not anything here reads it — for a state whose signals feed a later state, a metric, or a report rather than its own triggers. |
 | `ai-memory-scope` | no | `none` \| `local` \| `global` | `none` | Which memory a turn in this state reads and writes (§5.3) — a property of *this* state, not of the transition landing on it. `none`: the memory channel isn't even offered to the model — nothing shown, nothing parsed back, nothing kept. `global`: the shared, project+user-persistent store every session of that pair sees, unaffected by which states came before it. `local`: a fresh, empty memory that starts the moment a transition lands here (a self-loop counts as landing again, as for `history-cutoff`) and is destroyed the moment the session leaves this state — isolated from `global`, which a `local` visit never reads from or writes into. The automaton's `env:` keys are untouched by any of the three. |
-| `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent for `fixed-message`, nor to a `task.prompt(...)` call (§5.4), which is fully isolated. |
+| `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
 | `ai-must-read-sources` | no | list of source names | `[]` | Same, but the read is forced once per entry into this state — §4.2. A source name can appear in at most one of the two read fields. |
 | `input` | no | list of `env:` key names | `[]` | Env keys read into this turn's own system prompt, as a read-only "Current environment" block — §4.3. |
 | `output` | no | list of `env:` key names | `[]` | Env keys the model may set this turn, through its own structured reply — merged onto the automaton's env once the turn completes — §4.3. |
 
-**4.1 `fixed-message` states.** The model is never asked for free-form
-content: every reply is a translation of `fixed-message` into the user's
-last-message language, instructed not to alter meaning/add/react.
-Typical use: a safety/compliance message that must not be paraphrased.
-`contextual-prompt`, `general-prompt`, and this state's `attachments` are
-unused for that call.
+**4.1 `input-processor`.** Every state says who answers in it.
+
+`ai` is the model: everything else in this section applies as written.
+
+`system` is the automaton alone. No turn runs in such a state: no model
+call, no auto-tracking, no signals — `signal.*` is not defined in any of
+its scripts (`trigger`, `env`, `on-exit`, `task`), and a build refuses a
+reference to it. A chat message is refused as in any `chat-enabled:
+false` state; what moves the conversation on is a manual action or a
+choice (§5.2, `choice.<key>`), whose triggers are evaluated when the
+button is pressed. The reply of the state is what the `on-exit` of the
+action that reached it wrote with `chat.write(body_md)` (§5.3bis) — one
+paragraph per call, in order, and nothing at all when no call was made,
+which a test session shows at once. That text is saved as an assistant
+message and published like any reply. The init-action's `on-exit` writes
+the opening message of a `system` initial state the same way.
+
+`contextual-prompt`, `attachments`, `input`, `output`, `ai-memory-scope`,
+`ai-may-read-sources`, `ai-must-read-sources`, `reactions-enabled` and
+`signal-tracking-strategy` mean nothing in a `system` state and are
+ignored, not refused, so a state can be switched between the two without
+the file ceasing to build. `signal-tracking-on-ai-message` (§1.2) is an
+`ai` matter too.
+
+A trigger fired from an `ai` state that lands on a `system` state does
+not regenerate the reply there: with `signal-tracking-on-ai-message:
+false` the reply is what the on-exit wrote; with `true` the model has
+already answered, and what was written follows as a paragraph of its own.
+
+The former `fixed-message` field is gone: a state that only ever said one
+thing is `input-processor: system` whose incoming actions
+`chat.write(...)` it. The modernizer (§8.2) does not convert one — where
+the text goes is a choice — and refuses the field naming the replacement.
 
 **4.2 Native tool-calling.** `ai-may-read-sources`/`ai-must-read-sources`
 each list names from this project's own top-level `sources:` (§5.2) —
@@ -860,8 +898,15 @@ every `on-exit:` script — its own env writes and its own `chat.*`
 calls alike — runs **synchronously, in the same request that fired the
 action**, never hibernated as a background job: `chat.*` has no
 model/network call of its own to keep off the event-loop thread, so
-there's nothing to defer. Eight methods exist:
+there's nothing to defer. Nine methods exist:
 
+- `chat.write(body_md)` — the reply of the `system` state (§4.1) this
+  action leads to: `body_md` is saved as the assistant's message and
+  published as one, exactly like a model's reply; several calls in one
+  exchange join as paragraphs. Only available in the `on-exit` of an
+  action (or the init-action) whose target declares `input-processor:
+  system` — on the way into an `ai` state it is an undefined name, since
+  the model answers there.
 - `chat.celebrate()` / `chat.notify(title, body_md)` / `chat.show(body_md)` —
   compile straight to `taskActions.js` locals of the same name
   (confetti / toast / dialog). Nothing runs server-side beyond building
@@ -1119,7 +1164,7 @@ init-action:
 | --- | --- | --- | --- |
 | `target` | **yes** | string | Starting state — must be a real key under `states:`. |
 | `task` | no | string | Same mechanics as any action's (§5.4), scheduled as a task (delivered over the websocket) each time init-action fires. |
-| `on-exit` | no | string | Same mechanics as any action's (§5.3bis), run each time init-action fires. |
+| `on-exit` | no | string | Same mechanics as any action's (§5.3bis), run each time init-action fires. When `target` is a `system` state (§4.1), its `chat.write(...)` is the opening message. |
 | `env` | no | mapping key → expression | Same mechanics as any action's (§5.3), applied each time init-action fires — the place to reset a key a previous case left behind. It writes the key whether or not it already has a value. |
 
 A mapping, not a list item — otherwise a regular action with no
@@ -1171,7 +1216,12 @@ of how you're likely to hit them:
 - Every state entry is itself a mapping (a common mistake: `actions:`
   indented as a sibling of the state key instead of nested under it —
   YAML happily parses that as its own separate, invalid state).
-- Every state has **exactly one** of `contextual-prompt` / `fixed-message`.
+- Every state declares `input-processor`, `ai` or `system` (§4.1).
+- Every `ai` state has a `contextual-prompt`.
+- No script of a `system` state references `signal.*`.
+- `chat.write(...)` appears only in the `on-exit` of an action whose
+  target is a `system` state.
+- No state declares `fixed-message` — refused naming its replacement.
 - Every state's `transition-log-level`, if given, is a valid level.
 - Every state's `signal-tracking-strategy`, if given, is `relevant` or `all`.
 - Every state's `ai-memory-scope`, if given, is `none`, `local`, or `global`.
@@ -1243,12 +1293,17 @@ it, its `ai-memory-strategy` is `ai-memory-scope` (`keep`/`clear` renamed
 to `global`/`local`, §4), an env key's `ai-access`/`ui-label`/`value` are
 gone with nothing in their place, its `ui-description` is its
 `ai-definition` where that is still empty, its type `choice` is `list`
-(§5.3) —
+(§5.3), a state with no `input-processor` is an `ai` one (§4.1: before
+the field existed, every state answered through the model — the one key
+the modernizer adds, because its absence is a fact about the file's age,
+not a guess about the author) —
 and the modernizer rewrites them, in place, wherever an
-`index.yml` enters or is built: on import, and when a stored revision
-fails to build, so that what a product serves recovers without anyone
-visiting. The design view has no call of its own for it: opening a
-project loads it, and a load is where a stale spelling is settled.
+`index.yml` enters or is built: on import, when a stored revision
+fails to build, and once at boot for every project's head and published
+revision (`project/archive/index_yml_migration.py`), so that what a
+product serves recovers without anyone visiting. The design view has no
+call of its own for it: opening a project loads it, and a load is where a
+stale spelling is settled.
 
 It runs in rounds until a round finds nothing, because one rewrite
 uncovers the next: a script moved off a state onto the actions that reach
@@ -1271,6 +1326,9 @@ rewrite from, and guessing one from the key's name would be a choice: a stored
 revision that declares a key without `type` is a broken project, refused
 with the key and the four admitted values named, and handled the way any
 other broken revision is — listed in the design view, fixed by a person.
+A `fixed-message` state (§4.1) is the same: its text belongs in the
+`on-exit` of the actions that reach it, and which of them, and in what
+words, is the author's to say.
 
 ## 9. Worked examples
 
@@ -1282,9 +1340,17 @@ init-action:
 
 states:
   Hello:
+    input-processor: ai
     contextual-prompt: |
       Ignore all user input. You always respond "hello, world!".
 ```
+
+**A step-by-step questionnaire without the model** (the "Burn out"
+sample's `step-n`): the state is `input-processor: system`, chat is off,
+each press of a `choice.frequency` button runs the `on-exit` of `next`,
+which scores the answer, advances `env.step` and says what comes next
+with `chat.write('Step %d of %d' % (env.step + 1, len(env.questions)))`;
+the last press fires `end` into an `ai` state that writes the report.
 
 **Signals/metrics/triggers**: the "Metrics Playground" sample (self-looping)
 and its "Metrics Playground (states)" sibling (each trigger lands on its
@@ -1292,8 +1358,7 @@ own final state) — one signal + one action per core metric, with an
 extensive comment block on exercising each one.
 
 **Richer real-world examples**: the "default" sample (multiple signals
-with attachments, a `fixed-message` state, per-state
-`transition-log-level`); "Aprendr català" (`history-cutoff`, a
-`fixed-message` state, `on-exit: chat.celebrate()`,
+with attachments, per-state `transition-log-level`); "Aprendr català"
+(`history-cutoff`, `on-exit: chat.celebrate()`,
 `on-exit: chat.notify(...)` surfacing grammar hints as toasts);
 "Drogodependencia" (simpler, neither).

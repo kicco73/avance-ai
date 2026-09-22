@@ -39,7 +39,7 @@ class _Reader(ProjectFiles):
 def _automaton(project_id: str = "p", revision: int | None = None) -> Automaton:
     init_action = Action(name="init", ui_label="init", ui_button="", target="a")
     automaton = Automaton(
-        init_action=init_action, states={"": State(key="", ui_label="", final=False, actions=[init_action])},
+        init_action=init_action, states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action])},
         general_prompt="", signals=[], general_attachments=(), autotracking_on_ai_message=False,
         project_id=project_id,
     )

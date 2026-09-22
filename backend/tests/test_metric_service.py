@@ -17,8 +17,8 @@ def _automaton_with_trigger(trigger_expr: str) -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a", trigger=trigger_expr)
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {
-        "": State(key="", ui_label="", final=False, actions=[init_action]),
-        "a": State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action]),
+        "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
+        "a": State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action]),
     }
     return Automaton(
         init_action=init_action,

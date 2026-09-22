@@ -30,17 +30,17 @@ from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.archive.automaton_loader import AutomatonLoader
 from project.archive.loader_choice import AutomatonLoaderChoice
+from project.archive.index_yml_migration import modernize_stored_revisions
 from project.archive.media_migration import migrate_aspect_archives
 from project.archive.packages import discard_all_packages
 from project.project_service import ProjectService
 from system.project_locks import ProjectLocks
-from ai import AiService
 from system.broadcaster import DEFAULT_BATCH_WINDOW_SECONDS, Broadcaster
 from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 
-__version__ = "2.5.9"
+__version__ = "2.6.1"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -79,21 +79,17 @@ def create_app() -> FastAPI:
         configure_project_file_cache(config.project_file_cache_bytes)
 
         migrate_env_rows(db)
-        if migrate_aspect_archives(db):
+        if migrate_aspect_archives(db) | modernize_stored_revisions(db):
             discard_all_packages(config.build_service_config.apps_dir)
 
-        ai_live_service = AiService.for_live(
-            config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
-            deadline=config.stream_deadline,
-        )
-        ai_test_service = AiService.for_test(
-            config.ai_services, db=db, input_token_budget_per_turn=config.input_token_budget_per_turn,
-            deadline=config.stream_deadline,
-        )
+        bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({"db": db}))
+        skills.start_all(config.raw, config.path)
+        core_services = bus.collect(POINT_CORE_SERVICES, {})
+        ai_live_service = core_services.get("ai_live_service")
+        ai_test_service = core_services.get("ai_test_service")
 
         progress_broadcaster = Broadcaster(ai_test_service, batch_window_seconds=DEFAULT_BATCH_WINDOW_SECONDS)
         scheduler_service = SchedulerService(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=progress_broadcaster, db=db)
-        skills.start_all(config.raw, config.path)
         app.state.db = db
         session_manager = SessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
         automaton_loader = bus.collect(POINT_AUTOMATON_LOADER, AutomatonLoaderChoice(
@@ -130,14 +126,11 @@ def create_app() -> FastAPI:
         progress_broadcaster.bind_loop()
         bus_channel = BusChannel(auth_service)
         bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({
-            "db": db,
             "auth_service": auth_service,
             "turn_service": turn_service,
             "project_service": project_service,
             "tracking_service": tracking_service,
             "scheduler_service": scheduler_service,
-            "ai_test_service": ai_test_service,
-            "ai_live_service": ai_live_service,
             "namespace_factory": namespace_factory,
             "progress_broadcaster": progress_broadcaster,
             "bus_channel": bus_channel,

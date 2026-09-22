@@ -20,6 +20,7 @@ project:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: "hi"
 {trigger_yaml}"""
     return AutomatonBuilder().build({"index.yml": content})

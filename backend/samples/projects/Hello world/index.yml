@@ -7,6 +7,7 @@ states:
   Hello:
     contextual-prompt: |
       Ignore all user input. You always respond "hello, world!".
+    input-processor: ai
 project:
   ui-label: Hello, world!
   id: hello_world

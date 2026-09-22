@@ -10,6 +10,7 @@ from automaton.core import TASK_FUNCTION_NAMES, TRIGGER_FUNCTION_NAMES
 from automaton.env_types import STORED_ENV_TYPES
 from automaton.file_types import media_doc_id_for
 from automaton.identifier_registry import IdentifierRegistry
+from automaton.input_processor_kind import INPUT_PROCESSOR_KINDS
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.trigger_namespaces import TriggerNamespaces
 from metrics.metrics_framework import metric_names
@@ -313,24 +314,26 @@ class AutomatonValidator:
             raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
 
     def check_state(
-        self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]],
+        self, key: str, state: State, states: dict[str, State], registry: dict[str, dict[str, str]],
         env_keys: dict[str, EnvKey], sources: dict[str, Source], archives: ProjectArchives,
         namespaces: TriggerNamespaces,
     ) -> None:
+        registry = INPUT_PROCESSOR_KINDS[state.input_processor].script_registry(registry)
         registry_for_triggers = IdentifierRegistry.for_triggers(registry)
         registry_for_task = IdentifierRegistry.for_task(registry)
-        registry_for_on_exit = IdentifierRegistry.for_on_exit(registry)
         self._cursor.at(state.line, f"states.{key}")
         self.validate_state_sources(state, sources)
         self.validate_state_io(state, env_keys)
         for action in state.actions:
             self._cursor.at(action.line, f"states.{key}.actions.{action.name}")
             action_context = f"State {key}, action '{action.name}'"
-            if action.target not in declared_states:
+            if action.target not in states or action.target == "":
                 raise ValueError(
                     f"State '{state.key}', action '{action.name}': "
                     f"target '{action.target}' is not a valid state"
                 )
+            target_kind = INPUT_PROCESSOR_KINDS[states[action.target].input_processor]
+            registry_for_on_exit = IdentifierRegistry.for_on_exit(target_kind.on_exit_registry(registry))
             namespaces.check_action(state, action, env_keys)
             if action.trigger:
                 self.validate_namespaced_expression(

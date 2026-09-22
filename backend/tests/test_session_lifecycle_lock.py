@@ -31,11 +31,11 @@ USERNAME = "user"
 
 def _automaton() -> Automaton:
     action = Action(name="go", ui_label="Go", ui_button="Go", target="a")
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
         general_prompt="",
         signals=[],
         general_attachments={},
@@ -54,6 +54,9 @@ class _FakeProjectService:
         return self._automaton, self._automaton.states["a"]
 
     def get_automaton_and_state_for_session(self, session_id):
+        return self._automaton, self._automaton.states["a"]
+
+    def get_automaton_and_state_as_recorded(self, session_id, state_key):
         return self._automaton, self._automaton.states["a"]
 
     def get_automaton_for_session(self, session_id):

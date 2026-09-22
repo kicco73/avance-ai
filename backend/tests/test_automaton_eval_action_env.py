@@ -26,8 +26,8 @@ def _automaton(env_keys: list[EnvKey] | None = None) -> Automaton:
     return Automaton(
         init_action=init_action,
         states={
-            "": State(key="", ui_label="", final=False, actions=[init_action]),
-            "a": State(key="a", ui_label="A", final=True, contextual_prompt="hi"),
+            "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
+            "a": State(input_processor="ai", key="a", ui_label="A", final=True, contextual_prompt="hi"),
         },
         general_prompt="",
         signals=[],

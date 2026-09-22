@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 
 from auth.auth_service import AuthService
@@ -12,7 +14,6 @@ from system.bus import (
 from system.logging_factory import LoggerFactory
 from system.web_session import WebSession
 from system.wiring import construct
-from talker import AiTalker
 from turn.turn_service import TurnService
 from whatsapp import notices
 from whatsapp.cloud_api_client import WhatsAppCloudApiClient
@@ -37,6 +38,7 @@ class WhatsAppService(object):
         db: Db,
         auth_service: AuthService,
         client: WhatsAppCloudApiClient | None = None,
+        ai_talker: Any = None,
     ) -> None:
         self._config = config
         self._turn_service = turn_service
@@ -46,8 +48,8 @@ class WhatsAppService(object):
             config.access_token, config.phone_number_id, config.graph_version,
         )
         self._outbound = Outbound(self._client)
-        self._voice_notes = VoiceNoteSynthesizer(AiTalker())
-        self._voice = VoicePolicy(config.voice_replies, self._voice_notes)
+        self._voice_notes = VoiceNoteSynthesizer(ai_talker) if ai_talker is not None else None
+        self._voice = VoicePolicy(config.voice_replies if ai_talker is not None else "never", self._voice_notes)
         self._conversations: dict[str, Conversation] = {}
 
     def listen(self, controllers: list) -> None:
@@ -76,7 +78,8 @@ class WhatsAppService(object):
         bus.unsubscribe(OUTPUT_TEXT, self._unsolicited)
         bus.unsubscribe(OUTPUT_ERROR, self._failed)
         bus.withdraw(POINT_SPOKEN_REPLY, self._spoken_reply)
-        self._voice_notes.cancel()
+        if self._voice_notes is not None:
+            self._voice_notes.cancel()
         await self._client.close()
 
     async def receive(self, incoming: IncomingMessage) -> None:
@@ -208,6 +211,7 @@ class WhatsApp(NoWhatsApp):
         core = bus.collect(POINT_CORE_SERVICES, {})
         self._service = WhatsAppService(
             self._config, core["turn_service"], core["db"], core["auth_service"],
+            ai_talker=core.get("ai_talker"),
         )
         self._service.listen(controllers)
         logger.info("whatsapp listening — a message from a linked number reaches a turn.")

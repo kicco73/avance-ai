@@ -94,6 +94,7 @@ states:
         trigger: "signal.open >= 60"
         target: door
 
+    input-processor: ai
   stairs:
     ui-label: Stairs
     contextual-prompt: |
@@ -116,6 +117,7 @@ states:
         trigger: "signal.go_downstairs >= 60 or signal.exit_space >= 60"
         target: start
 
+    input-processor: ai
   room13:
     ui-label: Room 13
     contextual-prompt: |
@@ -142,6 +144,7 @@ states:
         trigger: "signal.exit_space >= 60"
         target: stairs
 
+    input-processor: ai
   mirror:
     ui-label: Mirror
     contextual-prompt: |
@@ -165,6 +168,7 @@ states:
         trigger: "signal.exit_space >= 60"
         target: stairs
 
+    input-processor: ai
   drawer:
     ui-label: Drawer
     contextual-prompt: |
@@ -187,6 +191,7 @@ states:
         trigger: "signal.go_downstairs >= 60"
         target: hall
 
+    input-processor: ai
   force:
     ui-label: Force Drawer
     contextual-prompt: |
@@ -207,6 +212,7 @@ states:
         trigger: "env.hp > 0"
         target: hall
 
+    input-processor: ai
   hall:
     ui-label: Hall
     contextual-prompt: |
@@ -233,6 +239,7 @@ states:
         trigger: "signal.go_upstairs >= 60"
         target: start
 
+    input-processor: ai
   lantern:
     ui-label: Lantern
     contextual-prompt: |
@@ -255,6 +262,7 @@ states:
         trigger: "signal.go_upstairs >= 60"
         target: stairs
 
+    input-processor: ai
   door:
     ui-label: Front Door
     contextual-prompt: |
@@ -273,6 +281,7 @@ states:
         trigger: "signal.exit_space >= 60"
         target: start
 
+    input-processor: ai
   backdoor:
     ui-label: Back Door
     contextual-prompt: |
@@ -296,6 +305,7 @@ states:
         trigger: "env.has_black_key == False and signal.open >= 60"
         target: backdoor_fail
 
+    input-processor: ai
   backdoor_fail:
     ui-label: Back Door Fail
     contextual-prompt: |
@@ -319,6 +329,7 @@ states:
         trigger: "env.hp > 0"
         target: backdoor
 
+    input-processor: ai
   escape:
     ui-label: Escape (Good Ending)
     fixed-message: "The key opens the door. Outside, the storm has stopped. Looking back, the house no longer has any windows. You have escaped successfully!"
@@ -333,6 +344,7 @@ states:
       - hp
 
     actions: []
+    input-processor: ai
   finalBad:
     ui-label: Final Bad (Bad Ending)
     fixed-message: "Darkness fills the corridor. The player wakes again in front of Room 13. The house will not let them leave."
@@ -353,6 +365,7 @@ states:
         ui-description: ''
         target: hall
         on-exit: "chat.show(\n  \"\"\"\n  ### Resurrecting...\n  You have been teleported to the Hall again. \n  \n  **Good Luck!**\n  \"\"\"\n)\n\nenv.hp = 1\nenv.game_ended = False"
+    input-processor: ai
   title:
     ui-label: Title
     fixed-message: "Press play to start"
@@ -362,4 +375,5 @@ states:
         target: start
     chat-enabled: false
 
+    input-processor: ai
 general-prompt: You are the master of a game. A text adventure set in a mysterious abandoned house where the player needs to find a way out. When you mention {player_name}, never use the family name, just the name. and possibly a common nickname for that.

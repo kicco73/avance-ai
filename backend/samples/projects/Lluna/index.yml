@@ -429,6 +429,7 @@ states:
         ui-label: Riesgo agudo detectado
         trigger: "signal.detectRisk == 100"
         target: Crisis
+    input-processor: ai
   Contemplation:
     ui-label: Contemplacion
     ui-description: >-
@@ -451,6 +452,7 @@ states:
         ui-label: Riesgo agudo detectado
         trigger: "signal.detectRisk == 100"
         target: Crisis
+    input-processor: ai
   Preparation:
     ui-label: Preparacion
     ui-description: >-
@@ -474,6 +476,7 @@ states:
         ui-label: Riesgo aguda detectado
         target: Crisis
         trigger: "signal.detectRisk == 100"
+    input-processor: ai
   Action:
     ui-label: "Accion"
     ui-description: >-
@@ -506,6 +509,7 @@ states:
         ui-label: Falta de Vinculo Terapeutico
         trigger:
         target: state-0
+    input-processor: ai
   Maintenance:
     ui-label: Mantenimiento
     ui-description: >-
@@ -532,6 +536,7 @@ states:
         ui-label: Falta de Vinculo Terapeutico
         target: state-0
         trigger:
+    input-processor: ai
   Relapse:
     ui-label: Recaida
     ui-description: >-
@@ -557,6 +562,7 @@ states:
         trigger: "signal.detectRisk == 100"
         target: Crisis
     history-cutoff: true
+    input-processor: ai
   Crisis:
     ui-label: Crisis
     transition-log-level: CRITICAL
@@ -579,6 +585,7 @@ states:
     actions: []
     history-cutoff: true
     reactions-enabled: false
+    input-processor: ai
   state-0:
     ui-label: Vinculacion
     contextual-prompt: "Escucha. Refleja. Devuelve lo dicho con precisión y sin añadir. Ofrece un encuadre breve y honesto; qué es esto, qué puede esperar, qué NO puede esperar, y que puede irse cuando quiera. Administra, y sólo si el flujo lo permite, ítems de E6 (6.1 a 6.5). Son los únicos autorizados y no cuentan contra la cuota de dosificación. Ofrece información de reducción de daños si la persona la pide o si el contenido lo hace pertinente."
@@ -601,3 +608,4 @@ states:
         ui-label: Riesgo agudo detectado
         trigger: signal.detectRisk == 100
         target: Crisis
+    input-processor: ai

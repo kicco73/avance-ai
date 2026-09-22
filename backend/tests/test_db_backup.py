@@ -98,8 +98,16 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE Task (id INTEGER PRIMARY KEY, key TEXT, type TEXT, user_id TEXT, project_id TEXT, run_at TEXT, "
         "payload TEXT, ui_label TEXT, ui_description TEXT, status TEXT, error TEXT, created_at TEXT, dispatched_at TEXT, "
         "settled_at TEXT)",
-        "CREATE TABLE AiTokenUsage (id INTEGER PRIMARY KEY, provider_label TEXT, timestamp TEXT, "
+        "CREATE TABLE AiUsage (id INTEGER PRIMARY KEY, provider_label TEXT, timestamp TEXT, "
         "input_tokens INTEGER, output_tokens INTEGER)",
+        "CREATE TABLE Drive (id INTEGER PRIMARY KEY, project_id TEXT, user_id TEXT, session_id INTEGER, "
+        "path TEXT, content BLOB, content_type TEXT, size INTEGER, updated_at TEXT)",
+        "CREATE TABLE Translation (id INTEGER PRIMARY KEY, key TEXT, src_lang TEXT, src_text TEXT, "
+        "dst_lang TEXT, dst_text TEXT, timestamp TEXT)",
+        "CREATE TABLE TrialSession (id INTEGER PRIMARY KEY, user_id TEXT, project_id TEXT, revision INTEGER, "
+        "started_at TEXT)",
+        "CREATE TABLE AppRating (id INTEGER PRIMARY KEY, user_id TEXT, project_id TEXT, revision INTEGER, "
+        "rating INTEGER, timestamp TEXT)",
     ]
     wrong = _make_sqlite_bytes(tmp_path, "wrong_columns.db", ddl)
 

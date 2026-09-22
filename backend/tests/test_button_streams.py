@@ -58,9 +58,9 @@ def two_state_automaton() -> Automaton:
     go = Action(name="go", ui_label="Go", ui_button="Go", target="b")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {
-        "": State(key="", ui_label="", final=False, actions=[init_action]),
-        "a": State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[go]),
-        "b": State(key="b", ui_label="B", final=False, contextual_prompt="welcome", actions=[], history_cutoff=True),
+        "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
+        "a": State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[go]),
+        "b": State(input_processor="ai", key="b", ui_label="B", final=False, contextual_prompt="welcome", actions=[], history_cutoff=True),
     }
     return Automaton(
         init_action=init_action, states=states, general_prompt="", signals=[], general_attachments={},

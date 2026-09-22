@@ -11,16 +11,16 @@ from typing import Protocol
 from db import _utc_iso
 from metrics.metric_namespace import SessionMetricNamespace
 from metrics.metrics_framework import AnalyticsCalculator
+from metrics.metrics_framework.interfaces import AnalyticsDb
 from system.web_session import WebSession
 from tracking.fixed_project_context import ProjectContext
 
 
-class SessionRecords(Protocol):
+class SessionRecords(AnalyticsDb, Protocol):
     def get_last_transition_timestamp(self, project_id: str, until: datetime | None = None) -> datetime | None: ...
     def get_latest_chat_session(
         self, username: str | None, project_id: str, until: datetime | None = None,
     ) -> dict | None: ...
-    def list_chat_sessions(self, username: str | None, project_id: str, until: datetime | None = None) -> list[dict]: ...
 
 
 class _Unset:

@@ -41,11 +41,11 @@ def _automaton() -> Automaton:
 	manual = Action(name="manual", ui_label="Manual", ui_button="Manual", target="a")
 	init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a")
 	state_a = State(
-		key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[manual], choice_keys=("slot",),
+		input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[manual], choice_keys=("slot",),
 	)
 	return Automaton(
 		init_action=init_action,
-		states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
+		states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
 		general_prompt="", signals=[], general_attachments=(), autotracking_on_ai_message=False,
 		project_id=PROJECT_ID,
 		env_keys=[EnvKey(name="slot", type="list", ai_definition="The appointment slot.")],

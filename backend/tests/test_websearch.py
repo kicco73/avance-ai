@@ -128,8 +128,8 @@ def _automaton(db) -> Automaton:
     automaton = Automaton(
         init_action=init_action,
         states={
-            "": State(key="", ui_label="", final=False, actions=[init_action]),
-            "a": State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action]),
+            "": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]),
+            "a": State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action]),
         },
         general_prompt="", signals=[], general_attachments={},
         autotracking_on_ai_message=False, project_id=PROJECT_ID, sources=[WEB_SOURCE],

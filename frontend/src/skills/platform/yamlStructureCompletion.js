@@ -17,8 +17,8 @@ const PROJECT_FIELDS = [
 ]
 
 const STATE_FIELDS = [
+  { name: 'input-processor' },
   { name: 'contextual-prompt' },
-  { name: 'fixed-message' },
   { name: 'ui-label' },
   { name: 'ui-description' },
   { name: 'actions', nested: true },

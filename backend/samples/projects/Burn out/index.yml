@@ -24,6 +24,7 @@ states:
     output: []
     ai-memory-scope: global
     reactions-enabled: true
+    input-processor: ai
   state-0:
     ui-label: Eleccion
     contextual-prompt: |-
@@ -47,6 +48,7 @@ states:
     output: []
     input:
       - casos_con_descripcion
+    input-processor: ai
   nivel-3:
     ui-label: Conversacion Nivel 3
     attachments:
@@ -74,6 +76,7 @@ states:
     signal-tracking-strategy: all
     ai-memory-scope: local
     reactions-enabled: true
+    input-processor: ai
   evaluacion:
     ui-label: Evaluación
     attachments:
@@ -94,6 +97,7 @@ states:
         task: drive.write('Sesión %s' % datetime.datetime.now(), env.informe)
     output:
       - informe
+    input-processor: ai
   nivel-32:
     ui-label: Nivel
     contextual-prompt: 'pregúntale al usuario que nivel quiere practicar. Pon una explicación breve.
@@ -121,6 +125,7 @@ states:
         ui-description: Conversación libre, sin ayuda
     chat-enabled: false
     ai-memory-scope: none
+    input-processor: ai
   nivel-33:
     ui-label: Fin
     contextual-prompt: 'Dale las gracias al usuario por haberse entrenado contigo, y dile que se ha guardado una copia del informe en su drive de "Entrena-T", siempre disponible en el panel "Drive" de la app .
@@ -132,6 +137,7 @@ states:
         on-exit: env.informe = ''
         target: state-0
     chat-enabled: false
+    input-processor: ai
   nivel-1:
     ui-label: Conversacion Nivel 1
     contextual-prompt: "Ahora interpretas el rol del paciente. \n\nEn cola al mensaje, comportate como el asistente, y añade siempre\nel titulo **Sugerencias del asistente:**. \n\nSiempre  añade 3 bullet points, cada uno con una respuesta potencial que el usuario puede dar al paciente, un con explicación breve del porqué dar al paciente esta respuesta."
@@ -157,6 +163,7 @@ states:
     output:
       - conversacion_terminada
     reactions-enabled: true
+    input-processor: ai
   nivel-2:
     ui-label: Conversacion Nivel 2
     contextual-prompt: "Ahora interpretas el rol del paciente. \n\nEn cola al mensaje, comportate como el asistente, y añade siempre\nel titulo **Sugerencias del asistente:**. \n\nsiempre  añade 3 bullet points, cada uno con una respuesta potencial que el usuario puede dar al paciente (tú)."
@@ -182,10 +189,12 @@ states:
     output:
       - conversacion_terminada
     reactions-enabled: true
+    input-processor: ai
   state-1:
     ui-label: No disponible
     contextual-prompt: 'Di al usuario que de momento no hay casos disponibles, pide disculpas e invita a volver pronto.'
     chat-enabled: false
+    input-processor: ai
 project:
   ui-label: Entrena-T más
   id: burn_out

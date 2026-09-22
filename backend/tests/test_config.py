@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from ai import StreamDeadline
 from config import (
-    DEFAULT_ALLOWED_ORIGINS, AppConfig, ConfigError, optional_choice, optional_non_negative_int, optional_positive_int, optional_section,
+    DEFAULT_ALLOWED_ORIGINS, AppConfig, ConfigError, ReplyDeadline, optional_choice, optional_non_negative_int,
+    optional_positive_int, optional_section,
 )
 
 pytestmark = pytest.mark.contract
@@ -134,13 +134,13 @@ def _deadlines(**fields) -> str:
 
 
 class TestReplyDeadlines:
-    def test_the_model_deadlines_default_to_the_stream_deadline_the_ai_package_ships_with(self, monkeypatch, tmp_path):
-        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG).stream_deadline == StreamDeadline()
+    def test_the_model_deadlines_default_to_the_reply_deadline_config_ships_with(self, monkeypatch, tmp_path):
+        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG).stream_deadline == ReplyDeadline()
 
     def test_each_model_deadline_is_read_from_turn_service(self, monkeypatch, tmp_path):
         config = _load(monkeypatch, tmp_path, _deadlines(first_chunk_seconds=2, next_chunk_seconds=4.5, silent_round_seconds=20))
 
-        assert config.stream_deadline == StreamDeadline(first_chunk_seconds=2.0, next_chunk_seconds=4.5, silent_round_seconds=20.0)
+        assert config.stream_deadline == ReplyDeadline(first_chunk_seconds=2.0, next_chunk_seconds=4.5, silent_round_seconds=20.0)
 
     @pytest.mark.parametrize("field", ["first-chunk-seconds", "next-chunk-seconds", "silent-round-seconds"])
     def test_a_model_deadline_must_be_a_positive_number(self, monkeypatch, tmp_path, field):
@@ -162,7 +162,7 @@ class TestReplyDeadlines:
 
         assert {key: chat[key] for key in (
             "first-chunk-seconds", "next-chunk-seconds", "silent-round-seconds", "reply-silence-seconds",
-        )} == {"first-chunk-seconds": 5.0, "next-chunk-seconds": 10.0, "silent-round-seconds": 30.0, "reply-silence-seconds": 45.0}
+        )} == {"first-chunk-seconds": 10.0, "next-chunk-seconds": 10.0, "silent-round-seconds": 30.0, "reply-silence-seconds": 45.0}
 
 
 class TestOptionalSettingsEndToEnd:
@@ -191,54 +191,6 @@ class TestMaxSessionDurationInMinutes:
     def test_rejects_a_missing_turn_service_section(self, monkeypatch, tmp_path):
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, MINIMAL_CONFIG.replace("turn-service: {}", ""))
-
-
-_ONE_PROVIDER = "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
-
-
-def _sole_provider_modes(modes: str) -> str:
-    return MINIMAL_CONFIG.replace("      key: fake-key\n", f"      key: fake-key\n      modes: {modes}\n")
-
-
-def _first_provider_modes_with_sibling(modes: str, sibling: str = "    - driver: gemini\n      model: other-model\n      key: fake-key\n") -> str:
-    return MINIMAL_CONFIG.replace(_ONE_PROVIDER, _ONE_PROVIDER + f"      modes: {modes}\n" + sibling)
-
-
-class TestAiServiceProvidersModes:
-    def test_defaults_to_both_reads_an_explicit_both_and_deduplicates_repeats(self, monkeypatch, tmp_path):
-        assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG).ai_services[0].modes == ("live", "test")
-        assert _load(monkeypatch, tmp_path, _sole_provider_modes("[live, test]")).ai_services[0].modes == ("live", "test")
-        assert _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling("[live, live]")).ai_services[0].modes == ("live",)
-
-    def test_a_partial_or_empty_or_no_auto_entry_is_valid_while_a_sibling_covers_the_rest(self, monkeypatch, tmp_path):
-        split = _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling(
-            "[live]", "    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n      modes: [test]\n"
-        ))
-        assert split.ai_services[0].modes == ("live",)
-        assert split.ai_services[1].modes == ("test",)
-
-        empty = _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling("[]"))
-        assert empty.ai_services[0].modes == ()
-        assert empty.ai_services[1].modes == ("live", "test")
-
-        assert _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling("[no-auto]")).ai_services[0].modes == ("no-auto",)
-
-        live_no_auto = _load(monkeypatch, tmp_path, _first_provider_modes_with_sibling("[live, no-auto]"))
-        assert live_no_auto.ai_services[0].modes == ("live", "no-auto")
-        assert live_no_auto.ai_services[1].modes == ("live", "test")
-
-    @pytest.mark.parametrize(("modes", "match"), [
-        ("live", None),
-        ("[live, staging]", "staging"),
-        ("[test]", "'live'"),
-        ("[live]", "'test'"),
-        ("[live, test, no-auto]", "'live'"),
-    ])
-    def test_rejects_a_non_list_an_unknown_mode_and_leaving_either_auto_cascade_empty(self, monkeypatch, tmp_path, modes, match):
-        with pytest.raises(ConfigError, match=match):
-            _load(monkeypatch, tmp_path, _sole_provider_modes(modes))
-
-
 
 
 class TestAllowedOrigins:

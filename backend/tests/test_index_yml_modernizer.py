@@ -28,6 +28,7 @@ init-action:
 states:
   a:
     ui-label: A
+    input-processor: ai
     contextual-prompt: hi
 """
 
@@ -106,6 +107,7 @@ actions:
 states:
   a:
     ui-label: A
+    input-processor: ai
     contextual-prompt: hi
     chat: false
     on-enter: |
@@ -124,6 +126,7 @@ states:
         actuator: actuator.prompt('x')
   b:
     ui-label: B
+    input-processor: ai
     contextual-prompt: there
 env:
   counter:
@@ -214,9 +217,11 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     ai-memory-strategy: keep
   b:
+    input-processor: ai
     contextual-prompt: bye
     ai-memory-strategy: clear
 """
@@ -243,3 +248,50 @@ def test_a_stored_revision_with_the_old_memory_field_is_repaired_where_it_is(db)
     assert automaton.states["b"].ai_memory_scope == "local"
     stored = db.get_archive(PROJECT_ID, "index.yml", revision=revision).decode("utf-8")
     assert "ai-memory-strategy" not in stored and "ai-memory-scope: global" in stored
+
+
+NO_PROCESSOR_YML = """\
+project:
+  id: legacy_talk
+init-action:
+  target: a
+states:
+  a:
+    ui-label: A
+    # keep me
+    contextual-prompt: hi
+  b:
+    ui-label: B
+    input-processor: system
+"""
+
+
+def test_a_state_that_does_not_say_who_answers_answered_through_the_model():
+    """Before `input-processor` existed every state was the model's, so
+    the field's absence is a fact about the file's age, not a choice to
+    make on the author's behalf — the one key the modernizer adds."""
+    modernized = IndexYmlModernizer().modernize(NO_PROCESSOR_YML)
+
+    assert modernized.fixes == ("a: input-processor: ai",)
+    assert "# keep me" in modernized.text
+    automaton = AutomatonBuilder().build({"index.yml": modernized.text})
+    assert automaton.states["a"].input_processor == "ai"
+    assert automaton.states["b"].input_processor == "system"
+    assert IndexYmlModernizer().modernize(modernized.text).fixes == ()
+
+
+def test_every_stored_revision_is_settled_at_boot_not_at_the_first_visit(db):
+    from project.archive.index_yml_migration import modernize_stored_revisions
+
+    revision = _store(db, NO_PROCESSOR_YML)
+    broken = "broken_one"
+    db.ensure_project(broken)
+    db.save_project_files(broken, {"index.yml": LEGACY_YML.replace("talk-enabled: true", "whatever: true").encode("utf-8")}, {"index.yml": "text/yaml"})
+    db.publish_project(broken)
+
+    assert modernize_stored_revisions(db) == {PROJECT_ID}
+
+    stored = db.get_archive(PROJECT_ID, "index.yml", revision=revision).decode("utf-8")
+    assert "input-processor: ai" in stored
+    assert "whatever: true" in db.get_archive(broken, "index.yml").decode("utf-8")
+    assert modernize_stored_revisions(db) == set()

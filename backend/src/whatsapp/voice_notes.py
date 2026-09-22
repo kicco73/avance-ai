@@ -12,9 +12,9 @@ synthesizes on the spot when nothing was started for that text.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from system.logging_factory import LoggerFactory
-from talker import AiTalker
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -22,7 +22,7 @@ logger = LoggerFactory.get_logger(__name__)
 class VoiceNoteSynthesizer(object):
     _MAX_PENDING = 16
 
-    def __init__(self, ai_talker: AiTalker) -> None:
+    def __init__(self, ai_talker: Any) -> None:
         self._ai_talker = ai_talker
         self._pending: dict[str, asyncio.Task[bytes]] = {}
 

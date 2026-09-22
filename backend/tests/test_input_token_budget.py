@@ -16,11 +16,11 @@ USERNAME = "user"
 
 
 def _automaton(contextual_prompt: str = "hi") -> Automaton:
-    state_a = State(key="a", ui_label="A", final=False, contextual_prompt=contextual_prompt, actions=[])
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt=contextual_prompt, actions=[])
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     return Automaton(
         init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
         general_prompt="",
         signals=[],
         general_attachments={},

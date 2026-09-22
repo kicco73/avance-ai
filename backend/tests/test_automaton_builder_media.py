@@ -24,12 +24,14 @@ init-action:
   target: a
 states:
   a:
+    input-processor: ai
     contextual-prompt: hi
     actions:
       - name: go
         target: b
 {action_yaml}
   b:
+    input-processor: ai
     contextual-prompt: there
 """
 

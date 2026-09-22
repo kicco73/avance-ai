@@ -124,7 +124,7 @@ it against real seconds, or shrink the number until the test is fast and
 no longer says anything about the number the product ships with.
 `tests/virtual_clock.py` is the third: `VirtualClockLoop` is an event
 loop whose `time()` is a value the test owns, so the product runs with
-its real 5 s and the test pays nothing for it.
+its real 10 s and the test pays nothing for it.
 
 ```python
 with asyncio.Runner(loop_factory=VirtualClockLoop) as runner:
@@ -133,8 +133,8 @@ with asyncio.Runner(loop_factory=VirtualClockLoop) as runner:
 
 `clock.advance(seconds)` fires every timer due in that span, each at the
 instant it was scheduled for and in order, and returns once the loop has
-nothing left to run — so an assertion after `advance(4.9)` sees the
-world at 4.9 s and one after a further `advance(0.1)` sees it at 5.0 s.
+nothing left to run — so an assertion after `advance(9.9)` sees the
+world at 9.9 s and one after a further `advance(0.1)` sees it at 10.0 s.
 `clock.settle()` is `advance(0)`: let everything already runnable run.
 The test drives the loop, so it never `wait_for`s anything: it moves
 time, then reads what was published.

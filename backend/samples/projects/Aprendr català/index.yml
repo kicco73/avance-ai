@@ -117,6 +117,7 @@ states:
 
 #=======================================================================
 
+    input-processor: ai
   unit55-subjuntive:
     ui-label: "Unitat 55: el subjuntiu present"
     ui-description: >
@@ -141,6 +142,7 @@ states:
 
 #=======================================================================
 
+    input-processor: ai
   unit55-regulars:
     ui-label: "Unitat 55 - Formes Regulars"
     ui-description: >
@@ -171,6 +173,7 @@ states:
 
 #=======================================================================
 
+    input-processor: ai
   unit55-regulars-amb-alteracions:
     ui-label: "Unitat 55 - Formes amb alteracions"
     ui-description: >
@@ -210,6 +213,7 @@ states:
 
 #=======================================================================
 
+    input-processor: ai
   unit55-regulars-amb-gu:
     ui-label: "Unitat 55 - Formes amb -gu-"
     ui-description: >
@@ -244,6 +248,7 @@ states:
 
 #=======================================================================
 
+    input-processor: ai
   unit55-irregulars:
     ui-label: "Unitat 55 - Formes irregulars"
     ui-description: >
@@ -271,6 +276,7 @@ states:
           chat.notify('Gramàtica', 'Alguns verbs irregulars al subjuntiu present: ser -> sigui, saber -> sapiga, anar -> vagi, haver -> hagi, voler -> vulgui, fer -> faci.')
       - <<: *unit-subjuntive
 
+    input-processor: ai
   unit55-D:
     ui-label: "Unitat 55 - Conjugació lliure"
     ui-description: >
@@ -298,6 +304,7 @@ states:
 
 #=======================================================================
 
+    input-processor: ai
   unit55-evaluation:
     ui-label: "Unitat 55 - Avaluació"
     ui-description: >
@@ -321,6 +328,7 @@ states:
 
 #=======================================================================
 
+    input-processor: ai
   unit55-results:
     ui-label: "Unitat 55 - Resultats"
     ui-description: >
@@ -369,6 +377,7 @@ states:
 
 #=======================================================================
 
+    input-processor: ai
   chat:
     ui-label: "Xat lliure"
     ui-description: >
@@ -383,3 +392,4 @@ states:
       - <<: *home
 
 #=======================================================================
+    input-processor: ai

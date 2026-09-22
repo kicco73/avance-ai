@@ -21,8 +21,8 @@ from project.archive.automaton_loader import AutomatonLoader
 pytestmark = pytest.mark.contract
 
 PROJECT_ID = "proj"
-VALID_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
-VALID_YML_2 = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
+VALID_YML = "init-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi\n"
+VALID_YML_2 = "init-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: hi again\n"
 BROKEN_YML = "not: [valid, yaml: at all"
 
 

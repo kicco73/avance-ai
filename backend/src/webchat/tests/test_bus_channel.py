@@ -766,10 +766,12 @@ def _frames_of(frames: list[dict], session_id: int) -> list[dict]:
 async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_order_even_when_the_first_turn_is_slower(
     turn_service_for,
 ):
-    """The ordering guarantee itself: both user messages are on disk, in
-    the order their frames arrived, before the first turn has produced
-    any reply at all — so it is the socket's own read order that fixes
-    the conversation, never how long a turn happens to take."""
+    """The ordering guarantee itself: both user messages are in the
+    transcript, in the order their frames arrived, before the first turn
+    has produced any reply at all — so it is the socket's own read order
+    that fixes the conversation, never how long a turn happens to take.
+    On disk each lands with the reply that answers it (see
+    turn/turn_transaction.py)."""
     provider = _GatedProvider()
     turn_service = turn_service_for(
         one_state_automaton(with_sources=False, autotracking_on_ai_message=False), provider,
@@ -789,14 +791,15 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     )
 
     loop_task = asyncio.create_task(channel.channel_loop(websocket))
-    await _wait_for(lambda: len([m for m in db.get_messages(session["id"]) if m["role"] == "user"]) == 2)
+    await _wait_for(lambda: len([m for m in turn_service.read_history(session["id"]) if m["role"] == "user"]) == 2)
     assert provider.first_round_started.is_set()
-    assert [m["role"] for m in db.get_messages(session["id"])] == ["user", "user"]
+    assert [m["role"] for m in turn_service.read_history(session["id"])] == ["user", "user"]
+    assert db.get_messages(session["id"]) == []
     provider.release.set()
     await asyncio.wait_for(loop_task, 5)
 
     persisted = db.get_messages(session["id"])
-    assert [m["role"] for m in persisted] == ["user", "user", "assistant", "assistant"]
+    assert [m["role"] for m in persisted] == ["user", "assistant", "user", "assistant"]
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["I have a problem", "with flight VY3003"]
     own = _frames_of(websocket.sent, session["id"])
     assert own[0] == {**own[0], "type": "output.text_stream", "text": ""}, own
