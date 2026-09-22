@@ -46,7 +46,10 @@ class AiKind(InputProcessorKind):
         return registry
 
     def on_exit_registry(self, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        chat = {method: text for method, text in registry.get("chat", {}).items() if method != "write"}
+        chat = {
+            method: text for method, text in registry.get("chat", {}).items()
+            if method not in IdentifierRegistry.REPLY_METHODS
+        }
         return {**registry, "chat": chat}
 
 

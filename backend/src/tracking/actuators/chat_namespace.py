@@ -19,6 +19,20 @@ if TYPE_CHECKING:
 logger = LoggerFactory.get_logger(__name__)
 
 
+def _table_cell(value: object) -> str:
+    return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
+
+
+def markdown_table(table: dict) -> str:
+    columns = {_table_cell(name): [_table_cell(value) for value in values] for name, values in table.items()}
+    if not columns:
+        return ""
+    height = max(len(values) for values in columns.values())
+    rows = [[values[i] if i < len(values) else "" for values in columns.values()] for i in range(height)]
+    lines = ["| " + " | ".join(cells) + " |" for cells in [list(columns), *rows]]
+    return "\n".join([lines[0], "|" + " --- |" * len(columns), *lines[1:]])
+
+
 class ReplySink(Protocol):
     def write(self, text: str) -> None: ...
     def take(self) -> str: ...
@@ -65,6 +79,10 @@ class ChatNamespace(ABC):
 
     def write(self, body_md: str) -> None:
         self._reply.write(body_md)
+
+    def write_table(self, table: dict) -> None:
+        for text in filter(None, [markdown_table(table)]):
+            self._reply.write(text)
 
     def celebrate(self) -> JsSnippet | None:
         return JsSnippet("celebrate()")

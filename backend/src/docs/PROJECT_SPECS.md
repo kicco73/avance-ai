@@ -571,6 +571,14 @@ of source kinds: method support is the whole compatibility story.
   trigger/env: expressions only — never exposed to the model.
   `'ABC-1' in source.casos.column('archivo')` is a membership check, and
   `env.casos = source.casos.column('archivo')` keeps the list.
+- `select_subtable(*columns)` — the named columns of **every** row, as a
+  **dict** `{column: [cells]}` in the order asked:
+  `source.casos.select_subtable('caso', 'titulo')` is
+  `{'caso': [1, 2], 'titulo': ['Ana', 'Luis']}`; `{}` if the file has
+  no row at all, if any column isn't real, or if the result would
+  exceed the size bound. Scripts and
+  trigger/env: expressions only — never exposed to the model. This is
+  the shape `chat.write_table` (§5.3bis) takes.
 - `row_where(column, operator, value, *strings)` — the *first* row
   `select_rows_where` would return, as a **dict** (`{column: cell}`, every
   column of the file); `{}` if no row matches, if `column` or `operator`
@@ -579,9 +587,9 @@ of source kinds: method support is the whole compatibility story.
   `env.caso = source.casos.row_where('caso', '=', 1)` keeps one whole
   record, and the prompt's env block renders it as JSON.
 
-Every read returns whole rows: there is no column projection, and an
-unknown column or operator comes back as an error *text*, never an
-exception. Every driver implements `select_rows_containing`; the
+Every `select_rows_*` read returns whole rows — `select_subtable` is the one
+projection — and an unknown column or operator comes back as an error
+*text*, never an exception. Every driver implements `select_rows_containing`; the
 column-filtered reads and `value` only where they make sense for that
 driver (its own `SUPPORTED_METHODS`). Sources are read-only — no driver
 writes anything, ever.
@@ -594,8 +602,8 @@ basename under `behaviour/`, resolved directly from storage at the
 conversation's own pinned automaton revision, never "whatever's published
 now" — not the `attachments:` mechanism, nothing is eagerly loaded).
 Assumes a normalized CSV (header + one row per record; the separator is
-detected). Implements every `select_rows_*` read, `value`, `column` and
-`row_where` — nothing writes. Every read goes straight to the project's
+detected). Implements every `select_rows_*` read, `value`, `column`,
+`select_subtable` and `row_where` — nothing writes. Every read goes straight to the project's
 own stored file, at the conversation's own pinned revision — the same
 content for every session, no per-session copy of anything. A
 whole-file read is `attachment.read(name)`'s job (`on-exit`/`task` only), not a
@@ -898,7 +906,7 @@ every `on-exit:` script — its own env writes and its own `chat.*`
 calls alike — runs **synchronously, in the same request that fired the
 action**, never hibernated as a background job: `chat.*` has no
 model/network call of its own to keep off the event-loop thread, so
-there's nothing to defer. Nine methods exist:
+there's nothing to defer. Ten methods exist:
 
 - `chat.write(body_md)` — the reply of the `system` state (§4.1) this
   action leads to: `body_md` is saved as the assistant's message and
@@ -907,6 +915,15 @@ there's nothing to defer. Nine methods exist:
   action (or the init-action) whose target declares `input-processor:
   system` — on the way into an `ai` state it is an undefined name, since
   the model answers there.
+- `chat.write_table(table)` — `chat.write` of a markdown table: `table`
+  is a dict `{column name: [cells]}`, one column per key in order, cells
+  strings, numbers or booleans — exactly what `source.<name>.select_subtable(...)`
+  (§5.2) returns, e.g. `chat.write_table(source.casos.select_subtable('caso', 'titulo'))`
+  or `chat.write_table({'Name': ['Alice', 'Bob'], 'Score': [7.5, 4]})`.
+  An empty dict writes nothing. A short column is padded with empty
+  cells; a `|` or a newline inside a cell is escaped so the table
+  survives it. Same availability as `chat.write`: only on the way into
+  a `system` state.
 - `chat.celebrate()` / `chat.notify(title, body_md)` / `chat.show(body_md)` —
   compile straight to `taskActions.js` locals of the same name
   (confetti / toast / dialog). Nothing runs server-side beyond building
@@ -1230,8 +1247,8 @@ of how you're likely to hit them:
 - Every state declares `input-processor`, `ai` or `system` (§4.1).
 - Every `ai` state has a `contextual-prompt`.
 - No script of a `system` state references `signal.*`.
-- `chat.write(...)` appears only in the `on-exit` of an action whose
-  target is a `system` state.
+- `chat.write(...)` / `chat.write_table(...)` appear only in the
+  `on-exit` of an action whose target is a `system` state.
 - No state declares `fixed-message` — refused naming its replacement.
 - Every state's `transition-log-level`, if given, is a valid level.
 - Every state's `signal-tracking-strategy`, if given, is `relevant` or `all`.

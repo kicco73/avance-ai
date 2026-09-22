@@ -123,6 +123,9 @@ class SourceDriver:
     def column(self, column: str, *values: str) -> list[str | int | float]:
         raise self._unsupported("column")
 
+    def select_subtable(self, *columns: str) -> dict[str, list[str | int | float]]:
+        raise self._unsupported("select_subtable")
+
     def row_where(
         self, column: str, operator: str, value: str | float, *strings: str | float,
     ) -> dict[str, str | int | float]:

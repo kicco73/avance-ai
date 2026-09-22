@@ -16,9 +16,9 @@ const TAB_DEFS = computed(() => [
   { key: 'trigger', label: 'Trigger', field: 'trigger', excludeNamespaces: ['task', 'chat'], hint: 'A Python expression, evaluated server-side, deciding whether this action is available.' },
   {
     key: 'on-exit', label: 'On Exit', field: 'on-exit', excludeNamespaces: ['task'],
-    excludeIdentifiers: props.targetIsAiState ? ['chat.write'] : [],
+    excludeIdentifiers: props.targetIsAiState ? ['chat.write', 'chat.write_table'] : [],
     hint: 'One "env.key = expression" write, "name = expression" local, or bare "chat.<method>(...)" call per line, evaluated when the action fires and before landing to next state. Locals are dropped when the script ends.'
-      + (props.targetIsAiState ? ' chat.write is unavailable here: the target state answers through the model, not input-processor: system.' : '')
+      + (props.targetIsAiState ? ' chat.write and chat.write_table are unavailable here: the target state answers through the model, not input-processor: system.' : '')
   },
   { key: 'task', label: 'Task', field: 'task', excludeNamespaces: ['session', 'chat'], hint: 'Script executed when running the action and before landing to next state.' }
 ])

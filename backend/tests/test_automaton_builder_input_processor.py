@@ -122,16 +122,27 @@ def test_chat_write_reaches_a_system_state():
     assert automaton.get_state("a").actions[0].on_exit.strip() == "chat.write('Step 1')"
 
 
-@pytest.mark.parametrize("slot", ["init_on_exit", "b_on_exit"])
-def test_chat_write_has_no_reader_on_the_way_into_an_ai_state(slot):
-    ai_b = "    input-processor: ai\n    contextual-prompt: hi"
-    message = _refused(b=ai_b, **{slot: "chat.write('nobody reads this')"})
+def test_chat_write_table_reaches_a_system_state():
+    automaton = _build(a_on_exit="chat.write_table({'n': ['x', 1, True]})")
 
-    assert "references undefined name(s): chat.write" in message
+    assert automaton.get_state("a").actions[0].on_exit.strip() == "chat.write_table({'n': ['x', 1, True]})"
+
+
+@pytest.mark.parametrize("slot", ["init_on_exit", "b_on_exit"])
+@pytest.mark.parametrize("call", ["chat.write('nobody reads this')", "chat.write_table({'h': ['nobody reads this']})"])
+def test_chat_write_has_no_reader_on_the_way_into_an_ai_state(slot, call):
+    ai_b = "    input-processor: ai\n    contextual-prompt: hi"
+    message = _refused(b=ai_b, **{slot: call})
+
+    assert f"references undefined name(s): {call.split('(')[0]}" in message
 
 
 def test_chat_write_takes_exactly_one_argument():
     assert "chat.write(...)" in _refused(a_on_exit="chat.write()")
+
+
+def test_chat_write_table_takes_exactly_one_table():
+    assert "chat.write_table(...)" in _refused(a_on_exit="chat.write_table({'h': ['x']}, {})")
 
 
 def test_the_build_time_kinds_and_the_runtime_processors_are_the_same_two():

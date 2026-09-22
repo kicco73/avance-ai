@@ -18,6 +18,8 @@ no skill:
 - `API.md` — the HTTP surface, and how a failure becomes a status
 - `SKILLS.md` — what a skill is; each installed one writes its own section
 - `PROJECT_SPECS.md`, `METRICS.md` — the domain
+- `TOKEN_OPTIMIZATION.md` — what a turn's request costs, what a
+  provider's prompt cache can serve, and what breaks the prefix
 
 Everything else belongs to a skill and is in `backend/src/<package>/docs/`,
 where it leaves with its package:

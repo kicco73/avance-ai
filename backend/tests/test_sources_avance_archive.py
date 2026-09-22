@@ -156,6 +156,16 @@ def test_the_filtered_reads_accept_a_bare_number_where_a_script_passes_one(db):
     assert numbers.column("flight", 12) == ["VY1"]
 
 
+def test_select_subtable_projects_the_named_columns_as_a_dict_in_the_order_asked(db):
+    numbers, _ = _seeded_driver(db, "seats.csv", "flight,free_seats,city\nVY1,12,Rome\nVY2,9,Paris\n")
+
+    assert list(numbers.select_subtable("city", "free_seats").items()) == [("city", ["Rome", "Paris"]), ("free_seats", [12, 9])]
+    assert numbers.select_subtable("nope", "city") == {}
+
+    empty, _ = _seeded_driver(db, "empty.csv", "flight,free_seats,city\n")
+    assert empty.select_subtable("city") == {}
+
+
 def test_select_rows_where_reports_an_unknown_column_or_operator_as_text_never_an_exception(db):
     driver, _ = _seeded_driver(db, "flights.csv", FLIGHTS)
 

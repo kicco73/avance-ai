@@ -31,6 +31,43 @@ def test_write_reaches_the_bound_sink_in_order(namespace_class):
     assert sink.texts == ["Step 1", "**bold**"]
 
 
+def test_write_table_reaches_the_sink_as_one_markdown_table():
+    sink = _Sink()
+    chat = LiveChatNamespace(project_id="p").with_session(7).with_reply(sink)
+
+    chat.write_table({"Name": ["Alice", "Bob"], "Score": [7.5, 4], "Passed": [True, False]})
+
+    assert sink.texts == [
+        "| Name | Score | Passed |\n"
+        "| --- | --- | --- |\n"
+        "| Alice | 7.5 | True |\n"
+        "| Bob | 4 | False |"
+    ]
+
+
+def test_write_table_of_an_empty_dict_writes_nothing():
+    sink = _Sink()
+    chat = LiveChatNamespace(project_id="p").with_session(7).with_reply(sink)
+
+    chat.write_table({})
+
+    assert sink.texts == []
+
+
+def test_write_table_pads_short_columns_and_escapes_what_would_break_a_cell():
+    sink = _Sink()
+    chat = LiveChatNamespace(project_id="p").with_session(7).with_reply(sink)
+
+    chat.write_table({"a": ["x|y", "only one"], "b": ["line\nbreak"]})
+
+    assert sink.texts == [
+        "| a | b |\n"
+        "| --- | --- |\n"
+        "| x\\|y | line<br>break |\n"
+        "| only one |  |"
+    ]
+
+
 def test_write_on_an_unbound_namespace_does_nothing():
     LiveChatNamespace(project_id="p").with_session(7).write("lost")
 
@@ -49,5 +86,6 @@ def test_write_is_an_on_exit_identifier_and_nothing_else():
     registry = IdentifierRegistry.build([], [])
 
     assert "write" in IdentifierRegistry.for_on_exit(registry)["chat"]
+    assert "write_table" in IdentifierRegistry.for_on_exit(registry)["chat"]
     assert "chat" not in IdentifierRegistry.for_triggers(registry)
     assert "chat" not in IdentifierRegistry.for_task(registry)

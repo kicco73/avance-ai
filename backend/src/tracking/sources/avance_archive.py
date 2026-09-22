@@ -51,7 +51,7 @@ _DELIMITERS = ",;\t|"
 
 class AvanceArchiveSource(SourceDriver):
     SUPPORTED_METHODS = frozenset({
-        "select_rows_containing", "select_rows_where", "select_rows_in_range", "value", "column", "row_where",
+        "select_rows_containing", "select_rows_where", "select_rows_in_range", "value", "column", "select_subtable", "row_where",
     })
     TOOL_METHODS = ("select_rows_containing", "select_rows_where", "select_rows_in_range")
     METHOD_DESCRIPTIONS = {
@@ -80,6 +80,12 @@ class AvanceArchiveSource(SourceDriver):
             "Every `column` cell of the rows matching *every* given value, case-insensitive, as a list — "
             "e.g. source.<name>.column('codice_volo', 'Barcelona'); no values means the whole column. "
             "[] if no row matches or the column doesn't exist. Scripts/triggers only, never a model tool."
+        ),
+        "select_subtable": (
+            "The named columns, as a dict {column: [cells]} in the order asked — "
+            "e.g. source.<name>.select_subtable('caso', 'titulo') gives {'caso': [1, 2], 'titulo': ['Ana', 'Luis']}. "
+            "{} if there is no row at all, a column doesn't exist, or the result exceeds the size bound. What chat.write_table takes. "
+            "Scripts/triggers only, never a model tool."
         ),
         "row_where": (
             "The first row where a column satisfies a comparison (same operators and `*strings` as "
@@ -223,6 +229,24 @@ class AvanceArchiveSource(SourceDriver):
             logger.warning("source.%s.column(%r): result over %d chars — narrow it with values", self._name, column, MAX_SOURCE_RESULT_CHARS)
             return []
         return values_found
+
+    def select_subtable(self, *columns: str) -> dict[str, list[str | int | float]]:
+        found = self._matches(())
+        if found is None:
+            return {}
+        _, delimiter, names, records = found
+        if not records:
+            return {}
+        unknown = [column for column in columns if column not in names]
+        if unknown:
+            logger.warning("source.%s.select_subtable(%r): unknown column(s) — available: %s", self._name, unknown, ", ".join(names))
+            return {}
+        table = {column: [self._cell(cells, names.index(column)) for _, cells in records] for column in columns}
+        size = sum(len(delimiter.join(str(v) for v in [column, *values])) + 1 for column, values in table.items())
+        if size > MAX_SOURCE_RESULT_CHARS:
+            logger.warning("source.%s.select_subtable(%r): result over %d chars", self._name, columns, MAX_SOURCE_RESULT_CHARS)
+            return {}
+        return table
 
     def value(self, *values: str | float, key: str) -> str | int | float:
         found = self._matches(values)
