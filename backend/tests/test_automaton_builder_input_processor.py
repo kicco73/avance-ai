@@ -135,7 +135,14 @@ def test_chat_write_takes_exactly_one_argument():
 
 
 def test_the_build_time_kinds_and_the_runtime_processors_are_the_same_two():
+    """`ai` is not a runtime processor core owns — it's contributed by
+    the ai skill onto POINT_INPUT_PROCESSORS (see turn/input_processor.py),
+    seeded back in for tests by conftest.py's own _reset_bus. The
+    build-time kind still knows about it unconditionally: validating
+    `input-processor: ai` in a project's YAML doesn't need the skill
+    installed, the same way task.send_mail's identifier is always valid
+    grammar whether or not mail is."""
     from automaton.input_processor_kind import INPUT_PROCESSOR_KINDS
-    from turn.input_processor import INPUT_PROCESSORS
+    from turn.input_processor import processors
 
-    assert INPUT_PROCESSORS.keys() == INPUT_PROCESSOR_KINDS.keys() == {"ai", "system"}
+    assert processors().keys() == INPUT_PROCESSOR_KINDS.keys() == {"ai", "system"}

@@ -280,6 +280,47 @@ def test_a_state_that_does_not_say_who_answers_answered_through_the_model():
     assert IndexYmlModernizer().modernize(modernized.text).fixes == ()
 
 
+LEGACY_FIXED_MESSAGE_YML = """\
+project:
+  id: legacy_talk
+init-action:
+  target: a
+states:
+  a:
+    ui-label: A
+    input-processor: ai
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: done
+  done:
+    ui-label: Done
+    input-processor: ai
+    chat-enabled: false
+    # keep me
+    fixed-message: |
+      Thanks, we're done here.
+"""
+
+
+def test_a_fixed_message_state_becomes_system_and_a_chat_write_on_every_action_that_reaches_it():
+    """`fixed-message` said the same thing on every entry, no model call
+    involved — today that's `input-processor: system`, with the text
+    written by `chat.write(...)` in the on-exit of whatever reaches it."""
+    modernized = IndexYmlModernizer().modernize(LEGACY_FIXED_MESSAGE_YML)
+
+    assert modernized.fixes == (
+        "done: fixed-message → input-processor: system + on-exit chat.write(...) of the actions that reach it",
+    )
+    assert "fixed-message" not in modernized.text
+    assert "# keep me" in modernized.text
+    automaton = AutomatonBuilder().build({"index.yml": modernized.text})
+    assert automaton.states["done"].input_processor == "system"
+    actions = {action.name: action for state in automaton.states.values() for action in state.actions}
+    assert actions["go"].on_exit == "chat.write(\"Thanks, we're done here.\")"
+    assert IndexYmlModernizer().modernize(modernized.text).fixes == ()
+
+
 def test_every_stored_revision_is_settled_at_boot_not_at_the_first_visit(db):
     from project.archive.index_yml_migration import modernize_stored_revisions
 

@@ -423,6 +423,51 @@ class LegacyStateScript(StateDeprecation):
             editor.drop_key_preserving_comments(state, self.KEY)
 
 
+class LegacyFixedMessage(StateDeprecation):
+    """A state used to say a message of its own, unconditionally, on
+    every entry — no model call, nothing to compute. Today that is
+    `input-processor: system`, with the same text written by
+    `chat.write(...)` in the on-exit of every action that reaches the
+    state — once per entry, same as the state's own fixed-message always
+    was. `input-processor` is overwritten to `system` even where the
+    state already declared `ai`: a fixed-message state never answered
+    through the model, whatever it said about itself."""
+
+    KEY = "fixed-message"
+    FIELD = "on-exit"
+    NEW = "input-processor"
+    VALUE = "system"
+    MESSAGE = (
+        "State '{name}': 'fixed-message' is deprecated — set 'input-processor: system' and write the "
+        "message with chat.write(...) in the on-exit of every action that reaches this state, and what "
+        "it says is ignored until it is."
+    )
+
+    @classmethod
+    def found_in(cls, raw) -> Sequence[Self]:
+        return [found for found in super().found_in(raw) if found._movable(raw)]
+
+    def _movable(self, raw) -> bool:
+        reached = actions_targeting(raw, self.name)
+        return bool(reached) and all(rewritable(action) for action in reached)
+
+    @property
+    def fix(self) -> str:
+        return f"{self.name}: {self.KEY} → {self.NEW}: {self.VALUE} + {self.FIELD} chat.write(...) of the actions that reach it"
+
+    def rewrite(self, editor) -> None:
+        raw = editor.document()
+        for name, state in self.entries(raw):
+            if name != self.name or not owns(state, self.KEY):
+                continue
+            text = _text_of(state, self.KEY)
+            call = [f"chat.write({text!r})" for _ in [text] if text]
+            for action in actions_targeting(raw, name):
+                _store(editor, action, self.FIELD, "\n".join(_lines_of(action, self.FIELD) + call))
+            editor.drop_key_preserving_comments(state, self.KEY)
+            state[self.NEW] = self.VALUE
+
+
 class LegacyStateChat(StateDeprecation, RenamedKey):
 
     KEY = "chat"
@@ -581,7 +626,7 @@ class RemovedEnvUiLabel(EnvKeyDeprecation, RemovedKey):
 
 PROJECT_KINDS = (LegacyTalkEnabled,)
 FIELD_KINDS = (
-    LegacyOnEnter, LegacyActuatorField, LegacyActionPrompt, LegacyStateScript,
+    LegacyOnEnter, LegacyActuatorField, LegacyActionPrompt, LegacyStateScript, LegacyFixedMessage,
     LegacyStateChat, LegacyAiMemoryStrategy, MissingInputProcessor, RemovedEnvAiAccess, RemovedEnvUiLabel,
     RemovedEnvValue, LegacyChoiceEnvType, LegacyEnvUiDescription,
 )
