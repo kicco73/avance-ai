@@ -19,8 +19,13 @@ const props = defineProps({
   title: { type: String, default: null },
   history: { type: Array, default: () => [] },
   markers: { type: Array, default: () => [] },
-  providerLabels: { type: Object, default: () => ({}) }
+  providerLabels: { type: Object, default: () => ({}) },
+  boldKeys: { type: Array, default: () => [] },
+  seriesColors: { type: Object, default: () => ({}) }
 })
+
+const NORMAL_LINE_WIDTH = 1.5
+const BOLD_LINE_WIDTH = 3
 
 const emit = defineEmits(['range-changed'])
 
@@ -155,6 +160,7 @@ function seriesKeys(entries) {
 }
 
 function seriesColor(key, entries) {
+  if (props.seriesColors[key]) return props.seriesColors[key]
   const index = seriesKeys(entries).indexOf(key)
   return PALETTE[(index < 0 ? 0 : index) % PALETTE.length]
 }
@@ -168,11 +174,12 @@ function buildMarkers(entries) {
 }
 
 function buildDatasets(entries) {
-  return seriesKeys(entries).map((key, index) => ({
+  return seriesKeys(entries).map((key) => ({
     label: providerLabel(key),
     data: entries.map((entry) => ({ x: entry.timestamp, y: entry.values[key] })).filter((point) => point.y != null),
-    borderColor: PALETTE[index % PALETTE.length],
-    backgroundColor: PALETTE[index % PALETTE.length],
+    borderColor: seriesColor(key, entries),
+    backgroundColor: seriesColor(key, entries),
+    borderWidth: props.boldKeys.includes(key) ? BOLD_LINE_WIDTH : NORMAL_LINE_WIDTH,
     cubicInterpolationMode: 'monotone',
     pointRadius: 2.5,
     fill: false,
@@ -181,7 +188,8 @@ function buildDatasets(entries) {
 
 function computeYMax(datasets) {
   const values = datasets.flatMap((dataset) => dataset.data.map((point) => point.y))
-  return values.length ? Math.ceil(Math.max(...values) * 1.1) : 10
+  const max = values.length ? Math.max(...values) : 0
+  return max > 0 ? max * 1.1 : 10
 }
 
 function renderChart() {

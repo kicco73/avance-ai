@@ -119,9 +119,12 @@ after it, so a reader has both the answer and what it may do next before it
 treats the exchange as over. When something goes wrong, `output.error`
 arrives in place of the reply, with no `state.buttons` after it. That holds
 whatever went wrong: a refusal the turn could name carries its `code`, and an
-exception that escapes the turn is turned into `output.error` (`message`
-`Unexpected server error.`) by `turn/outbound.py`'s `publishing`, the seam
-every exchange runs inside — no exchange ends in silence.
+exception that escapes the turn is turned into `output.error` by
+`turn/outbound.py`'s `publishing`, the seam every exchange runs inside — no
+exchange ends in silence. A `TryAgainError` (every transient AI-provider
+failure — a stalled stream, a rate limit, an overloaded upstream) is `code`
+`ai_provider_busy`, `message` `AI providers currently busy. Please try
+again.`; anything else is `message` `Unexpected server error.`.
 
 An exchange that ends in `output.error` persisted nothing. What a person
 sent, the transition it decided, the env it wrote, the reply it was writing

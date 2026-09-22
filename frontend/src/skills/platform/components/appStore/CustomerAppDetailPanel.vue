@@ -1,9 +1,11 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { deleteInstallApp, getDriveFileContent, getDriveFiles, getProjectSignals, getUserLatestSignals } from '../../api.js'
+import { deleteInstallApp, driveFileContentUrl, getDriveFiles, getProjectSignals, getUserLatestSignals } from '../../api.js'
 import { getAppSessionSummaries } from '../../api/appStore.js'
-import { confirmDialog, infoDialog } from '../../../../dialogStore.js'
+import { busChannel } from '../../../../busChannel.js'
+import { confirmDialog } from '../../../../dialogStore.js'
 import { renderMarkdown } from '../../../../markdown.js'
+import { openMediaDialog } from '../../../../openMediaDialog.js'
 import InspectorSignalList from '../inspector/InspectorSignalList.vue'
 import TimelineChart from '../settings/TimelineChart.vue'
 import { valuesToSignalValues } from '../../../../testTimeline.js'
@@ -20,7 +22,7 @@ const uninstallMenuOpen = ref(false)
 const uninstallMenuRootEl = ref(null)
 const sessionSummaries = ref([])
 
-const tabs = [{ id: 'summary', label: 'Summary' }, { id: 'signals', label: 'Signals' }, { id: 'docs', label: 'Docs' }]
+const tabs = [{ id: 'summary', label: 'Summary' }, { id: 'docs', label: 'Drive' }, { id: 'signals', label: 'Signals' }]
 const activeTab = ref('summary')
 
 const driveFiles = ref([])
@@ -61,14 +63,8 @@ async function loadDriveFiles() {
   }
 }
 
-async function openDriveFile(file) {
-  let content = ''
-  try {
-    content = await getDriveFileContent(props.app.id, file.path)
-  } catch {
-    return
-  }
-  await infoDialog({ title: file.path, body: content, markdown: true, okLabel: 'Close' })
+function openDriveFile(file) {
+  openMediaDialog(driveFileContentUrl(props.app.id, file.path))
 }
 
 function formatFileSize(bytes) {
@@ -98,6 +94,18 @@ onMounted(async () => {
   } catch {
   }
 })
+
+let unsubscribeDrive = null
+
+onMounted(() => {
+  unsubscribeDrive = busChannel.subscribe('output.drive', (frame) => {
+    if (frame.project_id !== props.app.id) return
+    driveFilesLoaded = true
+    loadDriveFiles()
+  })
+})
+
+onBeforeUnmount(() => unsubscribeDrive?.())
 
 function appTitle(app) {
   return app?.ui_label || app?.id || ''

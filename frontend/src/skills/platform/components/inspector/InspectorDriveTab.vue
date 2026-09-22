@@ -1,8 +1,8 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
-import { getDriveFileContent, getDriveFiles } from '../../api.js'
-import { infoDialog } from '../../../../dialogStore.js'
+import { driveFileContentUrl, getDriveFiles } from '../../api.js'
 import { busChannel } from '../../../../busChannel.js'
+import { openMediaDialog } from '../../../../openMediaDialog.js'
 
 const props = defineProps({
   projectId: { type: String, required: true }
@@ -22,14 +22,8 @@ async function loadFiles() {
   }
 }
 
-async function openFile(file) {
-  let content = ''
-  try {
-    content = await getDriveFileContent(props.projectId, file.path)
-  } catch {
-    return
-  }
-  await infoDialog({ title: file.path, body: content, markdown: true, okLabel: 'Close' })
+function openFile(file) {
+  openMediaDialog(driveFileContentUrl(props.projectId, file.path))
 }
 
 function formatFileSize(bytes) {

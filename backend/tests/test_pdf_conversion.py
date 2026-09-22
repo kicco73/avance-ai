@@ -8,6 +8,7 @@ import io
 
 import pytest
 from PIL import Image
+from pypdf import PdfReader
 
 from tracking.actuators.pdf_conversion import convert_to_pdf
 
@@ -16,6 +17,11 @@ def _png_bytes() -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (4, 4), (255, 0, 0)).save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _extracted_text(pdf_bytes: bytes) -> str:
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    return "\n".join(page.extract_text() for page in reader.pages)
 
 
 def test_a_pdf_is_returned_unchanged():
@@ -57,3 +63,57 @@ def test_an_image_becomes_a_pdf():
 def test_bytes_that_are_no_known_shape_are_refused():
     with pytest.raises(ValueError, match="none of an image, a PDF, CSV or text"):
         convert_to_pdf(b"\xff\xfe\x00\x01not any of the four accepted shapes\xff")
+
+
+def test_a_markdown_table_renders_as_a_real_table_not_the_literal_pipe_syntax():
+    out = convert_to_pdf("| Name | Score |\n| --- | --- |\n| Alice | 9 |\n| Bob | 7 |\n")
+
+    text = _extracted_text(out)
+    assert "Alice" in text and "9" in text
+    assert "|" not in text
+    assert "---" not in text
+
+
+def test_a_fenced_code_block_renders_its_content_not_the_backticks():
+    out = convert_to_pdf("```\nprint('hi')\n```\n")
+
+    text = _extracted_text(out)
+    assert "print('hi')" in text
+    assert "```" not in text
+
+
+def test_a_heading_and_body_text_both_come_through():
+    out = convert_to_pdf("# Report\n\nSome **bold** body text.")
+
+    text = _extracted_text(out)
+    assert "Report" in text
+    assert "Some bold body text." in text
+
+
+def test_body_and_table_text_use_the_same_font_family_as_headings():
+    """fpdf2's write_html() falls back to Times whenever the FPDF
+    instance it's called on has no font of its own set yet — a
+    visibly different font from the one headings render in, and from
+    what the markdown viewer ever shows."""
+    out = convert_to_pdf("# Report\n\nBody text.\n\n| A |\n| --- |\n| 1 |\n")
+
+    reader = PdfReader(io.BytesIO(out))
+    base_fonts = [font.get_object()["/BaseFont"] for font in reader.pages[0]["/Resources"]["/Font"].values()]
+    assert base_fonts
+    assert all("Times" not in name for name in base_fonts)
+
+
+def test_a_markdown_table_gets_a_real_cell_grid_and_a_shaded_header_row():
+    """python-markdown's own table extension emits a bare <table>, and
+    fpdf2's write_html() draws that as a single line under the header
+    row and nothing else — no box around any cell, no header shading —
+    unless the HTML itself carries border/cellpadding/bgcolor, which
+    _styled_table_html adds. Checked at the PDF content-stream level
+    (drawing operators), since pypdf's text extraction carries no
+    layout or fill information to assert on."""
+    out = convert_to_pdf("| A | B |\n| --- | --- |\n| 1 | 2 |\n")
+
+    reader = PdfReader(io.BytesIO(out))
+    content = reader.pages[0].get_contents().get_data().decode("latin1")
+    assert " re B" in content, "expected a filled+bordered rectangle for the shaded header cell"
+    assert " re S" in content, "expected a stroked rectangle (a real box) around a data cell"

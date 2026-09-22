@@ -124,7 +124,8 @@ def test_derek_is_told_at_ten_seconds_and_nothing_lands_thirteen_minutes_later(c
 
         assert clock.now == FIRST_BYTE_SECONDS
         assert derek.frames.last().type == "output.error"
-        assert derek.frames.last().body["message"] == "Unexpected server error."
+        assert derek.frames.last().body["message"] == "AI providers currently busy. Please try again."
+        assert derek.frames.last().body["code"] == "ai_provider_busy"
         assert f"sent nothing for {FIRST_BYTE_SECONDS:g}s" in derek.frames.last().body["detail"]
         assert "output.text" not in derek.frames.types()
         assert provider.torn_down == 1

@@ -463,7 +463,7 @@ class TurnService(object):
 
 	def rate_session(self, session_id: int, rating: int) -> int:
 		session = self._ownership.require_own_session(session_id)
-		self._db.set_app_rating(session["username"], session["project_id"], session["project_revision"], rating)
+		self._db.set_app_rating(session["username"], session["project_id"], session["project_revision"], rating, session_id=session_id)
 		return rating
 
 	def _reloaded_session_payload(self, session_id: int) -> dict:

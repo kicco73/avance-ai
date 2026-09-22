@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from .instrumentation import instrument_queries, write
 from .models import SystemWarning
 from .utils import _utc_iso
 
 
+@instrument_queries
 class ObservabilityMixin:
 
+    @write
     def save_system_warning(
         self, username: str, project_id: str, kind: str, message: str, *,
         file: str | None = None, line: int | None = None,
@@ -15,17 +18,20 @@ class ObservabilityMixin:
         )
         return row.id
 
+    @write
     def delete_system_warning(self, username: str, warning_id: int) -> bool:
         deleted = SystemWarning.delete().where(
             (SystemWarning.id == warning_id) & (SystemWarning.user_id == username)
         ).execute()
         return deleted > 0
 
+    @write
     def delete_project_system_warnings(self, project_id: str, kind: str) -> int:
         return SystemWarning.delete().where(
             (SystemWarning.project_id == project_id) & (SystemWarning.kind == kind)
         ).execute()
 
+    @write
     def delete_system_warnings_of_kind(self, kind: str) -> int:
         """Every project's, for a kind nothing raises any more. A warning
         outlives the run that raised it, so a kind that is withdrawn has

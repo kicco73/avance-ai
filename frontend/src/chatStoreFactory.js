@@ -14,6 +14,7 @@ import { playMessageChime, playReactionChime } from './audio.js'
 import { audioEnabled } from './chatPreferences.js'
 import { messageArrived } from './messageNotifier.js'
 import { clearApiError, setApiError } from './errorStore.js'
+import { notify } from './toastStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
 import { runTaskScript } from './taskActions.js'
@@ -21,6 +22,13 @@ import { createBackgroundAudio } from './backgroundAudio.js'
 import { rememberBackgroundAudio, recallBackgroundAudio, forgetBackgroundAudio } from './backgroundAudioSessionMemory.js'
 
 const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
+const TOAST_ONLY_ERRORS = { ai_provider_busy: () => notify('AI providers currently busy', 'Please try again.') }
+
+function showFrameError(frame) {
+  const toastOnly = TOAST_ONLY_ERRORS[frame.code]
+  if (toastOnly) { toastOnly(); return }
+  setApiError(frame.message, frame.detail)
+}
 
 export const chatConnectionState = ref(busChannel.connectionState)
 busChannel.onConnectionState((next) => { chatConnectionState.value = next })
@@ -204,7 +212,7 @@ export function createChatStore({
     if (frame.session_id !== currentSessionId.value) return
     if (openExchanges.size > 0) return
     actionLoading.value = false
-    setApiError(frame.message, frame.detail)
+    showFrameError(frame)
   })
 
   busChannel.subscribe('state.changed', (frame) => {
@@ -531,7 +539,7 @@ export function createChatStore({
       done()
       statusHold.cancel()
       actionLoading.value = false
-      setApiError(frame.message, frame.detail)
+      showFrameError(frame)
       markUnansweredFailed()
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx !== -1) {

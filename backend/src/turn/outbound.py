@@ -20,6 +20,7 @@ from system.bus import (
 )
 from system.logging_factory import LoggerFactory
 from system.service_error import ServiceError
+from system.try_again_error import TryAgainError
 from system.web_session import WebSession
 from turn.tool_status_text import tool_status_text
 
@@ -183,6 +184,11 @@ async def publishing(message: Message, db):
         drain = asyncio.create_task(outbound.drain())
         try:
             yield outbound
+        except TryAgainError as exc:
+            logger.warning("Exchange %s for session %s hit a transient provider failure: %s", message.type, message.session_id, exc)
+            outbound.put(OUTPUT_ERROR, {
+                "message": "AI providers currently busy. Please try again.", "detail": str(exc), "code": "ai_provider_busy",
+            })
         except Exception as exc:  # noqa: BLE001
             logger.exception("Exchange %s for session %s failed: %s", message.type, message.session_id, exc)
             outbound.put(OUTPUT_ERROR, {"message": "Unexpected server error.", "detail": str(exc)})

@@ -14,7 +14,7 @@ const PreviewChatEmbed = defineAsyncComponent(() => import('./components/Preview
 export const key = 'platform'
 
 export const roleHomes = [
-  { role: 'admin', component: AdminHome },
+  { role: 'admin', component: CustomerHome },
   { role: 'supervisor', component: LabelProjectView },
   { role: 'customer', component: CustomerHome },
 ]
@@ -23,6 +23,7 @@ export const pushedViews = [
   { view: 'edit', component: EditProjectView },
   { view: 'label', component: LabelProjectView },
   { view: 'manageUsers', component: ManageUsersView },
+  { view: 'manageProjects', component: AdminHome },
   { view: 'appStore', component: AppStoreView },
 ]
 

@@ -9,7 +9,7 @@ import ServicesProviderCard from '../skillkit/ServicesProviderCard.vue'
 import ServicesFieldList from '../skillkit/ServicesFieldList.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
 import TaskCard from './TaskCard.vue'
-import { getAiUsage, getScheduledTasks, getServicesConfig } from '../../api.js'
+import { getAiUsage, getDbUsage, getScheduledTasks, getServicesConfig } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { modelSelector } from '../../modelSelector.js'
 import { servicesTabs, servicesTabActions } from '../../skills/registry.js'
@@ -55,6 +55,12 @@ const AI_SUBTABS = [
 ]
 const aiSubTab = ref(AI_SUBTABS[0].id)
 
+const DB_SUBTABS = [
+  { id: 'configuration', label: 'Configuration' },
+  { id: 'observability', label: 'Observability' }
+]
+const dbSubTab = ref(DB_SUBTABS[0].id)
+
 const services = ref(null)
 const loading = ref(true)
 
@@ -99,6 +105,68 @@ const observabilityFullRange = computed(() => {
   return { min: Math.min(...times), max: Math.max(...times) }
 })
 
+const dbUsage = ref({ request_history: [], history: [], error_history: [] })
+function dbQueryLabel(name) {
+  return name.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
+}
+function dbLabelsFor(entries) {
+  return Object.fromEntries(
+    [...new Set(entries.flatMap((entry) => Object.keys(entry.values)))]
+      .map((name) => [name, dbQueryLabel(name)])
+  )
+}
+const DB_REQUEST_TOP_N = 5
+const DB_OVERALL_KEY = 'overall'
+const DB_READ_KEY = 'read'
+const DB_WRITE_KEY = 'write'
+const dbTopRequestQueryNames = computed(() => {
+  const totals = {}
+  for (const entry of dbUsage.value.request_history) {
+    for (const [name, count] of Object.entries(entry.values)) totals[name] = (totals[name] ?? 0) + count
+  }
+  return Object.entries(totals).sort(([, a], [, b]) => b - a).slice(0, DB_REQUEST_TOP_N).map(([name]) => name)
+})
+function dbTopSeries(entry) {
+  return Object.fromEntries(dbTopRequestQueryNames.value.filter((name) => name in entry.values).map((name) => [name, entry.values[name]]))
+}
+const dbTopLabels = computed(() => Object.fromEntries(dbTopRequestQueryNames.value.map((name) => [name, dbQueryLabel(name)])))
+
+const dbRequestChartHistory = computed(() => dbUsage.value.request_history.map((entry) => ({
+  timestamp: entry.timestamp,
+  values: {
+    ...dbTopSeries(entry),
+    [DB_OVERALL_KEY]: Object.values(entry.values).reduce((sum, count) => sum + count, 0),
+  },
+})))
+const dbRequestLabels = computed(() => ({ ...dbTopLabels.value, [DB_OVERALL_KEY]: 'Overall' }))
+
+const dbLatencyChartHistory = computed(() => dbUsage.value.history.map((entry) => ({
+  timestamp: entry.timestamp,
+  values: {
+    ...dbTopSeries(entry),
+    [DB_OVERALL_KEY]: entry.values[DB_OVERALL_KEY],
+    [DB_READ_KEY]: entry.values[DB_READ_KEY],
+    [DB_WRITE_KEY]: entry.values[DB_WRITE_KEY],
+  },
+})))
+const dbLatencyLabels = computed(() => ({
+  ...dbTopLabels.value, [DB_OVERALL_KEY]: 'Overall', [DB_READ_KEY]: 'Read', [DB_WRITE_KEY]: 'Write',
+}))
+const dbErrorLabels = computed(() => dbLabelsFor(dbUsage.value.error_history))
+
+const dbRequestChartRef = ref(null)
+const dbLatencyChartRef = ref(null)
+const dbErrorChartRef = ref(null)
+const dbObservabilityZoomed = ref(false)
+const dbObservabilityCharts = [dbRequestChartRef, dbLatencyChartRef, dbErrorChartRef]
+
+const dbObservabilityFullRange = computed(() => {
+  const times = [...dbUsage.value.request_history, ...dbUsage.value.history, ...dbUsage.value.error_history]
+    .map((entry) => new Date(entry.timestamp).getTime())
+  if (times.length < 2) return null
+  return { min: Math.min(...times), max: Math.max(...times) }
+})
+
 const observabilityWindow = ref(null)
 let pendingObservabilitySync = null
 
@@ -126,6 +194,33 @@ function resetObservabilityZoom() {
   observabilityZoomed.value = false
 }
 
+const dbObservabilityWindow = ref(null)
+let pendingDbObservabilitySync = null
+
+function onDbObservabilityRangeChanged(range, sourceRef) {
+  dbObservabilityZoomed.value = true
+  dbObservabilityWindow.value = range
+  const wasScheduled = pendingDbObservabilitySync !== null
+  pendingDbObservabilitySync = { range, sourceRef }
+  if (wasScheduled) return
+  requestAnimationFrame(() => {
+    const { range: syncedRange, sourceRef: syncedSourceRef } = pendingDbObservabilitySync
+    pendingDbObservabilitySync = null
+    for (const chartRef of dbObservabilityCharts) {
+      if (chartRef !== syncedSourceRef) chartRef.value?.setXRange(syncedRange)
+    }
+  })
+}
+
+function resetDbObservabilityZoom() {
+  for (const chartRef of dbObservabilityCharts) {
+    if (dbObservabilityFullRange.value) chartRef.value?.setXRange(dbObservabilityFullRange.value)
+    else chartRef.value?.resetZoom()
+  }
+  dbObservabilityWindow.value = null
+  dbObservabilityZoomed.value = false
+}
+
 const AI_USAGE_REFRESH_MS = 60 * 1000
 
 async function refreshAiUsageAndScroll() {
@@ -139,8 +234,23 @@ async function refreshAiUsageAndScroll() {
   for (const chartRef of observabilityCharts) chartRef.value?.setXRange(observabilityWindow.value)
 }
 
+async function refreshDbUsageAndScroll() {
+  await loadDbUsage()
+  if (!dbObservabilityWindow.value) return
+  await nextTick()
+  dbObservabilityWindow.value = {
+    min: dbObservabilityWindow.value.min + AI_USAGE_REFRESH_MS,
+    max: dbObservabilityWindow.value.max + AI_USAGE_REFRESH_MS,
+  }
+  for (const chartRef of dbObservabilityCharts) chartRef.value?.setXRange(dbObservabilityWindow.value)
+}
+
 let aiUsageRefreshTimer = null
-onBeforeUnmount(() => clearInterval(aiUsageRefreshTimer))
+let dbUsageRefreshTimer = null
+onBeforeUnmount(() => {
+  clearInterval(aiUsageRefreshTimer)
+  clearInterval(dbUsageRefreshTimer)
+})
 
 const TASK_STATUSES = ['pending', 'dispatched', 'done', 'failed', 'canceled']
 const taskStatus = ref(TASK_STATUSES[0])
@@ -174,6 +284,13 @@ async function loadAiUsage() {
   }
 }
 
+async function loadDbUsage() {
+  try {
+    dbUsage.value = await getDbUsage()
+  } catch {
+  }
+}
+
 async function loadTasks() {
   tasksLoading.value = true
   try {
@@ -190,8 +307,10 @@ watch([taskStatus, taskOrder], loadTasks)
 onMounted(() => {
   load()
   loadAiUsage()
+  loadDbUsage()
   loadTasks()
   aiUsageRefreshTimer = setInterval(refreshAiUsageAndScroll, AI_USAGE_REFRESH_MS)
+  dbUsageRefreshTimer = setInterval(refreshDbUsageAndScroll, AI_USAGE_REFRESH_MS)
 })
 
 const NO_FALLBACK_WARNING =
@@ -277,7 +396,7 @@ function providerStatusTitle(index) {
       </template>
 
       <div class="services-body">
-        <p v-if="activeDescription && activeTab !== 'ai'" class="services-tab-description">{{ activeDescription }}</p>
+        <p v-if="activeDescription && activeTab !== 'ai' && activeTab !== 'database'" class="services-tab-description">{{ activeDescription }}</p>
         <p v-if="loading" class="services-status">Loading…</p>
         <template v-else-if="services">
           <div v-show="activeTab === 'chat'" class="services-panel">
@@ -402,13 +521,79 @@ function providerStatusTitle(index) {
           </div>
 
           <div v-show="activeTab === 'database'" class="services-panel">
-            <ServicesFieldList :section="services.database" />
+            <div class="services-ai-subtabs">
+              <button
+                v-for="subtab in DB_SUBTABS"
+                :key="subtab.id"
+                type="button"
+                class="services-ai-subtab-btn"
+                :class="{ 'services-ai-subtab-btn-active': dbSubTab === subtab.id }"
+                @click="dbSubTab = subtab.id"
+              >{{ subtab.label }}</button>
+            </div>
 
-            <component
-              v-for="entry in servicesTabActions.filter((e) => e.tab === 'database')"
-              :key="entry.id"
-              :is="entry.component"
-            />
+            <div v-show="dbSubTab === 'configuration'" class="services-ai-subpanel">
+              <p v-if="activeDescription" class="services-tab-description">{{ activeDescription }}</p>
+              <ServicesFieldList :section="services.database" />
+
+              <component
+                v-for="entry in servicesTabActions.filter((e) => e.tab === 'database')"
+                :key="entry.id"
+                :is="entry.component"
+              />
+            </div>
+
+            <div v-show="dbSubTab === 'observability'" class="services-ai-subpanel">
+              <div class="services-observability-toolbar">
+                <button
+                  :disabled="!dbObservabilityZoomed"
+                  class="services-observability-reset-zoom-btn"
+                  @click="resetDbObservabilityZoom"
+                >
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                    <path d="M12 5V2L8 6l4 4V7c3.31 0 6 2.69 6 6 0 2.97-2.17 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93 0-4.42-3.58-8-8-8zm-6 8c0-1.65.67-3.15 1.76-4.24L6.34 7.34C4.9 8.79 4 10.79 4 13c0 4.08 3.05 7.44 7 7.93v-2.02c-2.83-.48-5-2.94-5-5.91z" />
+                  </svg>
+                  Reset
+                </button>
+              </div>
+              <div class="services-ai-usage-chart">
+                <TrendLineChart
+                  ref="dbRequestChartRef"
+                  title="Requests"
+                  :history="dbRequestChartHistory"
+                  :provider-labels="dbRequestLabels"
+                  :bold-keys="[DB_OVERALL_KEY]"
+                  :series-colors="{ [DB_OVERALL_KEY]: '#c0392b' }"
+                  @range-changed="onDbObservabilityRangeChanged($event, dbRequestChartRef)"
+                >
+                  <template #value="{ value }">{{ value }} {{ value === 1 ? 'request' : 'requests' }}</template>
+                </TrendLineChart>
+              </div>
+              <div class="services-ai-usage-chart">
+                <TrendLineChart
+                  ref="dbLatencyChartRef"
+                  title="Latency"
+                  :history="dbLatencyChartHistory"
+                  :provider-labels="dbLatencyLabels"
+                  :bold-keys="[DB_OVERALL_KEY]"
+                  :series-colors="{ [DB_OVERALL_KEY]: '#c0392b' }"
+                  @range-changed="onDbObservabilityRangeChanged($event, dbLatencyChartRef)"
+                >
+                  <template #value="{ value }">{{ value.toFixed(3) }} s</template>
+                </TrendLineChart>
+              </div>
+              <div class="services-ai-usage-chart">
+                <TrendLineChart
+                  ref="dbErrorChartRef"
+                  title="Errors"
+                  :history="dbUsage.error_history"
+                  :provider-labels="dbErrorLabels"
+                  @range-changed="onDbObservabilityRangeChanged($event, dbErrorChartRef)"
+                >
+                  <template #value="{ value }">{{ value }} {{ value === 1 ? 'error' : 'errors' }}</template>
+                </TrendLineChart>
+              </div>
+            </div>
           </div>
 
           <component

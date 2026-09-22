@@ -5,11 +5,25 @@ import io
 
 import markdown
 from fpdf import FPDF
+from fpdf.fonts import FontFace
 from PIL import Image, UnidentifiedImageError
 
 _PDF_MAGIC = b"%PDF-"
 _CSV_DELIMITERS = (",", ";", "\t")
 _PAGE_MARGIN_PT = 15
+_MARKDOWN_EXTENSIONS = ("tables", "fenced_code", "nl2br", "sane_lists")
+
+_BODY_FONT_FAMILY = "helvetica"
+_HEADING_COLOR = "#000000"
+_BLOCKQUOTE_COLOR = "#666666"
+_TABLE_HEADER_FILL = "#f2f2f2"
+_TABLE_CELL_PADDING_PT = 5
+_HEADING_SIZES_PT = {"h1": 22, "h2": 18, "h3": 15, "h4": 13, "h5": 12, "h6": 11}
+_TAG_STYLES = {
+    tag: FontFace(family=_BODY_FONT_FAMILY, size_pt=size, emphasis="B", color=_HEADING_COLOR)
+    for tag, size in _HEADING_SIZES_PT.items()
+}
+_TAG_STYLES["blockquote"] = FontFace(color=_BLOCKQUOTE_COLOR)
 
 
 def convert_to_pdf(content: str | bytes) -> bytes:
@@ -81,21 +95,40 @@ def _csv_to_pdf(text: str) -> bytes:
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=_PAGE_MARGIN_PT)
     pdf.add_page()
-    pdf.set_font("Helvetica", size=10)
+    pdf.set_font(_BODY_FONT_FAMILY, size=10)
     with pdf.table() as table:
         for row in rows:
             table.row(row)
     return bytes(pdf.output())
 
 
+def _styled_table_html(html: str) -> str:
+    """python-markdown's table extension emits bare `<table>`/`<th>`
+    with no attributes — fpdf2's write_html only takes its table
+    styling (border grid, cell padding, header fill) from HTML
+    attributes, not from tag_styles (`<table>`/`<th>`/`<td>` aren't
+    styleable tags there), so this is the only lever available short of
+    building the PDF table by hand. Safe as a plain substring replace:
+    markdown.markdown() never emits these attributes itself, so there is
+    nothing here to clash with."""
+    html = html.replace("<table>", f'<table border="1" cellpadding="{_TABLE_CELL_PADDING_PT}">')
+    return html.replace("<th>", f'<th bgcolor="{_TABLE_HEADER_FILL}">')
+
+
 def _text_to_pdf(text: str) -> bytes:
     """`text` is typically a task.prompt(...) result: markdown, not
     plain prose (see drive.write's own example). Rendered as markdown
     either way — plain text has no markdown syntax to render, so it
-    comes out unchanged."""
+    comes out unchanged. The same extensions webchat's own renderMarkdown
+    (markdown-it, tables built in) supports out of the box have to be
+    named explicitly here — python-markdown's core is CommonMark only,
+    so a table or fenced code block left unnamed doesn't fail, it just
+    comes out as the literal source text alongside the parts that did
+    render, which reads as broken rather than unsupported."""
+    html = _styled_table_html(markdown.markdown(text, extensions=list(_MARKDOWN_EXTENSIONS)))
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=_PAGE_MARGIN_PT)
     pdf.add_page()
-    pdf.set_font("Helvetica", size=11)
-    pdf.write_html(markdown.markdown(text))
+    pdf.set_font(_BODY_FONT_FAMILY, size=11)
+    pdf.write_html(html, table_line_separators=True, tag_styles=_TAG_STYLES)
     return bytes(pdf.output())

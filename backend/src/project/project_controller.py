@@ -112,6 +112,19 @@ class ProjectController(BaseController):
         ))
         return {"path": req.file_name, "downloads": downloads}
 
+    @post("/api/core/projects/{project_id}/drive/{path:path}/download", role="customer")
+    async def post_record_drive_download(self, project_id: str, path: str):
+        """Bumps the downloads counter for a file already in the caller's
+        own drive — the Download button shown while viewing a file from
+        CustomerHome's Drive tab. Distinct from GET .../drive/{path},
+        which is how that same file gets viewed, and doesn't count."""
+        downloads = self.project_service.record_drive_download(project_id, WebSession().user, path)
+        await bus.publish(Message(
+            type=OUTPUT_DRIVE, username=WebSession().user, project_id=project_id,
+            session_id=None, body={"path": path},
+        ))
+        return {"path": path, "downloads": downloads}
+
     @get("/api/core/projects/{project_id}/states/{state_name}/tokens", role="supervisor")
     def get_state_input_tokens(self, project_id: str, state_name: str, session_id: int | None = None):
         """Estimated input-token cost of `state_name`'s own turn prompt,

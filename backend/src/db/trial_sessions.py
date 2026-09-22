@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from .instrumentation import instrument_queries, write
 from .models import TrialSession
 
 
+@instrument_queries
 class TrialSessionMixin:
 
     def count_trial_sessions(self, username: str, project_id: str) -> int:
@@ -18,5 +20,6 @@ class TrialSessionMixin:
             counts[row.project_id] = counts.get(row.project_id, 0) + 1
         return counts
 
+    @write
     def record_trial_session(self, username: str, project_id: str, revision: int | None) -> None:
         TrialSession.create(user=username, project=project_id, revision=revision)

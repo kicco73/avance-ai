@@ -4,13 +4,16 @@ import json
 
 from peewee import fn
 
+from .instrumentation import instrument_queries, write
 from .models import Test, TestObservation, User
 from .utils import _utc_iso
 _USERNAME_UNSPECIFIED = object()
 
 
+@instrument_queries
 class TestMixin:
 
+    @write
     def create_test(
         self, username: str | None, project_id: str, session_id: int | None, strategy: str,
         project_draft_edit_count: int, session_labeling_revision: int | None, ai_model_snapshot: dict,
@@ -59,6 +62,7 @@ class TestMixin:
                 query = query.where(Test.username == username)
         return [self._test_to_dict(row) for row in query]
 
+    @write
     def delete_tests(self, project_id: str) -> list[int]:
         run_ids = [
             row.id for row in Test.select(Test.id).where(Test.project_id == project_id)
@@ -67,9 +71,11 @@ class TestMixin:
             Test.delete().where(Test.id.in_(run_ids)).execute()
         return run_ids
 
+    @write
     def set_test_results(self, run_id: int, results: str) -> None:
         Test.update(results=results).where(Test.id == run_id).execute()
 
+    @write
     def add_test_batch_segments(self, run_id: int, segments: int) -> None:
         """Atomic accumulate-across-sessions increment — a batch run's
         `work` calls this once per session, never overwriting what a

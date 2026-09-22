@@ -47,6 +47,12 @@ class DeploymentInfoController(BaseController):
         labels = [f"{p['driver']}/{p['model']}" for p in self.services_config["ai"]["providers"]]
         return self.db.get_ai_usage_snapshot(labels)
 
+    @get("/api/core/settings/services/db-usage", role="admin")
+    def get_db_usage(self):
+        """Every db-layer query's own call latency, one point per minute
+        over the trailing 24h (see db/db_usage.py)."""
+        return self.db.get_db_usage_snapshot()
+
     @get("/api/core/settings/tasks", role="admin")
     def get_scheduled_tasks(self, status: str | None = None, order: str = "asc"):
         """Task rows for one status at a time, by run_at per `order` (see

@@ -100,6 +100,8 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "settled_at TEXT)",
         "CREATE TABLE AiUsage (id INTEGER PRIMARY KEY, provider_label TEXT, timestamp TEXT, "
         "input_tokens INTEGER, output_tokens INTEGER)",
+        "CREATE TABLE DbUsage (id INTEGER PRIMARY KEY, query_name TEXT, timestamp TEXT, "
+        "duration REAL, outcome TEXT, kind TEXT)",
         "CREATE TABLE Drive (id INTEGER PRIMARY KEY, project_id TEXT, user_id TEXT, session_id INTEGER, "
         "path TEXT, content BLOB, content_type TEXT, size INTEGER, updated_at TEXT)",
         "CREATE TABLE Translation (id INTEGER PRIMARY KEY, key TEXT, src_lang TEXT, src_text TEXT, "

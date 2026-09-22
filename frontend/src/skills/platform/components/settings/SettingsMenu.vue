@@ -7,17 +7,23 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'manage-users', 'manage-services', 'app-store'
+  'manage-projects', 'manage-users', 'manage-services'
 ])
 
 const open = ref(false)
 const rootEl = ref(null)
 
+const canManageProjects = computed(() => roleSatisfies(props.role, 'admin'))
 const canManageUsers = computed(() => roleSatisfies(props.role, 'admin'))
 const canManageServices = computed(() => roleSatisfies(props.role, 'admin'))
 
 function toggle() {
   open.value = !open.value
+}
+
+function selectManageProjects() {
+  open.value = false
+  emit('manage-projects')
 }
 
 function selectManageUsers() {
@@ -28,11 +34,6 @@ function selectManageUsers() {
 function selectManageServices() {
   open.value = false
   emit('manage-services')
-}
-
-function selectAppStore() {
-  open.value = false
-  emit('app-store')
 }
 
 function handleClickOutside(event) {
@@ -60,6 +61,15 @@ onBeforeUnmount(() => {
       <div v-if="open" class="settings-panel">
         <ul class="settings-list">
           <li>
+            <button class="settings-item" :disabled="!canManageProjects" :title="canManageProjects ? '' : 'Requires admin access'" @click="selectManageProjects">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z" />
+              </svg>
+              <span>Manage projects</span>
+            </button>
+          </li>
+          <li class="settings-separator" role="separator"></li>
+          <li>
             <button class="settings-item" :disabled="!canManageUsers" :title="canManageUsers ? '' : 'Requires admin access'" @click="selectManageUsers">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
@@ -74,15 +84,6 @@ onBeforeUnmount(() => {
                 <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z" />
               </svg>
               <span>Manage services</span>
-            </button>
-          </li>
-          <li class="settings-separator" role="separator"></li>
-          <li>
-            <button class="settings-item" @click="selectAppStore">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M20 4H4v2h16V4zM4 20h4v-6h8v6h4v-8H4v8zm16-10l-.67-3.35a2.011 2.011 0 0 0-1.96-1.65H6.63c-.96 0-1.79.68-1.96 1.65L4 10v1c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2v-1z" />
-              </svg>
-              <span>App store</span>
             </button>
           </li>
         </ul>

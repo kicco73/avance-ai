@@ -9,11 +9,13 @@ from turn.channels import CHANNELS
 from system.logging_factory import LoggerFactory
 from tracking.errors import TrackingServiceError
 
+from .instrumentation import instrument_queries, write
 from .models import SESSION_CLOSE_REASONS, CoreSession, Message, Project, Tracking, User
 
 logger = LoggerFactory.get_logger(__name__)
 
 
+@instrument_queries
 class SessionMixin:
 
     def chat_session_exists(self, username: str, project_id: str, datetime_start: datetime, datetime_end: datetime) -> bool:
@@ -25,6 +27,7 @@ class SessionMixin:
     def count_chat_sessions(self, username: str, type: str) -> int:
         return CoreSession.select().where((CoreSession.username == username) & (CoreSession.type == type)).count()
 
+    @write
     def create_chat_session(
         self, username: str, project_id: str, revision: int, *,
         datetime_start: datetime | None = None, datetime_end: datetime | None = None,
@@ -122,18 +125,21 @@ class SessionMixin:
         )
         return [self._chat_session_to_dict(s) for s in sessions]
 
+    @write
     def set_session_title(self, session_id: int, title: str | None) -> None:
         """A domain expert's rename for a session — the same field an
         imported session gets seeded from its uploaded filename, just
         editable after the fact for any session."""
         CoreSession.update(title=title).where(CoreSession.id == session_id).execute()
 
+    @write
     def set_session_comment(self, session_id: int, comment: str | None) -> None:
         """A domain expert's own free-text note on the session as a whole
         (see the "Label sessions" view's own Info tab) — distinct from
         Db.set_signal_comment (Tracking.comment), which is per-message."""
         CoreSession.update(comment=comment).where(CoreSession.id == session_id).execute()
 
+    @write
     def set_session_labeled(self, session_id: int, labeled: bool) -> None:
         """The "Label sessions" view's "Mark done" button — a domain
         expert's explicit, persisted verdict on whether this session's
@@ -144,9 +150,11 @@ class SessionMixin:
         session = CoreSession.get_or_none(CoreSession.id == session_id)
         return session.labeling_revision if session is not None else 0
 
+    @write
     def bump_session_labeling_revision(self, session_id: int) -> None:
         CoreSession.update(labeling_revision=CoreSession.labeling_revision + 1).where(CoreSession.id == session_id).execute()
 
+    @write
     def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str | None) -> None:
         updated = CoreSession.update(datetime_end=datetime_end, end_state=end_state).where(
             (CoreSession.id == session_id) & CoreSession.closed_at.is_null()
@@ -154,6 +162,7 @@ class SessionMixin:
         if updated == 0:
             logger.warning("touch_chat_session(): no open session to touch for session_id=%s.", session_id)
 
+    @write
     def close_chat_session(self, session_id: int, closed_at: datetime, reason: str) -> bool:
         if reason not in SESSION_CLOSE_REASONS:
             raise ValueError(f"Unknown close_reason '{reason}' — expected one of {SESSION_CLOSE_REASONS}.")
@@ -162,6 +171,7 @@ class SessionMixin:
         ).execute()
         return updated > 0
 
+    @write
     def set_session_summary(self, session_id: int, summary: str, title: str | None = None) -> None:
         fields = {"ai_summary": summary}
         if title:
@@ -187,9 +197,11 @@ class SessionMixin:
             ).order_by(CoreSession.closed_at.desc())
         ]
 
+    @write
     def delete_chat_session(self, session_id: int) -> None:
         CoreSession.delete().where(CoreSession.id == session_id).execute()
 
+    @write
     def reassign_sessions_to_username(self, session_ids: list[int], username: str) -> None:
         """The "Label sessions" view's drag-and-drop between branches —
         moves each of `session_ids` under `username` instead, whether
@@ -205,6 +217,7 @@ class SessionMixin:
                 )
         CoreSession.update(username=username).where(CoreSession.id.in_(session_ids)).execute()
 
+    @write
     def delete_sessions_by_username_and_type(self, username: str, type: str) -> list[int]:
         session_ids = [
             row.id for row in CoreSession.select(CoreSession.id).where(
@@ -216,6 +229,7 @@ class SessionMixin:
         CoreSession.delete().where(CoreSession.id.in_(session_ids)).execute()
         return session_ids
 
+    @write
     def delete_sessions_by_username_and_project(self, username: str, project_id: str) -> None:
         """The "Label sessions" view's per-branch × button, for any
         non-live branch (a Test user or an arbitrary imported username) —
@@ -224,6 +238,7 @@ class SessionMixin:
             (CoreSession.project == project_id) & (CoreSession.username == username)
         ).execute()
 
+    @write
     def delete_imported_sessions(self, project_id: str) -> None:
         """The "Label sessions" view's "Delete all imported sessions"
         button — every imported session of the project, across every
@@ -232,6 +247,7 @@ class SessionMixin:
             (CoreSession.project == project_id) & (CoreSession.type == 'imported')
         ).execute()
 
+    @write
     def truncate_session(self, session_id: int, cutoff: datetime) -> None:
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.timestamp >= cutoff) & (Tracking.old_state.is_null(True) | (Tracking.old_state != ''))).execute()
         Message.delete().where((Message.session == session_id) & (Message.timestamp >= cutoff)).execute()

@@ -19,6 +19,10 @@ export function getAiUsage() {
   return apiFetch(`${API_URL}/core/settings/services/ai-usage`)
 }
 
+export function getDbUsage() {
+  return apiFetch(`${API_URL}/core/settings/services/db-usage`)
+}
+
 export function getScheduledTasks(status, order = 'asc') {
   const params = new URLSearchParams({ status, order })
   return apiFetch(`${API_URL}/core/settings/tasks?${params}`)

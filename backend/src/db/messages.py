@@ -7,6 +7,7 @@ from peewee import fn
 
 from system.logging_factory import LoggerFactory
 
+from .instrumentation import instrument_queries, write
 from .models import Message
 from .utils import _utc_iso
 
@@ -69,8 +70,10 @@ def _history_row(m, session_id: int) -> dict:
     }
 
 
+@instrument_queries
 class MessageMixin:
 
+    @write
     def save_message(
         self, role: str, content: str, session_id: int, audio_text: str | None=None, reaction: str | None=None,
         timestamp: datetime | None | object=_TIMESTAMP_UNSET, tokens: int | None=None,
@@ -85,10 +88,12 @@ class MessageMixin:
         message = Message.get_or_none(Message.id == message_id)
         return message.audio_text if message is not None else None
 
+    @write
     def set_message_reaction(self, message_id: int, reaction: str | None) -> dict | None:
         Message.update(reaction=reaction).where(Message.id == message_id).execute()
         return self.get_message(message_id)
 
+    @write
     def set_message_tokens(self, message_id: int, tokens: int, cache_read_tokens: int = 0) -> None:
         Message.update(tokens=tokens, cache_read_tokens=cache_read_tokens).where(Message.id == message_id).execute()
 
@@ -178,6 +183,7 @@ class MessageMixin:
                  .with_cte(cte))
         return [_history_row(m, session_id) for m in query]
 
+    @write
     def mark_messages_answered(self, message_ids: list[int], assistant_message_id: int) -> None:
         """Every one of them now points at the reply that answered it."""
         if not message_ids:

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 
+from .instrumentation import instrument_queries, write
 from .models import TestAggregateResult
 
 
+@instrument_queries
 class TestAggregateMixin:
 
+    @write
     def upsert_test_aggregate_result(
         self, project_id: str, revision: int, project_draft_edit_count: int,
         kind: str, target: str | None, strategy: str, results: str,
@@ -56,5 +59,6 @@ class TestAggregateMixin:
             for row in query
         ]
 
+    @write
     def delete_test_aggregate_results(self, project_id: str) -> None:
         TestAggregateResult.delete().where(TestAggregateResult.project_id == project_id).execute()

@@ -4,14 +4,17 @@ from datetime import datetime, timedelta
 
 from peewee import fn
 
+from .instrumentation import instrument_queries, write
 from .models import AiUsage
 
 DEFAULT_HISTORY_HOURS = 24
 ERROR_BUCKET_SECONDS = 60
 
 
+@instrument_queries
 class AiUsageMixin:
 
+    @write
     def record_ai_usage(
         self, provider_label: str, input_tokens: int, output_tokens: int,
         cache_read_tokens: int = 0, cache_creation_tokens: int = 0, duration: float = 0.0,

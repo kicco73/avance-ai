@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from .instrumentation import instrument_queries, write
 from .models import UserProject
 
 
+@instrument_queries
 class UserProjectMixin:
 
     def get_accepted_terms_archive_id(self, username: str, project_id: str) -> int | None:
@@ -18,19 +20,23 @@ class UserProjectMixin:
             (UserProject.user == username) & (UserProject.project == project_id)
         ) is not None
 
+    @write
     def install_project(self, username: str, project_id: str) -> None:
         UserProject.get_or_create(user=username, project=project_id)
 
+    @write
     def uninstall_project(self, username: str, project_id: str) -> None:
         UserProject.delete().where(
             (UserProject.user == username) & (UserProject.project == project_id)
         ).execute()
 
+    @write
     def set_user_project_ai_summary(self, username: str, project_id: str, ai_summary: str) -> None:
         UserProject.update(ai_summary=ai_summary).where(
             (UserProject.user == username) & (UserProject.project == project_id)
         ).execute()
 
+    @write
     def record_terms_acceptance(self, username: str, project_id: str, archive_id: int) -> None:
         row, created = UserProject.get_or_create(
             user=username, project=project_id, defaults={"accepted_terms": archive_id},
@@ -39,6 +45,7 @@ class UserProjectMixin:
             row.accepted_terms = archive_id
             row.save()
 
+    @write
     def record_invite_redemption(self, username: str, project_id: str, invite_id: int, timestamp: datetime) -> None:
         """The other half of an invite-based registration (see
         InviteManager.redeem) — same get_or_create shape as

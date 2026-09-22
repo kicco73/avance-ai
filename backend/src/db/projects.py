@@ -4,17 +4,21 @@ from typing import Any
 
 from peewee import Expression
 
+from .instrumentation import instrument_queries, write
 from .models import (
     Archive, CoreSession, Drive, EditHistory, File, Invite, Project, StateRemap,
     SystemWarning, Test, TestAggregateResult, User, UserProject, database,
 )
 
 
+@instrument_queries
 class ProjectMixin:
 
+    @write
     def ensure_project(self, project_id: str) -> None:
         Project.get_or_create(id=project_id, defaults={'revision': 0, 'published_revision': None})
 
+    @write
     def rename_project_id(self, old_id: str, new_id: str) -> None:
         """A project's own project.id changed (edited through the "Edit
         project" form, see ProjectManager.finalize_update) — this is now
@@ -55,6 +59,7 @@ class ProjectMixin:
         project = Project.get_or_none(Project.id == project_id)
         return (project.is_paused, project.paused_reason) if project is not None else None
 
+    @write
     def set_project_availability(self, project_id: str, is_paused: bool, paused_reason: str | None) -> None:
         Project.update(is_paused=is_paused, paused_reason=paused_reason).where(Project.id == project_id).execute()
 
@@ -63,23 +68,28 @@ class ProjectMixin:
         as get_project_availability."""
         return self._project_field(project_id, 'manually_paused', None)
 
+    @write
     def set_manually_paused(self, project_id: str, value: bool) -> None:
         Project.update(manually_paused=value).where(Project.id == project_id).execute()
 
+    @write
     def set_project_metadata(self, project_id: str, ui_label: str | None, ui_description: str | None) -> None:
         Project.update(ui_label=ui_label, ui_description=ui_description).where(Project.id == project_id).execute()
 
     def _delete_sessions_where(self, condition: Expression) -> None:
         CoreSession.delete().where(condition).execute()
 
+    @write
     def reset_project(self, project_id: str) -> None:
         self._delete_sessions_where(CoreSession.project == project_id)
 
+    @write
     def reset_project_for_user(self, username: str, project_id: str, type: str) -> None:
         self._delete_sessions_where(
             (CoreSession.username == username) & (CoreSession.project == project_id) & (CoreSession.type == type)
         )
 
+    @write
     def wipe_live_sessions_for_all_projects(self) -> None:
         self._delete_sessions_where(CoreSession.type == 'live')
 
@@ -182,6 +192,7 @@ class ProjectMixin:
         else:
             Archive.update(hash=File.put(content, content_type)).where(Archive.id == existing.id).execute()
 
+    @write
     def save_project_files(self, project_id: str, files: dict[str, bytes], content_types: dict[str, str]) -> None:
         self.ensure_project(project_id)
         revision = self._ensure_draft_revision(project_id)
@@ -189,6 +200,7 @@ class ProjectMixin:
         for archive_name, content in files.items():
             self._upsert_archive(project_id, archive_name, revision, content, content_types[archive_name])
 
+    @write
     def write_archive_at_revision(self, project_id: str, archive_name: str, revision: int, content: bytes, content_type: str) -> None:
         """Upserts one Archive row at an *exact* revision, bypassing
         _ensure_draft_revision's own draft-fork/current-revision
@@ -200,6 +212,7 @@ class ProjectMixin:
         easily outlive a later publish)."""
         self._upsert_archive(project_id, archive_name, revision, content, content_type)
 
+    @write
     def delete_archives_with_prefix(self, project_id: str, prefix: str) -> None:
         """Deletes every Archive row (any revision) whose name starts with
         `prefix` — cache/sessions/<id>/'s own cleanup on session close
@@ -211,6 +224,7 @@ class ProjectMixin:
             (Archive.project == project_id) & (Archive.archive_name.startswith(prefix))
         ).execute()
 
+    @write
     def overwrite_current_draft_file(self, project_id: str, archive_name: str, content: bytes, content_type: str) -> None:
         """In-place content overwrite of the *current* draft revision's own
         Archive row — unlike save_project_files, never forks a new draft
@@ -219,6 +233,7 @@ class ProjectMixin:
         own project.revision stamping), not for a genuinely new edit."""
         self._upsert_archive(project_id, archive_name, self.get_project_revision(project_id), content, content_type)
 
+    @write
     def import_new_revision(
         self, project_id: str, revision: int, files: dict[str, bytes], content_types: dict[str, str],
     ) -> None:
@@ -302,6 +317,7 @@ class ProjectMixin:
             ).order_by(Project.id)
         ]
 
+    @write
     def rename_archive(
         self, project_id: str, old_name: str, new_name: str,
         updated_files: dict[str, bytes] | None = None, content_types: dict[str, str] | None = None,
@@ -334,6 +350,7 @@ class ProjectMixin:
             )
         ]
 
+    @write
     def delete_archive(self, project_id: str, archive_name: str) -> None:
         revision = self._ensure_draft_revision(project_id)
         Archive.delete().where(
@@ -341,6 +358,7 @@ class ProjectMixin:
         ).execute()
         EditHistory.delete().where((EditHistory.project_id == project_id) & (EditHistory.archive_name == archive_name)).execute()
 
+    @write
     def delete_archives(self, project_id: str) -> None:
         """Deletes the project entirely, every revision at once — unlike
         delete_archive, skips _ensure_draft_revision since the whole
@@ -350,6 +368,7 @@ class ProjectMixin:
         StateRemap.delete().where(StateRemap.project_id == project_id).execute()
         Project.delete().where(Project.id == project_id).execute()
 
+    @write
     def delete_draft_test_sessions(self, project_id: str) -> None:
         """Deletes every unlabeled 'test' session of `project_id` —
         called by publish_project/revert_to_published, the two moments an
@@ -364,6 +383,7 @@ class ProjectMixin:
             & (CoreSession.labeled == False)
         ).execute()
 
+    @write
     def publish_project(self, project_id: str) -> None:
         """Sets published_revision = revision — a no-op if they already
         match. The explicit is_null() branch matters: SQL's NULL !=
@@ -376,6 +396,7 @@ class ProjectMixin:
             EditHistory.delete().where(EditHistory.project_id == project_id).execute()
             self.delete_draft_test_sessions(project_id)
 
+    @write
     def revert_to_published(self, project_id: str) -> None:
         """Discards the entire in-progress draft — the draft revision's
         Archive rows are deleted, leaving Project.revision pointed back
@@ -391,6 +412,7 @@ class ProjectMixin:
             EditHistory.delete().where(EditHistory.project_id == project_id).execute()
             self.delete_draft_test_sessions(project_id)
 
+    @write
     def delete_unused_archive_revisions(self) -> int:
         """Settings > Manage services > Data > "Clean unused revisions" —
         deletes every Archive row belonging to a revision that's neither
@@ -428,6 +450,7 @@ class ProjectMixin:
         row = StateRemap.get_or_none((StateRemap.project_id == project_id) & (StateRemap.old_key == old_key))
         return row.new_key if row is not None else None
 
+    @write
     def write_state_remap(self, project_id: str, old_key: str, new_key: str) -> None:
         """Flattens every existing row whose own new_key is exactly
         `old_key` onto `new_key` first — so a key remapped across several

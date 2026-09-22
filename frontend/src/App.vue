@@ -98,6 +98,7 @@ const profileMenuListeners = { home: goHome, profile: openProfile, logout: handl
 
 const overlayListeners = {
   ...profileMenuListeners,
+  about: handleShowAbout,
   close: popPushedView,
   back: popPushedView,
   renamed: renameOpenProject,
@@ -113,6 +114,9 @@ const roleHomeListeners = {
   'open-chat': openChatOn,
   open: openChatOn,
   'open-store': () => pushView('appStore'),
+  'manage-projects': () => pushView('manageProjects'),
+  'manage-users': () => pushView('manageUsers'),
+  'manage-services': () => pushView('services'),
   'project-select': selectLandingProject,
 }
 
@@ -126,6 +130,9 @@ const homePreviewListeners = {
   'open-chat': openChatFromPreview,
   open: openChatFromPreview,
   'open-store': () => pushView('appStore'),
+  'manage-projects': () => pushView('manageProjects'),
+  'manage-users': () => pushView('manageUsers'),
+  'manage-services': () => pushView('services'),
   'project-select': selectLandingProject,
 }
 

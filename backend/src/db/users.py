@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from peewee import SQL, IntegrityError
 
+from .instrumentation import instrument_queries, write
 from .models import CoreSession, EditHistory, Invite, Project, SystemWarning, Test, User, UserProject, database
 from .utils import _utc_iso
 
@@ -15,6 +16,7 @@ def _initial_role(email: str | None) -> str:
     return "admin" if email in _ADMIN_EMAILS else "user"
 
 
+@instrument_queries
 class UserMixin:
 
     if TYPE_CHECKING:
@@ -23,6 +25,7 @@ class UserMixin:
     def is_pre_wired_admin(self, email: str) -> bool:
         return email in _ADMIN_EMAILS
 
+    @write
     def resolve_login(self, provider: str, provider_user_id: str, email: str, name: str, picture_url: str | None) -> None:
         """AuthService.login's single touchpoint for the User row.
         Syncs name/picture_url/last_login for an already-registered
@@ -52,6 +55,7 @@ class UserMixin:
             for user in User.select().order_by(User.created_at.asc())
         ]
 
+    @write
     def get_or_create_user(
         self, provider: str | None, provider_user_id: str | None, email: str | None,
         name: str | None, picture_url: str | None, user_id: str | None = None,
@@ -102,6 +106,7 @@ class UserMixin:
     def count_sessions_for_user(self, user_id: str) -> int:
         return CoreSession.select().where(CoreSession.user == user_id).count()
 
+    @write
     def merge_user_accounts(self, target_id: str, absorbed_id: str, whatsapp_phone_number: str) -> None:
         """Absorbs `absorbed_id` into `target_id`: every row that points
         at it — via a User FK, or via the plain `username` column a live
@@ -149,6 +154,7 @@ class UserMixin:
             "last_login": _utc_iso(user.last_login),
         }
 
+    @write
     def set_whatsapp_phone_number(self, email: str, whatsapp_phone_number: str | None) -> None:
         try:
             User.update(whatsapp_phone_number=whatsapp_phone_number).where(User.id == email).execute()
@@ -179,9 +185,11 @@ class UserMixin:
             "whatsapp_phone_number": user.whatsapp_phone_number,
         }
 
+    @write
     def set_user_role(self, user_id: str, role: str) -> None:
         User.update(role=role).where(User.id == user_id).execute()
 
+    @write
     def erase_user_data(self, email: str) -> None:
         """ProfileView.vue's "Erase all my data" — deleting the User row
         is now enough on its own: CoreSession.user/Test.user/
@@ -197,6 +205,7 @@ class UserMixin:
         verify_token), routing straight back through TermsView.vue."""
         User.delete().where(User.id == email).execute()
 
+    @write
     def update_last_login(self, user_id: str, name: str | None, picture_url: str | None) -> None:
         """Called on every login (see AuthService.login/complete_registration)
         with the identity the provider just verified — refreshes
@@ -217,6 +226,7 @@ class UserMixin:
             row.save()
         return row.active_project_id
 
+    @write
     def set_active_project_id(self, project_id: str, user: str) -> None:
         row = User.get_or_none(User.id == user)
         if row is not None:
@@ -225,5 +235,6 @@ class UserMixin:
         else:
             User.create(id=user, active_project_id=project_id)
 
+    @write
     def clear_active_project_id(self, user: str) -> None:
         User.update(active_project_id=None).where(User.id == user).execute()

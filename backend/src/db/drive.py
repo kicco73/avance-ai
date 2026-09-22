@@ -3,10 +3,12 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
+from .instrumentation import instrument_queries, write
 from .models import CoreSession, Drive, File, database
 from .utils import _utc_iso
 
 
+@instrument_queries
 class DriveMixin:
 
     def read_drive_file(self, project_id: str, user_id: str, path: str) -> tuple[bytes, str] | None:
@@ -15,6 +17,7 @@ class DriveMixin:
         )
         return (row.content, row.content_type) if row is not None else None
 
+    @write
     def write_drive_file(
         self, project_id: str, user_id: str, path: str, content: bytes, content_type: str,
         session_id: int | None = None,
@@ -47,6 +50,7 @@ class DriveMixin:
             for row in query.order_by(Drive.user, Drive.path)
         ]
 
+    @write
     def save_media_to_drive(
         self, project_id: str, user_id: str, path: str, content: bytes, content_type: str,
         *, count_download: bool = False, session_id: int | None = None,
@@ -82,17 +86,33 @@ class DriveMixin:
         )
         return row.downloads if row is not None else 0
 
+    @write
+    def record_drive_download(self, project_id: str, user_id: str, path: str) -> int:
+        """Bumps an already-saved drive file's own downloads counter —
+        the Download button shown while viewing a file already in the
+        caller's own drive (CustomerAppDetailPanel's Drive tab), as
+        opposed to save_media_to_drive's count_download, which is for a
+        project's own media file not yet in the drive. A no-op (returns
+        0) if the row is gone by the time this runs."""
+        Drive.update(downloads=Drive.downloads + 1).where(
+            (Drive.project == project_id) & (Drive.user == user_id) & (Drive.path == path)
+        ).execute()
+        return self.get_drive_downloads(project_id, user_id, path)
+
+    @write
     def delete_drive_file(self, project_id: str, user_id: str, path: str) -> bool:
         return bool(Drive.delete().where(
             (Drive.project == project_id) & (Drive.user == user_id) & (Drive.path == path)
         ).execute())
 
+    @write
     def delete_drive_files(self, project_id: str, prefix: str = "") -> int:
         query = Drive.delete().where(Drive.project == project_id)
         if prefix:
             query = query.where(Drive.path.startswith(prefix))
         return query.execute()
 
+    @write
     def delete_drive_files_for_sessions_of_type(self, project_id: str, user_id: str, type: str) -> int:
         session_ids = CoreSession.select(CoreSession.id).where(
             (CoreSession.project == project_id) & (CoreSession.username == user_id) & (CoreSession.type == type)
@@ -110,6 +130,7 @@ class DriveMixin:
             n += 1
         return candidate
 
+    @write
     def reassign_drive_files(self, absorbed_id: str, target_id: str) -> None:
         with database.atomic():
             taken: dict[str, set[str]] = {}

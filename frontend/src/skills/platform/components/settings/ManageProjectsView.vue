@@ -8,7 +8,6 @@ import { ensureProjectFileTypes } from '../../../../projectFileTypes.js'
 import { useHeaderLogoFit } from '../../../../composables/useHeaderLogoFit.js'
 import { onProjectChanged, onProjectsChanged } from '../../../../projectChangeEvents.js'
 import { familySections } from '../../familySections.js'
-import SettingsMenu from './SettingsMenu.vue'
 import StatusToggleButton from '../../../../components/services/StatusToggleButton.vue'
 import ProfileMenu from '../../../../components/ProfileMenu.vue'
 import AppHeader from '../../../../components/AppHeader.vue'
@@ -24,14 +23,12 @@ const props = defineProps({
   uploadProgress: { type: Number, default: null },
   uploadProjectId: { type: String, default: null },
   uploadIconReady: { type: Boolean, default: false },
-  role: { type: String, default: null },
   profile: { type: Object, default: null }
 })
 
 const emit = defineEmits([
-  'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'publish', 'open-skill-view',
-  'manage-users', 'manage-services', 'app-store', 'about',
-  'home', 'profile', 'logout'
+  'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'publish', 'open-skill-view', 'about',
+  'close', 'home', 'profile', 'logout'
 ])
 
 const envTag = (() => {
@@ -224,13 +221,8 @@ onBeforeUnmount(() => {
     <AppHeader ref="headerEl">
       <template #left>
         <div class="manage-projects-header-side" ref="headerLeftEl">
+          <button type="button" class="app-header-icon-btn manage-projects-back-home-btn" title="Back to home" @click="emit('close')">«</button>
           <button type="button" class="app-header-icon-btn manage-projects-back-list-btn" title="Back to list" @click="deselectProject">«</button>
-          <SettingsMenu
-            :role="role"
-            @manage-users="emit('manage-users')"
-            @manage-services="emit('manage-services')"
-            @app-store="emit('app-store')"
-          />
           <AddProjectMenu @new-project="emit('new-project')" @upload="emit('upload')" />
           <span class="manage-projects-env-tag" :class="envTag.className">{{ envTag.label }}</span>
         </div>
@@ -342,6 +334,7 @@ onBeforeUnmount(() => {
         </Transition>
       </div>
     </div>
+    <slot />
   </div>
 </template>
 

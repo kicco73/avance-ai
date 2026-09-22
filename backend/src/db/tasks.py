@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from .instrumentation import instrument_queries, write
 from .models import Task
 
 TASK_STATUSES = ('pending', 'dispatched', 'done', 'failed', 'canceled')
@@ -16,6 +17,7 @@ def _to_naive_utc(when: datetime) -> datetime:
     return when.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+@instrument_queries
 class TaskMixin:
     """The Task table as a queue — see scheduler/persisted_scheduler.py, its
     only writer. Nothing here knows what a task *does*, only its row;
@@ -43,6 +45,7 @@ class TaskMixin:
             'settled_at': row.settled_at.replace(tzinfo=timezone.utc) if row.settled_at else None,
         }
 
+    @write
     def create_task(
         self, key: str, type: str, username: str, project_id: str, run_at: datetime, payload: dict[str, Any],
         ui_label: str, ui_description: str,
@@ -53,6 +56,7 @@ class TaskMixin:
         )
         return row.id
 
+    @write
     def upsert_task(
         self, key: str, type: str, username: str, project_id: str, run_at: datetime, payload: dict[str, Any],
         ui_label: str, ui_description: str,
@@ -99,6 +103,7 @@ class TaskMixin:
         row = Task.select(Task.run_at).where(Task.status == 'pending').order_by(Task.run_at, Task.id).first()
         return row.run_at.replace(tzinfo=timezone.utc) if row is not None else None
 
+    @write
     def claim_due_task(self, now: datetime) -> dict[str, Any] | None:
         """Atomically moves the earliest pending task due by `now` to
         `dispatched` and returns it — None when nothing is due. The
@@ -120,6 +125,7 @@ class TaskMixin:
                 row.dispatched_at = now
                 return self._task_to_dict(row)
 
+    @write
     def reschedule_task(self, key: str, run_at: datetime) -> bool:
         """Moves an already-pending task's run_at in place — True if one
         was found and moved, False if none is pending under this key
@@ -130,6 +136,7 @@ class TaskMixin:
         ).execute()
         return changed == 1
 
+    @write
     def cancel_task(self, key: str) -> bool:
         """pending -> canceled; False when the task was no longer pending
         (already dispatched or settled)."""
@@ -138,11 +145,13 @@ class TaskMixin:
         ).execute()
         return changed == 1
 
+    @write
     def settle_task(self, key: str, status: str, error: str | None = None) -> None:
         if status not in TASK_TERMINAL_STATUSES:
             raise ValueError(f"'{status}' is not a terminal task status — expected one of {TASK_TERMINAL_STATUSES}.")
         Task.update(status=status, error=error, settled_at=datetime.utcnow()).where(Task.key == key).execute()
 
+    @write
     def requeue_stale_dispatched_tasks(self, older_than: datetime) -> list[str]:
         """Recovery: every row claimed before `older_than` and never
         settled belongs to a process that died mid-run — it goes back to

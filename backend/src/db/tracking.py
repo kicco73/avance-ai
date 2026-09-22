@@ -8,14 +8,17 @@ from peewee import Expression, fn
 
 from system.logging_factory import LoggerFactory
 
+from .instrumentation import instrument_queries, write
 from .models import TRACKING_ORIGINS, CoreSession, Tracking
 from .utils import _utc_iso
 
 logger = LoggerFactory.get_logger(__name__)
 
 
+@instrument_queries
 class TrackingMixin:
 
+    @write
     def save_signal_snapshot(
         self, values: dict, session_id: int, message_id: int | None=None, output_values: dict | None = None,
         timestamp: datetime | None = None,
@@ -85,6 +88,7 @@ class TrackingMixin:
             return None
         return {'timestamp': _utc_iso(row.timestamp), 'new_state': row.new_state}
 
+    @write
     def import_tracking_row(
         self, session_id: int, *, old_state: str | None, action: str | None, new_state: str | None,
         values: dict | None, expected_state: str | None, expected_values: dict | None, comment: str | None,
@@ -105,6 +109,7 @@ class TrackingMixin:
         )
         return row.id
 
+    @write
     def save_transition(
         self, old_state: str | None, action: str | None, new_state: str | None, session_id: int,
         transition_log_level: str, signal_values: dict | None=None, message_id: int | None=None,
@@ -126,6 +131,7 @@ class TrackingMixin:
         logger.log(level, message)
         return row.id
 
+    @write
     def link_signal_to_message(self, signal_row_id: int, message_id: int) -> None:
         Tracking.update(message=message_id).where(Tracking.id == signal_row_id).execute()
 
@@ -171,23 +177,28 @@ class TrackingMixin:
             return None
         return row.new_state or row.old_state
 
+    @write
     def set_signal_expected_state(self, signal_row_id: int, expected_state: str | None) -> None:
         Tracking.update(expected_state=expected_state).where(Tracking.id == signal_row_id).execute()
         row = Tracking.get(Tracking.id == signal_row_id)
         self.bump_session_labeling_revision(row.session_id)
 
+    @write
     def set_signal_expected_values(self, signal_row_id: int, expected_values: dict | None) -> None:
         serialized = json.dumps(expected_values) if expected_values else None
         Tracking.update(expected_values=serialized).where(Tracking.id == signal_row_id).execute()
         row = Tracking.get(Tracking.id == signal_row_id)
         self.bump_session_labeling_revision(row.session_id)
 
+    @write
     def set_signal_comment(self, signal_row_id: int, comment: str | None) -> None:
         Tracking.update(comment=comment).where(Tracking.id == signal_row_id).execute()
 
+    @write
     def delete_signal_row(self, signal_row_id: int) -> None:
         Tracking.delete().where(Tracking.id == signal_row_id).execute()
 
+    @write
     def clear_session_annotations(self, session_id: int) -> None:
         Tracking.update(expected_state=None, expected_values=None).where(Tracking.session == session_id).execute()
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.old_state == '')).execute()
@@ -271,6 +282,7 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.env) if row is not None else {}
 
+    @write
     def set_env(
         self, session_id: int, env: dict, message_id: int | None=None, timestamp: datetime | None = None,
     ) -> None:
@@ -286,6 +298,7 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.action_env) if row is not None else {}
 
+    @write
     def set_action_env(
         self, session_id: int, action_env: dict, origin: str | None = None, message_id: int | None = None,
         timestamp: datetime | None = None,
@@ -311,17 +324,20 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.local_memory) if row is not None else {}
 
+    @write
     def set_local_memory(self, session_id: int, values: dict, timestamp: datetime | None = None) -> None:
         Tracking.create(
             session=session_id, local_memory=json.dumps(values),
             **({'timestamp': timestamp} if timestamp is not None else {}),
         )
 
+    @write
     def clear_local_memory(self, session_id: int) -> None:
         if not self.get_local_memory(session_id):
             return
         Tracking.create(session=session_id, local_memory=json.dumps({}))
 
+    @write
     def link_tool_env_writes_to_message(self, session_id: int, message_id: int, since: datetime | None = None) -> None:
         """Binds every action_env row the model wrote this turn (origin
         'tool', see set_action_env) and not yet linked to any message to
@@ -344,6 +360,7 @@ class TrackingMixin:
             query = query.where(Tracking.timestamp >= since)
         query.execute()
 
+    @write
     def record_tool_calls(
         self, session_id: int, tool_calls: list[dict], message_id: int | None = None, timestamp: datetime | None = None,
     ) -> int:

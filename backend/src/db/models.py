@@ -320,6 +320,28 @@ class AiUsage(BaseModel):
     class Meta:
         table_name = 'AiUsage'
 
+class DbUsage(BaseModel):
+    """One row per call into a db-layer mixin's public method (see
+    db/instrumentation.py's instrument_queries, applied to every mixin
+    class Db is built from) — raw, un-aggregated, the same way AiUsage
+    is. `query_name` is the method that ran (e.g. 'get_chat_session'),
+    `timestamp` when it was called (call start, not completion),
+    `duration` its wall-clock seconds, `outcome` "success" or "failure"
+    (a raised exception still gets a row, with whatever duration elapsed
+    before it propagated), and `kind` "read" or "write" — a method is
+    "write" only if instrumentation.py's own @write decorator marks it,
+    never guessed from its body; everything undecorated defaults to
+    "read"."""
+    id = AutoField()
+    query_name = CharField(index=True)
+    timestamp = DateTimeField(index=True, default=datetime.utcnow)
+    duration = FloatField(default=0.0)
+    outcome = CharField(index=True, default='success')
+    kind = CharField(index=True, default='read')
+
+    class Meta:
+        table_name = 'DbUsage'
+
 class Translation(BaseModel):
     """One label already translated, keyed by its own context (`key`) and
     the exact source/destination locale pair — see docs/BUS.md's
@@ -443,12 +465,17 @@ class AppRating(BaseModel):
     """How the user rated one closed session's revision of the app —
     thumb up/down, stored as 5/1 (see AppRatingRequest). One vote per
     (user, project, revision): a later vote on the same revision
-    overwrites the earlier one rather than adding a row."""
+    overwrites the earlier one rather than adding a row. `session` records
+    which session the vote was asked from; it is informational only and
+    plays no part in the (user, project, revision) dedup, so a later vote
+    from a different session on the same revision still overwrites."""
     id = AutoField()
     user = ForeignKeyField(User, field='id', column_name='user_id', backref='app_ratings', on_delete='CASCADE')
     user_id: str
     project = ForeignKeyField(Project, field='id', column_name='project_id', backref='app_ratings', on_delete='CASCADE')
     project_id: str
+    session = ForeignKeyField(CoreSession, null=True, backref='app_ratings', on_delete='SET NULL')
+    session_id: int | None
     revision = IntegerField(null=False)
     rating = IntegerField(null=False)
     timestamp = DateTimeField(default=datetime.utcnow)

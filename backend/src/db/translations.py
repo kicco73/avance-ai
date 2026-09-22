@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from .instrumentation import instrument_queries, write
 from .models import Translation, database
 
 
+@instrument_queries
 class TranslationMixin:
 
     def get_translation(self, key: str, src_lang: str, src_text: str, dst_lang: str) -> str | None:
@@ -14,6 +16,7 @@ class TranslationMixin:
         )
         return row.dst_text if row is not None else None
 
+    @write
     def save_translation(self, key: str, src_lang: str, src_text: str, dst_lang: str, dst_text: str) -> None:
         with database.atomic():
             written = Translation.update(dst_text=dst_text, timestamp=datetime.utcnow()).where(
@@ -28,6 +31,7 @@ class TranslationMixin:
     def count_translations(self) -> int:
         return Translation.select().count()
 
+    @write
     def clear_translations(self) -> int:
         count = self.count_translations()
         Translation.delete().execute()

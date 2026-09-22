@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from .instrumentation import instrument_queries, write
 from .models import Invite, UserProject
 
 
+@instrument_queries
 class InviteMixin:
 
+    @write
     def create_invite(
         self, code: str, project_id: str, created_by: str | None, expires_at: datetime, max_shares: int,
     ) -> Invite:
@@ -24,6 +27,7 @@ class InviteMixin:
         docstring on Invite/UserProject.invite)."""
         return UserProject.select().where(UserProject.invite == invite_id).count()
 
+    @write
     def delete_expired_unredeemed_invites(self) -> None:
         redeemed_invite_ids = UserProject.select(UserProject.invite).where(UserProject.invite.is_null(False))
         Invite.delete().where(

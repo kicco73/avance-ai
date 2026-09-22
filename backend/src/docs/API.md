@@ -63,7 +63,10 @@ POST   /api/core/sessions/{id}/truncate     "restart from here", which keeps a
 GET|POST /api/core/sessions/{id}/rating     the user's thumb up/down for the
                                             session's own (project, revision),
                                             keyed by that pair so a later
-                                            revision asks again
+                                            revision asks again; the row also
+                                            records which session it was asked
+                                            from, informational only, no part
+                                            of the dedup
 DELETE /api/core/sessions/{id}
 ```
 

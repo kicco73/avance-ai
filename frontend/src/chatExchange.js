@@ -69,8 +69,9 @@ export class ChatExchange {
   _armSilenceTimer() {
     this._clearSilenceTimer()
     this._silenceTimer = setTimeout(() => this._failed({
-      message: 'No reply.',
-      detail: `The server sent nothing for ${this._silenceMs / 1000} seconds.`
+      message: 'AI providers currently busy. Please try again.',
+      detail: `The server sent nothing for ${this._silenceMs / 1000} seconds.`,
+      code: 'ai_provider_busy'
     }), this._silenceMs)
   }
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick } from 'vue'
+import { createApp, h, nextTick } from 'vue'
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -103,6 +103,21 @@ describe('publishing from the manage projects panel', () => {
     expect(badges()).toContain('COMPILED')
     expect(button('Publish')).toBeUndefined()
     expect(button('Build').disabled).toBe(false)
+  })
+
+  it('is effectively single-root, so a class pushed onto it by App.vue\'s Transition (the slide animation) actually lands on the overlay', async () => {
+    app.unmount()
+    const { default: AdminHome } = await import('../components/AdminHome.vue')
+    app = createApp({
+      setup: () => () => h(AdminHome, { class: 'view-pushed', profile: null, viewStack: { pushView: vi.fn() } })
+    })
+    app.mount(container)
+    await settle()
+
+    expect(container.children.length).toBe(1)
+    const overlay = container.querySelector('.manage-projects-overlay')
+    expect(overlay).not.toBeNull()
+    expect(overlay.classList.contains('view-pushed')).toBe(true)
   })
 
   it('offers to publish a compiled app whose draft has moved past the published revision', async () => {

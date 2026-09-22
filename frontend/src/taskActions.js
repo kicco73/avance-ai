@@ -1,11 +1,9 @@
-import { defineAsyncComponent } from 'vue'
 import { celebrate } from './confetti.js'
 import { notify } from './toastStore.js'
-import { infoDialog, customDialog } from './dialogStore.js'
+import { infoDialog } from './dialogStore.js'
 import { mediaKindFromUrl } from './mediaKind.js'
 import { resolveApiUrl } from './api/core.js'
-
-const MediaDialog = defineAsyncComponent(() => import('./components/MediaDialog.vue'))
+import { openMediaDialog } from './openMediaDialog.js'
 
 function show(body_md) {
   infoDialog({ body: body_md, markdown: true })
@@ -17,7 +15,7 @@ function show_media(url, { playBackgroundAudio }) {
     playBackgroundAudio(resolvedUrl)
     return
   }
-  customDialog({ component: MediaDialog, props: { url: resolvedUrl }, wide: true })
+  openMediaDialog(resolvedUrl)
 }
 
 export function runTaskScript(script, { playBackgroundAudio } = {}) {

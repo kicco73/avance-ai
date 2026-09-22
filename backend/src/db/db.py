@@ -8,6 +8,7 @@ from datetime import datetime
 from system.logging_factory import LoggerFactory
 
 from .ai_usage import AiUsageMixin
+from .db_usage import DbUsageMixin
 from .test_aggregates import TestAggregateMixin
 from .tests import TestMixin
 from .history import HistoryMixin
@@ -30,7 +31,7 @@ from .translations import TranslationMixin
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    AiUsage, AppRating, Archive, CoreSession, Drive, EditHistory, File, Invite, Message,
+    AiUsage, AppRating, Archive, CoreSession, DbUsage, Drive, EditHistory, File, Invite, Message,
     Project, Settings, User, StateRemap, SystemWarning, Task, Test,
     TestAggregateResult, TestObservation, Tracking, Translation, TrialSession, UserProject,
     database,
@@ -58,6 +59,7 @@ class Db(
     InviteMixin,
     ObservabilityMixin,
     AiUsageMixin,
+    DbUsageMixin,
     DriveMixin,
     TaskMixin,
     TranslationMixin,
@@ -67,7 +69,7 @@ class Db(
     _MODELS = (
         Project, CoreSession, Message, User, Tracking, File, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SystemWarning,
-        Settings, UserProject, TrialSession, Invite, AiUsage, Task, Drive, Translation, AppRating,
+        Settings, UserProject, TrialSession, Invite, AiUsage, DbUsage, Task, Drive, Translation, AppRating,
     )
 
     MIGRATION_STRATEGIES = ('stop', 'upgrade', 'drop')

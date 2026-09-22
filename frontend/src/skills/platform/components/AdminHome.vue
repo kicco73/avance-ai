@@ -7,9 +7,7 @@ const props = defineProps({
   viewStack: { type: Object, required: true },
 })
 
-const emit = defineEmits(['open-chat', 'home', 'profile', 'logout', 'about'])
-
-defineOptions({ inheritAttrs: false })
+const emit = defineEmits(['open-chat', 'close', 'home', 'profile', 'logout', 'about'])
 
 const {
   modelUploadInput, uploadingProject, uploadProgress, uploadProjectId, uploadIconReady,
@@ -31,11 +29,9 @@ const listeners = {
   download: handleModelDownload,
   publish: handlePublishProject,
   'open-skill-view': (view, projectId) => props.viewStack.pushView(view, { projectId }),
-  'manage-users': () => props.viewStack.pushView('manageUsers'),
-  'manage-services': () => props.viewStack.pushView('services'),
-  'app-store': () => props.viewStack.pushView('appStore'),
   chat: (projectId) => emit('open-chat', projectId),
   about: () => emit('about'),
+  close: () => emit('close'),
   home: () => emit('home'),
   profile: () => emit('profile'),
   logout: () => emit('logout'),
@@ -48,15 +44,15 @@ const listeners = {
     :upload-progress="uploadProgress"
     :upload-project-id="uploadProjectId"
     :upload-icon-ready="uploadIconReady"
-    role="admin"
     :profile="profile"
     v-on="listeners"
-  />
-  <input
-    ref="modelUploadInput"
-    type="file"
-    accept=".zip"
-    style="display: none"
-    @change="handleModelUploadChange"
-  />
+  >
+    <input
+      ref="modelUploadInput"
+      type="file"
+      accept=".zip"
+      style="display: none"
+      @change="handleModelUploadChange"
+    />
+  </ManageProjectsView>
 </template>

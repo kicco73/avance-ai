@@ -202,7 +202,10 @@ const inspectorTabs = computed(() => {
       { id: 'drive', label: 'Drive' }
     ]
   }
-  if (mode.value === 'edit' && (currentSourceName.value != null || sourcesRootSelected.value || mediaRootSelected.value || !isBehaviorNodeSelected.value)) {
+  if (mode.value === 'edit' && (
+    currentSourceName.value != null || sourcesRootSelected.value || mediaRootSelected.value
+    || !isBehaviorNodeSelected.value || selectedGraphElement.value?.kind === 'action'
+  )) {
     return [{ id: 'state', label: 'Info' }]
   }
   const isSystemState = selectedStateData.value?.inputProcessor === 'system'

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from .instrumentation import instrument_queries, write
 from .models import EditHistory
 from peewee import fn
 
@@ -25,6 +26,7 @@ class FileRenamed:
 UndoRedoOutcome = ContentRestored | FileRenamed
 
 
+@instrument_queries
 class HistoryMixin:
 
     if TYPE_CHECKING:
@@ -65,6 +67,7 @@ class HistoryMixin:
     def has_redo(self, user_id: str, project_id: str, archive_name: str) -> bool:
         return EditHistory.select().where((EditHistory.user_id == user_id) & (EditHistory.project_id == project_id) & (EditHistory.archive_name == archive_name) & (EditHistory.kind == 'redo')).exists()
 
+    @write
     def save_project_file(self, user_id: str, project_id: str, archive_name: str, content: bytes, content_type: str) -> None:
         self.ensure_project(project_id)
         self._ensure_draft_revision(project_id)
@@ -74,6 +77,7 @@ class HistoryMixin:
         self._clear_history_kind(user_id, project_id, archive_name, 'redo')
         self.save_project_files(project_id, {archive_name: content}, {archive_name: content_type})
 
+    @write
     def rename_project_file(
         self, user_id: str, project_id: str, old_name: str, new_name: str,
         updated_files: dict[str, bytes] | None = None, content_types: dict[str, str] | None = None,
@@ -98,6 +102,7 @@ class HistoryMixin:
         self._clear_history_kind(user_id, project_id, new_name, 'redo')
         self.rename_archive(project_id, old_name, new_name, updated_files, content_types)
 
+    @write
     def undo_project_file(self, user_id: str, project_id: str, archive_name: str, current_content: bytes) -> UndoRedoOutcome | None:
         row = self._pop_history(user_id, project_id, archive_name, 'undo')
         if row is None:
@@ -110,6 +115,7 @@ class HistoryMixin:
         assert row.content is not None
         return ContentRestored(content=row.content)
 
+    @write
     def redo_project_file(self, user_id: str, project_id: str, archive_name: str, current_content: bytes) -> UndoRedoOutcome | None:
         row = self._pop_history(user_id, project_id, archive_name, 'redo')
         if row is None:
