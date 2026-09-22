@@ -35,6 +35,7 @@ const props = defineProps({
 
 const {
   state,
+  reaction,
   buttons,
   messages,
   historyLoaded,
@@ -219,9 +220,10 @@ watch(
   <div
     class="chat-window-shell"
     ref="shellEl"
-    :class="state?.key ? `state-${state.key}` : null"
+    :class="[state?.key ? `state-${state.key}` : null, reaction ? `reaction-${reaction}` : null]"
     :data-state="state?.key ?? null"
     :data-prev-state="prevStateKey"
+    :data-reaction="reaction ?? null"
   >
     <div class="chat-window">
     <AppHeader

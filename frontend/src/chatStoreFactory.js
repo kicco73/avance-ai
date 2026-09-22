@@ -52,6 +52,7 @@ export function createChatStore({
   confirmNewSession = true, useActuatorsToggle = false, visualEffects = true,
 }) {
   const state = ref(null)
+  const reaction = ref(null)
   const currentSessionId = ref(null)
   watch(currentSessionId, (now, before) => watchSession(now, before))
   const {
@@ -140,6 +141,7 @@ export function createChatStore({
     sessionChannel.value = frame.channel ?? null
     replySilenceSeconds = frame.reply_silence_seconds
     state.value = frame.state
+    reaction.value = null
     audioEnabled.value = !!frame.audio
     publishServices(frame.services || {})
     if (useActuatorsToggle) loadActuators()
@@ -158,6 +160,7 @@ export function createChatStore({
     awaitingSession = false
     currentSessionId.value = null
     state.value = null
+    reaction.value = null
     messages.value = []
     showButtons([])
     blockedReason.value = frame.reason || 'no_project'
@@ -241,6 +244,7 @@ export function createChatStore({
         ...messages.value[idx], messageId: frame.user_message_id, reaction: frame.reaction
       }
     }
+    reaction.value = frame.reaction ?? null
     if (frame.reaction) playReactionChime()
   })
 
@@ -689,7 +693,7 @@ export function createChatStore({
 
   return {
     abandonOpenReplies,
-    state, currentSessionId, selectedSessionActive, sessionEndReason, sessionChannel, conversationElsewhere,
+    state, reaction, currentSessionId, selectedSessionActive, sessionEndReason, sessionChannel, conversationElsewhere,
     blockedReason, blockedDetail,
     backgroundAudioUrl, backgroundAudioPlaying, toggleBackgroundAudio, stopBackgroundAudio, pauseBackgroundAudio,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,

@@ -163,6 +163,8 @@ your skin out of the guaranteed surface first.
 | `.state-<key>` | A class added to `.chat-window-shell` while the automaton is in state `<key>` | `<key>` is the literal state key from `index.yml` (case-sensitive). Scope any rule to one state with a descendant selector, e.g. `.state-Crisis .chat-header { ... }`. |
 | `[data-state]` | Attribute on `.chat-window-shell`, same value as the current `.state-<key>` | Attribute form of the same information — handy for `[data-state="X"]` or for pairing with `[data-prev-state]` below. Absent (no attribute) before any state is reached. |
 | `[data-prev-state]` | Attribute on `.chat-window-shell`: the state just left | Set on the first transition and never cleared again, so it stays available afterward. Combine both attributes to target one specific transition: `[data-prev-state="Relapse"][data-state="Crisis"] { ... }`. |
+| `.reaction-<key>` | A class added to `.chat-window-shell` for the most recent reaction the assistant sent | `<key>` is the reaction key from the project's `reactions:` config. Cleared (no `.reaction-*` class) at the start of each session; replaced, not accumulated, by the next reaction. Scope a rule to one reaction with a descendant selector, e.g. `.reaction-happy .chat-header { ... }`. |
+| `[data-reaction]` | Attribute on `.chat-window-shell`, same value as the current `.reaction-<key>` | Attribute form of the same information. Absent (no attribute) before any reaction arrives. |
 
 None of `.chat-header`/`.chat-body`/`.chat-footer` carry a default
 `background`, `color`, or `border` — that's what "empty by design" means.
