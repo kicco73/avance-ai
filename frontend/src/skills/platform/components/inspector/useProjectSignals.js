@@ -17,6 +17,7 @@ export function useProjectSignals(props) {
   }
 
   watch(() => props.stateKey, loadSignals)
+  watch(() => props.sessionId, loadSignals)
   onMounted(loadSignals)
 
   return { signals, signalsLoading, loadSignals, refresh }

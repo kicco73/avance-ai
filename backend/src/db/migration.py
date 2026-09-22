@@ -220,10 +220,43 @@ class SchemaMigrator:
                 self._database.execute_sql('UPDATE "Archive" SET "hash" = ? WHERE "id" = ?', (digest, archive_id))
         actual['Archive'] = (actual['Archive'] - {'content', 'content_type'}) | {'hash'}
 
+    def migrate_drive_content_to_file(self, actual: dict[str, set[str]]) -> None:
+        """One-off migration for the Drive/File split: Drive.content,
+        Drive.content_type and Drive.size move into a content-addressed
+        File row each, and Drive keeps only a `hash` reference to it —
+        the same move migrate_archive_content_to_file already made for
+        Archive. Two Drive rows (even across projects or users) that
+        happen to hold identical (content, content_type) collapse onto a
+        single File row here. No-op once already migrated, detected by
+        Drive.content's own absence.
+
+        The `hash` column is added nullable by hand; the generic pass
+        that follows sees it disagree with the model's NOT NULL and
+        rebuilds Drive into its final shape, dropping content/
+        content_type/size."""
+        if 'Drive' not in actual or 'content' not in actual['Drive'] or 'hash' in actual['Drive']:
+            return
+        file_model = {model._meta.table_name: model for model in self._models}['File']
+        self._database.create_tables([file_model], safe=True)
+        self._database.execute_sql('ALTER TABLE "Drive" ADD COLUMN "hash" VARCHAR')
+        rows = self._database.execute_sql('SELECT "id", "content", "content_type" FROM "Drive"').fetchall()
+        with self._database.atomic():
+            for drive_id, content, content_type in rows:
+                content = content.encode('utf-8') if isinstance(content, str) else bytes(content or b'')
+                content_type = content_type or 'application/octet-stream'
+                digest = file_model.hash_of(content, content_type)
+                self._database.execute_sql(
+                    'INSERT OR IGNORE INTO "File" ("hash", "content", "content_type", "size") VALUES (?, ?, ?, ?)',
+                    (digest, content, content_type, len(content)),
+                )
+                self._database.execute_sql('UPDATE "Drive" SET "hash" = ? WHERE "id" = ?', (digest, drive_id))
+        actual['Drive'] = (actual['Drive'] - {'content', 'content_type', 'size'}) | {'hash'}
+
     def migrate(self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str) -> None:
         migrator = SqliteMigrator(self._database)
         models_by_table = {model._meta.table_name: model for model in self._models}
         self.migrate_archive_content_to_file(actual)
+        self.migrate_drive_content_to_file(actual)
         for old_table, new_table in self._TABLE_RENAMES:
             if old_table in actual and new_table not in actual:
                 self.rename_table(old_table, new_table)

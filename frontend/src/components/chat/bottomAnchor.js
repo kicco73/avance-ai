@@ -16,6 +16,7 @@ export class BottomAnchor {
     this.scroller = scroller
     this.observer = new ResizeObserver(() => this.follow())
     this.observer.observe(content)
+    this.observer.observe(scroller)
     scroller.addEventListener('wheel', this, { passive: true })
     scroller.addEventListener('touchmove', this, { passive: true })
     scroller.addEventListener('keydown', this)

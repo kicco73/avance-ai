@@ -79,6 +79,19 @@ class ProjectService(object):
     def read_drive_file(self, project_id: str, user_id: str, path: str) -> tuple[bytes, str] | None:
         return self.db.read_drive_file(project_id, user_id, path)
 
+    def save_media_to_drive(
+        self, project_id: str, user_id: str, file_name: str, *,
+        count_download: bool = False, session_id: int | None = None,
+    ) -> int:
+        """Adds one of this project's own files to `user_id`'s drive,
+        under `file_name` unchanged — the Save/Download buttons in the
+        PDF preview dialog. Returns the resulting downloads count."""
+        content, content_type = self.editor.get_project_file_content(project_id, file_name, session_id)
+        return self.db.save_media_to_drive(
+            project_id, user_id, file_name, content, content_type,
+            count_download=count_download, session_id=session_id,
+        )
+
     def invalidate_automaton(self, project_id: str, revision: int) -> None:
         self.automaton_loader.invalidate(project_id, revision)
 

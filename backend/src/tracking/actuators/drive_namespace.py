@@ -8,6 +8,7 @@ from system import bus
 from system.bus import OUTPUT_DRIVE, Message
 
 from .actuator_set import _run_sync
+from .pdf_conversion import convert_to_pdf
 
 TEXT_MEDIA_TYPE = "text/plain"
 
@@ -20,6 +21,7 @@ class DriveFiles(Protocol):
     ) -> None: ...
     def list_drive_files(self, project_id: str, user_id: str | None = None, prefix: str = "") -> list[dict]: ...
     def delete_drive_file(self, project_id: str, user_id: str, path: str) -> bool: ...
+    def get_drive_downloads(self, project_id: str, user_id: str, path: str) -> int: ...
 
 
 class DriveNamespace:
@@ -68,6 +70,17 @@ class DriveNamespace:
             raise ValueError(
                 f"drive.write('{path}'): only text or bytes can be written here — got {type(content).__name__}."
             )
+        return self._store(resolved, payload, content_type)
+
+    def save_as_pdf(self, path: str, content: str | bytes) -> str:
+        resolved = self._path(path)
+        if not isinstance(content, (str, bytes, bytearray)):
+            raise ValueError(
+                f"drive.save_as_pdf('{path}'): only text or bytes can be converted here — got {type(content).__name__}."
+            )
+        return self._store(resolved, convert_to_pdf(content), "application/pdf")
+
+    def _store(self, resolved: str, payload: bytes, content_type: str) -> str:
         project_id = self._project_id()
         self._db.write_drive_file(project_id, self._username, resolved, payload, content_type, self._session_id)
         _run_sync(bus.publish(Message(
@@ -83,6 +96,9 @@ class DriveNamespace:
     def delete(self, path: str) -> bool:
         return self._db.delete_drive_file(self._project_id(), self._username, self._path(path))
 
+    def downloads(self, path: str) -> int:
+        return self._db.get_drive_downloads(self._project_id(), self._username, self._path(path))
+
 
 class NoDriveNamespace(DriveNamespace):
 
@@ -95,11 +111,17 @@ class NoDriveNamespace(DriveNamespace):
     def write(self, path: str, content: str | bytes) -> str:
         raise ValueError(f"drive.write('{path}'): this build carries no storage for a drive.")
 
+    def save_as_pdf(self, path: str, content: str | bytes) -> str:
+        raise ValueError(f"drive.save_as_pdf('{path}'): this build carries no storage for a drive.")
+
     def list(self, prefix: str = "") -> list[str]:
         return []
 
     def delete(self, path: str) -> bool:
         return False
+
+    def downloads(self, path: str) -> int:
+        return 0
 
 
 def drive_namespace_for(

@@ -75,3 +75,19 @@ export function getDriveFiles(projectId, prefix) {
 export function getDriveFileContent(projectId, path) {
   return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/drive/${encodeURIComponent(path)}`, undefined, { parse: 'text' })
 }
+
+export function postSaveMediaToDrive(projectId, fileName) {
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/drive/save-media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_name: fileName })
+  })
+}
+
+export function postDownloadMediaToDrive(projectId, fileName) {
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/drive/download-media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_name: fileName })
+  })
+}

@@ -203,7 +203,10 @@ class Db(
         if problems != ['ok']:
             raise ValueError(f"Database at '{path}' is still corrupted after rebuilding its indexes — refusing to touch it (integrity_check: {problems}; the pre-repair backup is at '{backup_path}').")
 
-    _FILE_GC_TRIGGERS = ('file_gc_on_archive_delete', 'file_gc_on_archive_rehash')
+    _FILE_GC_TRIGGERS = (
+        'file_gc_on_archive_delete', 'file_gc_on_archive_rehash',
+        'file_gc_on_drive_delete', 'file_gc_on_drive_rehash',
+    )
 
     @classmethod
     def _drop_file_gc_triggers(cls) -> None:
@@ -215,7 +218,8 @@ class Db(
         cls._drop_file_gc_triggers()
         orphan_delete = (
             'DELETE FROM "File" WHERE "hash" = OLD."hash" '
-            'AND NOT EXISTS (SELECT 1 FROM "Archive" WHERE "hash" = OLD."hash");'
+            'AND NOT EXISTS (SELECT 1 FROM "Archive" WHERE "hash" = OLD."hash") '
+            'AND NOT EXISTS (SELECT 1 FROM "Drive" WHERE "hash" = OLD."hash");'
         )
         database.execute_sql(
             'CREATE TRIGGER "file_gc_on_archive_delete" AFTER DELETE ON "Archive" '
@@ -223,6 +227,15 @@ class Db(
         )
         database.execute_sql(
             'CREATE TRIGGER "file_gc_on_archive_rehash" AFTER UPDATE OF "hash" ON "Archive" '
+            'WHEN OLD."hash" <> NEW."hash" '
+            f'BEGIN {orphan_delete} END'
+        )
+        database.execute_sql(
+            'CREATE TRIGGER "file_gc_on_drive_delete" AFTER DELETE ON "Drive" '
+            f'BEGIN {orphan_delete} END'
+        )
+        database.execute_sql(
+            'CREATE TRIGGER "file_gc_on_drive_rehash" AFTER UPDATE OF "hash" ON "Drive" '
             'WHEN OLD."hash" <> NEW."hash" '
             f'BEGIN {orphan_delete} END'
         )

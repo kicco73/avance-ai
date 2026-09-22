@@ -1113,9 +1113,20 @@ task: |
   `/` are trimmed, so `'reports/last.md'` and `'/reports/last.md'` name
   the same file. `..` is rejected — there is nothing above the person's
   own space to reach.
+- `drive.save_as_pdf(path, content)` — same as `drive.write`, but
+  `content` is converted to a PDF first. What `content` already is —
+  an image, a PDF (stored verbatim, no conversion), CSV, or text (markdown
+  rendered, since that's the common case: a `task.prompt(...)` result) —
+  is worked out from `content` itself, never from `path`'s extension,
+  the same way `drive.write` never looks past what it's handed. Anything
+  else is rejected.
 - `drive.list(prefix)` — every path under `prefix`, in order; `""`
   means everything this person has.
 - `drive.delete(path)` — removes one file, `True` if there was one.
+- `drive.downloads(path)` — how many times this person has downloaded
+  the file at `path` from the PDF preview dialog's Download button, `0`
+  before the first one. The Save button in the same dialog adds a file
+  to the drive without counting; Download does both.
 
 A write also records, silently, which session (if any) fired the task
 that produced it — `None` for a `task.defer`red call, the firing session

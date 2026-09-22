@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppHeader from '../AppHeader.vue'
 import DocInfoButton from '../DocInfoButton.vue'
 import ExplorerSplitView from '../ExplorerSplitView.vue'
@@ -86,6 +86,62 @@ const aiErrorOutcomeLabels = computed(() => Object.fromEntries(
     .map((outcome) => [outcome, outcome.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())])
 ))
 
+const tokenChartRef = ref(null)
+const latencyChartRef = ref(null)
+const errorChartRef = ref(null)
+const observabilityZoomed = ref(false)
+const observabilityCharts = [tokenChartRef, latencyChartRef, errorChartRef]
+
+const observabilityFullRange = computed(() => {
+  const times = [...aiUsage.value.history, ...aiUsage.value.error_history]
+    .map((entry) => new Date(entry.timestamp).getTime())
+  if (times.length < 2) return null
+  return { min: Math.min(...times), max: Math.max(...times) }
+})
+
+const observabilityWindow = ref(null)
+let pendingObservabilitySync = null
+
+function onObservabilityRangeChanged(range, sourceRef) {
+  observabilityZoomed.value = true
+  observabilityWindow.value = range
+  const wasScheduled = pendingObservabilitySync !== null
+  pendingObservabilitySync = { range, sourceRef }
+  if (wasScheduled) return
+  requestAnimationFrame(() => {
+    const { range: syncedRange, sourceRef: syncedSourceRef } = pendingObservabilitySync
+    pendingObservabilitySync = null
+    for (const chartRef of observabilityCharts) {
+      if (chartRef !== syncedSourceRef) chartRef.value?.setXRange(syncedRange)
+    }
+  })
+}
+
+function resetObservabilityZoom() {
+  for (const chartRef of observabilityCharts) {
+    if (observabilityFullRange.value) chartRef.value?.setXRange(observabilityFullRange.value)
+    else chartRef.value?.resetZoom()
+  }
+  observabilityWindow.value = null
+  observabilityZoomed.value = false
+}
+
+const AI_USAGE_REFRESH_MS = 60 * 1000
+
+async function refreshAiUsageAndScroll() {
+  await loadAiUsage()
+  if (!observabilityWindow.value) return
+  await nextTick()
+  observabilityWindow.value = {
+    min: observabilityWindow.value.min + AI_USAGE_REFRESH_MS,
+    max: observabilityWindow.value.max + AI_USAGE_REFRESH_MS,
+  }
+  for (const chartRef of observabilityCharts) chartRef.value?.setXRange(observabilityWindow.value)
+}
+
+let aiUsageRefreshTimer = null
+onBeforeUnmount(() => clearInterval(aiUsageRefreshTimer))
+
 const TASK_STATUSES = ['pending', 'dispatched', 'done', 'failed', 'canceled']
 const taskStatus = ref(TASK_STATUSES[0])
 const taskOrder = ref('asc')
@@ -135,6 +191,7 @@ onMounted(() => {
   load()
   loadAiUsage()
   loadTasks()
+  aiUsageRefreshTimer = setInterval(refreshAiUsageAndScroll, AI_USAGE_REFRESH_MS)
 })
 
 const NO_FALLBACK_WARNING =
@@ -295,18 +352,49 @@ function providerStatusTitle(index) {
             </div>
 
             <div v-show="aiSubTab === 'observability'" class="services-ai-subpanel">
+              <div class="services-observability-toolbar">
+                <button
+                  :disabled="!observabilityZoomed"
+                  class="services-observability-reset-zoom-btn"
+                  @click="resetObservabilityZoom"
+                >
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                    <path d="M12 5V2L8 6l4 4V7c3.31 0 6 2.69 6 6 0 2.97-2.17 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93 0-4.42-3.58-8-8-8zm-6 8c0-1.65.67-3.15 1.76-4.24L6.34 7.34C4.9 8.79 4 10.79 4 13c0 4.08 3.05 7.44 7 7.93v-2.02c-2.83-.48-5-2.94-5-5.91z" />
+                  </svg>
+                  Reset
+                </button>
+              </div>
               <div v-if="liveProviders.length && aiUsage.history.length >= 2" class="services-ai-usage-chart">
-                <TrendLineChart :history="aiUsage.history" :provider-labels="aiProviderLabels">
+                <TrendLineChart
+                  ref="tokenChartRef"
+                  title="Token usage"
+                  :history="aiUsage.history"
+                  :provider-labels="aiProviderLabels"
+                  @range-changed="onObservabilityRangeChanged($event, tokenChartRef)"
+                >
                   <template #value="{ value }">{{ Math.round(value).toLocaleString() }} tokens</template>
                 </TrendLineChart>
               </div>
               <div v-if="liveProviders.length && aiUsage.history.length >= 2" class="services-ai-usage-chart">
-                <TrendLineChart :history="aiLatencyHistory" :markers="aiProviderChanges" :provider-labels="aiLatencyLabels">
+                <TrendLineChart
+                  ref="latencyChartRef"
+                  title="Latency"
+                  :history="aiLatencyHistory"
+                  :markers="aiProviderChanges"
+                  :provider-labels="aiLatencyLabels"
+                  @range-changed="onObservabilityRangeChanged($event, latencyChartRef)"
+                >
                   <template #value="{ value }">{{ value.toFixed(2) }} s</template>
                 </TrendLineChart>
               </div>
               <div v-if="liveProviders.length && aiUsage.error_history.length >= 2" class="services-ai-usage-chart">
-                <TrendLineChart :history="aiUsage.error_history" :provider-labels="aiErrorOutcomeLabels">
+                <TrendLineChart
+                  ref="errorChartRef"
+                  title="Errors"
+                  :history="aiUsage.error_history"
+                  :provider-labels="aiErrorOutcomeLabels"
+                  @range-changed="onObservabilityRangeChanged($event, errorChartRef)"
+                >
                   <template #value="{ value }">{{ value }} {{ value === 1 ? 'error' : 'errors' }}</template>
                 </TrendLineChart>
               </div>
@@ -588,6 +676,41 @@ function providerStatusTitle(index) {
   max-height: 200px;
   flex-shrink: 0;
   margin: 0.75rem 0;
+}
+
+.services-observability-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 1.6rem;
+}
+
+.services-observability-reset-zoom-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.services-observability-reset-zoom-btn:hover {
+  background: #4a6fa5;
+  color: white;
+}
+
+.services-observability-reset-zoom-btn:disabled {
+  border-color: #ccc;
+  color: #aaa;
+  cursor: default;
+}
+
+.services-observability-reset-zoom-btn:disabled:hover {
+  background: white;
+  color: #aaa;
 }
 
 .services-section {

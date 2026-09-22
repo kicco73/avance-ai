@@ -377,24 +377,13 @@ watch(turnCount, () => {
   selected.value = null
   refreshSignalsLog()
   if (!inspecting.value) return
-  nextTick(() => {
-    inspectorRef.value?.resync()
-    if (editorOpen.value) indexYmlEditorRef.value?.refresh(false)
-  })
-})
-
-watch(selected, () => {
-  if (!inspecting.value) return
-  nextTick(() => {
-    inspectorRef.value?.resync()
-  })
+  if (editorOpen.value) nextTick(() => indexYmlEditorRef.value?.refresh(false))
 })
 
 watch(currentSessionId, () => {
   selected.value = null
   refreshSessionStartState()
   refreshSignalsLog()
-  if (inspecting.value) nextTick(() => inspectorRef.value?.resync())
 })
 
 function reportPause() {

@@ -94,6 +94,7 @@ class OutVariables:
 	tracking_linked_to_message: bool = False
 	signals_resolved: bool = False
 	env_changed: dict = field(default_factory=dict)
+	memory_changed: dict = field(default_factory=dict)
 
 class MemoryScope(Protocol):
 	def store(self, processor: "TrackingProcessor") -> Env | None: ...
@@ -120,6 +121,7 @@ class GlobalMemoryScope:
 
 	def merge(self, processor: "TrackingProcessor", values: dict, *, message_id: RowHandle | None, declared_keys: set[str]) -> None:
 		self.store(processor).update(values, message_id=message_id, declared_keys=declared_keys)
+		processor.out.memory_changed.update(values)
 
 	def has_channel(self) -> bool:
 		return True
@@ -133,6 +135,7 @@ class LocalMemoryScope:
 		if processor.out.action is not None and not processor.moved_before_reply:
 			return
 		self.store(processor).update(values, message_id=message_id, declared_keys=declared_keys)
+		processor.out.memory_changed.update(values)
 
 	def has_channel(self) -> bool:
 		return True
@@ -639,6 +642,7 @@ class TrackingProcessor(object):
 			"from_state": self.user.state.key if action else None,
 			"new_state": action.target if action else None,
 			"env_changed": dict(self.out.env_changed),
+			"memory_changed": dict(self.out.memory_changed),
 			"triggered_action": action.name if action else None,
 			"ai_model": self.ai_service.get_models_info(),
 			"session_id": self.user.session_id,

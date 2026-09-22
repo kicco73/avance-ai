@@ -43,6 +43,10 @@ class SetSessionTitleRequest(BaseModel):
     title: str | None = None
 
 
+class SaveMediaToDriveRequest(BaseModel):
+    file_name: str
+
+
 class SessionImportMessageJson(BaseModel):
     role: str
     text: str

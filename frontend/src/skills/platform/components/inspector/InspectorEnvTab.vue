@@ -1,10 +1,11 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { clearMemory, deleteEnvValue, getEnv, getOutput, putEnvValue } from '../../api.js'
 import InspectorSourcesList from './InspectorSourcesList.vue'
 import { confirmDialog, customDialog } from '../../../../dialogStore.js'
 import CellMarkdownDialog from '../project/edit/design/CellMarkdownDialog.vue'
 import { DISPLAY_LIMIT } from '../project/edit/design/csvCells.js'
+import { busChannel } from '../../../../busChannel.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -118,6 +119,26 @@ async function refresh() {
   await Promise.all([loadEnv(), loadOutput(), sourcesRef.value?.loadSources()])
 }
 
+watch(() => props.sessionId, refresh)
+watch(() => props.untilMessageId, refresh)
+
+let unsubscribeEnvChanged = null
+let unsubscribeMemoryChanged = null
+
+onMounted(() => {
+  unsubscribeEnvChanged = busChannel.subscribe('env.changed', (frame) => {
+    if (frame.session_id === props.sessionId) refresh()
+  })
+  unsubscribeMemoryChanged = busChannel.subscribe('env.memory_changed', (frame) => {
+    if (frame.session_id === props.sessionId) refresh()
+  })
+})
+
+onUnmounted(() => {
+  unsubscribeEnvChanged?.()
+  unsubscribeMemoryChanged?.()
+})
+
 function isTruncated(value) {
   return typeof value === 'string' && value.length > DISPLAY_LIMIT
 }
@@ -135,7 +156,7 @@ function openValueDialog(key, value) {
   })
 }
 
-defineExpose({ loadEnv, refresh, resync: refresh })
+defineExpose({ loadEnv, refresh })
 </script>
 
 <template>

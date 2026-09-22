@@ -70,6 +70,7 @@ UI_PROGRESS = "ui.progress"
 OUTPUT_REACTION = "output.reaction"
 STATE_CHANGED = "state.changed"
 ENV_CHANGED = "env.changed"
+ENV_MEMORY_CHANGED = "env.memory_changed"
 OUTPUT_ERROR = "output.error"
 
 TASK_STARTED = "task.started"

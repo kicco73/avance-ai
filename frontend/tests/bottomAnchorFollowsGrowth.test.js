@@ -53,6 +53,10 @@ function fakeScroller() {
     grow(px) {
       this.scrollHeight += px
       resizeCallback()
+    },
+    shrinkViewport(px) {
+      this.clientHeight -= px
+      resizeCallback()
     }
   }
 }
@@ -141,6 +145,37 @@ describe('BottomAnchor', () => {
     clock.run()
 
     expect(el.scrollTop).toBe(100)
+  })
+
+  it('observes the scroller as well as the content, so a footer growing below it (e.g. action buttons) is not missed', () => {
+    const observed = []
+    class RecordingResizeObserver extends CapturingResizeObserver {
+      observe(target) {
+        observed.push(target)
+      }
+    }
+    globalThis.ResizeObserver = RecordingResizeObserver
+
+    const el = fakeScroller()
+    const content = {}
+    const anchor = new BottomAnchor()
+    anchor.attach(el, content)
+
+    expect(observed).toContain(el)
+    expect(observed).toContain(content)
+  })
+
+  it('animates to the new bottom when the viewport itself shrinks, not just when content grows', () => {
+    const el = fakeScroller()
+    const anchor = new BottomAnchor()
+    anchor.attach(el, {})
+
+    el.scrollHeight = 900
+    el.scrollTop = 500
+    el.shrinkViewport(120)
+    clock.run()
+
+    expect(el.scrollTop).toBe(620)
   })
 
   it('goes back to following after the reader returns to the bottom', () => {

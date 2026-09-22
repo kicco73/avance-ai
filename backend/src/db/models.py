@@ -179,10 +179,22 @@ class Drive(BaseModel):
     session = ForeignKeyField(CoreSession, null=True, backref='drive_files', on_delete='SET NULL')
     session_id: int | None
     path = CharField(null=False)
-    content = BlobField(null=False)
-    content_type = CharField(null=False)
-    size = IntegerField(null=False)
+    hash = ForeignKeyField(File, field='hash', column_name='hash', backref='drive_files', null=False, on_delete='RESTRICT')
+    hash_id: str
     updated_at = DateTimeField(default=datetime.utcnow)
+    downloads = IntegerField(null=False, default=0)
+
+    @property
+    def content(self) -> bytes:
+        return self.hash.content
+
+    @property
+    def content_type(self) -> str:
+        return self.hash.content_type
+
+    @property
+    def size(self) -> int:
+        return self.hash.size
 
     class Meta:
         table_name = 'Drive'

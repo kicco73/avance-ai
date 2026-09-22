@@ -12,7 +12,10 @@ among the project's own files.
 """
 from __future__ import annotations
 
+import io
+
 import pytest
+from PIL import Image
 
 from conftest import RecordedMessages
 from automaton.automaton_builder import AutomatonBuilder
@@ -247,6 +250,28 @@ def test_a_failed_write_publishes_nothing(db):
     assert recorded.of_type(OUTPUT_DRIVE) == []
 
 
+def test_downloads_is_zero_before_anything_was_downloaded(db):
+    _publish(db)
+    _run(db, "drive.write('reports/last.md', 'ciao')")
+
+    assert _run(db, "drive.write('seen.md', str(drive.downloads('reports/last.md')))") == []
+    assert db.read_drive_file(PROJECT, "user", "seen.md")[0] == b"0"
+
+
+def test_downloads_reflects_what_save_media_to_drive_counted(db):
+    _publish(db)
+    db.save_media_to_drive(PROJECT, "user", "reports/last.md", b"ciao", "text/markdown", count_download=False)
+
+    assert _run(db, "drive.write('seen.md', str(drive.downloads('reports/last.md')))") == []
+    assert db.read_drive_file(PROJECT, "user", "seen.md")[0] == b"0"
+
+    db.save_media_to_drive(PROJECT, "user", "reports/last.md", b"ciao", "text/markdown", count_download=True)
+    db.save_media_to_drive(PROJECT, "user", "reports/last.md", b"ciao", "text/markdown", count_download=True)
+
+    assert _run(db, "drive.write('seen.md', str(drive.downloads('reports/last.md')))") == []
+    assert db.read_drive_file(PROJECT, "user", "seen.md")[0] == b"2"
+
+
 def test_drive_is_a_task_only_namespace(db):
     trigger_registry = IdentifierRegistry.for_triggers({"drive": {"read": ""}})
     on_exit_registry = IdentifierRegistry.for_on_exit({"drive": {"read": ""}})
@@ -260,3 +285,56 @@ def test_a_drive_call_with_the_wrong_number_of_arguments_is_a_build_error(db):
         AutomatonBuilder().build({"index.yml": _yml("drive.write('only-one.md')")})
 
     AutomatonBuilder().build({"index.yml": _yml("drive.list()")})
+
+
+def test_save_as_pdf_renders_markdown_text_as_a_pdf(db):
+    _publish(db)
+
+    assert _run(db, "drive.save_as_pdf('report.pdf', '# Title\\n\\nSome **bold** text.')") == []
+
+    content, content_type = db.read_drive_file(PROJECT, "user", "report.pdf")
+    assert content_type == "application/pdf"
+    assert content.startswith(b"%PDF-")
+
+
+def test_save_as_pdf_leaves_an_already_pdf_input_untouched(db):
+    _publish(db)
+    pdf_bytes = b"%PDF-1.4\nfake-but-recognizable\n%%EOF"
+
+    assert _run(db, f"drive.save_as_pdf('same.pdf', {pdf_bytes!r})") == []
+
+    content, content_type = db.read_drive_file(PROJECT, "user", "same.pdf")
+    assert content == pdf_bytes
+    assert content_type == "application/pdf"
+
+
+def test_save_as_pdf_converts_an_image(db):
+    _publish(db)
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), (255, 0, 0)).save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    assert _run(db, f"drive.save_as_pdf('logo.pdf', {png_bytes!r})") == []
+
+    content, content_type = db.read_drive_file(PROJECT, "user", "logo.pdf")
+    assert content_type == "application/pdf"
+    assert content.startswith(b"%PDF-")
+
+
+def test_save_as_pdf_renders_csv_as_a_table(db):
+    _publish(db)
+
+    assert _run(db, "drive.save_as_pdf('data.pdf', 'name,age\\nAlice,30\\nBob,25')") == []
+
+    content, content_type = db.read_drive_file(PROJECT, "user", "data.pdf")
+    assert content_type == "application/pdf"
+    assert content.startswith(b"%PDF-")
+
+
+def test_save_as_pdf_refuses_a_value_that_is_neither_text_nor_bytes(db):
+    _publish(db)
+
+    failures = _run(db, "drive.save_as_pdf('x.pdf', 3)")
+
+    assert len(failures) == 1
+    assert db.list_drive_files(PROJECT, "user") == []

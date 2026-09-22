@@ -14,7 +14,8 @@ from contextlib import asynccontextmanager
 from system import bus
 from system.bus import (
     OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    STATE_CHANGED, ENV_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES, SESSION_EXHAUSTED,
+    STATE_CHANGED, ENV_CHANGED, ENV_MEMORY_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES,
+    SESSION_EXHAUSTED,
     Message,
 )
 from system.logging_factory import LoggerFactory
@@ -114,6 +115,8 @@ class Outbound(object):
     def wrote(self, result: dict) -> None:
         for key, value in (result.get("env_changed") or {}).items():
             self.put(ENV_CHANGED, {"key": key, "value": value})
+        for key, value in (result.get("memory_changed") or {}).items():
+            self.put(ENV_MEMORY_CHANGED, {"key": key, "value": value})
 
     def informed(self, session: dict, services: dict, kind: str, reply_silence_seconds: float) -> None:
         self.put(SESSION_INFO, {

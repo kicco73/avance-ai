@@ -55,8 +55,10 @@ class IdentifierRegistry:
     DRIVE: dict[str, str] = {
         "read": "Returns exactly what this project last wrote for the person now talking, at that path, text or bytes as it was written — e.g. drive.read('reports/last.md'). \"\" when nothing has been written there: a drive starts empty, and reading before writing is normal, not a failure. Only available in a task script.",
         "write": "Writes text or bytes, verbatim, into this project's own space for the person now talking, creating the file or replacing it — e.g. drive.write('reports/last.md', report). Nothing else is ever accepted. The '/' are part of the name, not folders to create. Returns the path written. Only available in a task script.",
+        "save_as_pdf": "Same as drive.write, but converts content to a PDF first — e.g. drive.save_as_pdf('reports/last.pdf', report). What kind of content it is (an image, a PDF already, CSV, or plain/markdown text) is worked out from content itself, not from path's extension; anything else is rejected. Only available in a task script.",
         "list": "The paths written for the person now talking that start with `prefix`, in order — e.g. drive.list('reports/'); no prefix means everything. Only available in a task script.",
         "delete": "Removes one of this person's files — e.g. drive.delete('reports/last.md'). True if there was something to remove. Only available in a task script.",
+        "downloads": "How many times this project's own person has downloaded the file at path, from the PDF preview dialog's Download button — e.g. drive.downloads('reports/last.md'). 0 before the first download. Only available in a task script.",
     }
 
     ATTACHMENT: dict[str, str] = {

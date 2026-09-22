@@ -4,13 +4,25 @@ import { Chart, LineController, LineElement, PointElement, LinearScale, TimeScal
 import zoomPlugin from 'chartjs-plugin-zoom'
 import 'chartjs-adapter-date-fns'
 
-Chart.register(LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip, zoomPlugin)
+class DayChangeTimeScale extends TimeScale {
+  afterAutoSkip() {
+    super.afterAutoSkip()
+    relabelAxisTicksByDayChange(this)
+  }
+}
+DayChangeTimeScale.id = 'dayChangeTime'
+DayChangeTimeScale.defaults = TimeScale.defaults
+
+Chart.register(LineController, LineElement, PointElement, LinearScale, DayChangeTimeScale, Tooltip, zoomPlugin)
 
 const props = defineProps({
+  title: { type: String, default: null },
   history: { type: Array, default: () => [] },
   markers: { type: Array, default: () => [] },
   providerLabels: { type: Object, default: () => ({}) }
 })
+
+const emit = defineEmits(['range-changed'])
 
 const PALETTE = [
   '#4a6fa5', '#c9974a', '#5c8f72', '#4b52ad', '#c7c056', '#589c8c', '#4589a0', '#c26948',
@@ -22,6 +34,7 @@ const TOOLTIP_MARGIN = 12
 const MARKER_DASH = [4, 4]
 const MARKER_LABEL_OFFSET_PX = 4
 const MARKER_LABEL_FONT = '10px system-ui, -apple-system, sans-serif'
+const Y_AXIS_WIDTH_PX = 64
 
 const markersPlugin = {
   id: 'markers',
@@ -53,24 +66,49 @@ const markersPlugin = {
 const canvasEl = ref(null)
 const lineTooltip = ref(null)
 const lineTooltipStyle = ref({})
-const isZoomed = ref(false)
 let chart = null
 
-function refreshZoomedState() {
-  isZoomed.value = chart?.isZoomedOrPanned() ?? false
+function emitRangeChanged() {
+  if (!chart) return
+  emit('range-changed', { min: chart.scales.x.min, max: chart.scales.x.max })
 }
 
 function resetZoom() {
-  chart?.resetZoom()
-  isZoomed.value = false
+  chart?.resetZoom('none')
+}
+
+function setXRange(range) {
+  if (!chart) return
+  chart.options.scales.x.min = range?.min
+  chart.options.scales.x.max = range?.max
+  chart.update('none')
 }
 
 function providerLabel(key) {
   return props.providerLabels[key] ?? key
 }
 
+const timestampFormatter = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 function formatTimestamp(timestamp) {
-  return new Date(timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return timestampFormatter.format(new Date(timestamp))
+}
+
+const numberFormatter = new Intl.NumberFormat()
+function formatNumber(value) {
+  return numberFormatter.format(value)
+}
+
+const axisHourFormatter = new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' })
+const axisDayFormatter = new Intl.DateTimeFormat([], { day: 'numeric', month: 'short' })
+
+function relabelAxisTicksByDayChange(scale) {
+  let previousDate = null
+  for (const tick of scale.ticks) {
+    const date = new Date(tick.value)
+    const dayChanged = previousDate === null || date.toDateString() !== previousDate.toDateString()
+    tick.label = dayChanged ? `${axisDayFormatter.format(date)} ${axisHourFormatter.format(date)}` : axisHourFormatter.format(date)
+    previousDate = date
+  }
 }
 
 function tooltipPositionStyle(event) {
@@ -159,7 +197,6 @@ function renderChart() {
   const yMax = computeYMax(datasets)
   if (chart) {
     chart.resetZoom('none')
-    isZoomed.value = false
     chart.data.datasets = datasets
     chart.options.plugins.markers.markers = markers
     chart.options.scales.y.max = yMax
@@ -174,9 +211,18 @@ function renderChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
+      layout: { padding: { right: 8 } },
       scales: {
-        x: { type: 'time', time: { unit: 'minute' } },
-        y: { min: 0, max: yMax, ticks: { callback: (value) => value.toLocaleString(), font: { size: 10.2 } } },
+        x: {
+          type: 'dayChangeTime',
+          ticks: { font: { size: 10.2 }, maxTicksLimit: 10 },
+        },
+        y: {
+          min: 0, max: yMax,
+          ticks: { callback: (value) => formatNumber(value), font: { size: 10.2 } },
+          afterFit: (scale) => { scale.width = Y_AXIS_WIDTH_PX },
+        },
       },
       interaction: { mode: 'nearest', intersect: false },
       plugins: {
@@ -184,12 +230,12 @@ function renderChart() {
         tooltip: { enabled: false },
         markers: { markers },
         zoom: {
-          pan: { enabled: true, mode: 'x', onPanComplete: refreshZoomedState },
+          pan: { enabled: true, mode: 'x', onPan: emitRangeChanged },
           zoom: {
             wheel: { enabled: true },
             pinch: { enabled: true },
             mode: 'x',
-            onZoomComplete: refreshZoomedState,
+            onZoom: emitRangeChanged,
           },
         },
       },
@@ -213,12 +259,14 @@ onBeforeUnmount(() => {
     chart = null
   }
 })
+
+defineExpose({ resetZoom, setXRange })
 </script>
 
 <template>
   <div class="trend-line-chart">
+    <div v-if="title" class="trend-line-chart-title">{{ title }}</div>
     <div class="trend-line-chart-canvas-wrap">
-      <button v-if="isZoomed" class="trend-reset-zoom-btn" @click="resetZoom">Reset zoom</button>
       <canvas ref="canvasEl" @mousemove="onCanvasMouseMove" @mouseleave="onCanvasMouseLeave"></canvas>
     </div>
   </div>
@@ -240,23 +288,14 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 
-.trend-reset-zoom-btn {
-  position: absolute;
-  top: 0.25rem;
-  right: 0.25rem;
-  z-index: 10;
-  padding: 0.25rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
+.trend-line-chart-title {
+  flex-shrink: 0;
+  margin-bottom: 0.35rem;
   font-size: 0.72rem;
-  cursor: pointer;
-}
-
-.trend-reset-zoom-btn:hover {
-  background: #4a6fa5;
-  color: white;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #777;
 }
 
 .trend-line-chart-canvas-wrap {

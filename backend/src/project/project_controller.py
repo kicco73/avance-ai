@@ -17,6 +17,9 @@ from fastapi import HTTPException, Request, Response
 from automaton.file_types import ProjectFileTypes
 from auth.roles import role_satisfies
 from controllers.base_controller import BaseController, get, post
+from schemas import SaveMediaToDriveRequest
+from system import bus
+from system.bus import OUTPUT_DRIVE, Message
 from system.web_session import WebSession
 from project.project_service import ProjectService
 from turn.turn_service import TurnService
@@ -79,6 +82,35 @@ class ProjectController(BaseController):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"'{path}' not found in your drive.")
         content, content_type = found
         return Response(content=content, media_type=content_type)
+
+    @post("/api/core/projects/{project_id}/drive/save-media", role="customer")
+    async def post_save_media_to_drive(self, project_id: str, req: SaveMediaToDriveRequest):
+        """Adds one of this project's own media/ files to the caller's
+        own drive, unchanged if it's already there — the Save button in
+        the PDF preview dialog. role="customer": the same floor drive
+        access itself is gated at everywhere else in the frontend."""
+        downloads = self.project_service.save_media_to_drive(project_id, WebSession().user, req.file_name)
+        await bus.publish(Message(
+            type=OUTPUT_DRIVE, username=WebSession().user, project_id=project_id,
+            session_id=None, body={"path": req.file_name},
+        ))
+        return {"path": req.file_name, "downloads": downloads}
+
+    @post("/api/core/projects/{project_id}/drive/download-media", role="customer")
+    async def post_download_media_to_drive(self, project_id: str, req: SaveMediaToDriveRequest):
+        """Same as post_save_media_to_drive, but also counts as a
+        download — the Download button in the PDF preview dialog, always
+        shown (unlike Save, which hides once the file is already there),
+        since every click is one more download. The count is what
+        drive.downloads(path) reads back."""
+        downloads = self.project_service.save_media_to_drive(
+            project_id, WebSession().user, req.file_name, count_download=True,
+        )
+        await bus.publish(Message(
+            type=OUTPUT_DRIVE, username=WebSession().user, project_id=project_id,
+            session_id=None, body={"path": req.file_name},
+        ))
+        return {"path": req.file_name, "downloads": downloads}
 
     @get("/api/core/projects/{project_id}/states/{state_name}/tokens", role="supervisor")
     def get_state_input_tokens(self, project_id: str, state_name: str, session_id: int | None = None):
