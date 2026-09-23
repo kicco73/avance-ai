@@ -216,6 +216,10 @@ class InputProcessor(object):
     ) -> AsyncIterator[str]:
         raise NotImplementedError
 
+    @classmethod
+    def owes_turn_on_entry(cls, state: State) -> bool:
+        raise NotImplementedError
+
 
 class SystemInputProcessor(InputProcessor):
     name = "system"
@@ -246,6 +250,10 @@ class SystemInputProcessor(InputProcessor):
     async def reply_after_answer(cls, processor, state, on_metadata) -> AsyncIterator[str]:
         for text in filter(None, [processor.reply_sink.take()]):
             yield text
+
+    @classmethod
+    def owes_turn_on_entry(cls, state: State) -> bool:
+        return False
 
 
 INPUT_PROCESSORS: dict[str, type[InputProcessor]] = {SystemInputProcessor.name: SystemInputProcessor}

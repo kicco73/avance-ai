@@ -213,7 +213,16 @@ class TurnInput(object):
 
     async def _run(self, message: Message, accepted: list[PendingMessage], prepared: list[dict]) -> None:
         async with publishing(message, self._db) as outbound:
-            await self._turn(message, accepted, prepared, outbound)
+            result = await self._turn(message, accepted, prepared, outbound)
+        for session_id in filter(None, [self._turn_service.entered_a_state_owed_its_turn(result)]):
+            await self._entered(message, session_id)
+
+    async def _entered(self, message: Message, session_id: int) -> None:
+        async with publishing(message, self._db) as outbound:
+            try:
+                outbound.ran(await self._turn_service.process_turn(session_id, on_metadata=outbound.on_metadata))
+            except ServiceError as exc:
+                outbound.failed(exc, [])
 
     async def _turn(
         self, message: Message, accepted: list[PendingMessage], prepared: list[dict], outbound: "Outbound",

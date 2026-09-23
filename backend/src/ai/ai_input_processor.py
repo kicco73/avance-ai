@@ -50,3 +50,7 @@ class AiInputProcessor(InputProcessor):
     async def reply_after_answer(cls, processor, state, on_metadata) -> AsyncIterator[str]:
         return
         yield
+
+    @classmethod
+    def owes_turn_on_entry(cls, state: State) -> bool:
+        return state.final or not state.chat_enabled

@@ -824,6 +824,18 @@ class TurnService(object):
 		result = await self.process_turn(session_id)
 		return list(result["reply"])
 
+	def entered_a_state_owed_its_turn(self, result: dict | None) -> int | None:
+		moved_after_reply = [
+			turn for turn in filter(None, [result])
+			if turn.get("state_changed") and turn.get("moved_before_reply") is False
+		]
+		for turn in moved_after_reply:
+			session_id = turn["session_id"]
+			_, state = self.automaton_and_state_for(session_id)
+			no_operator = self._namespace_factory.get_human_operator(session_id) is None
+			return session_id if no_operator and self.processor_for(state).owes_turn_on_entry(state) else None
+		return None
+
 	def _state_speaks_unprompted(self, session_id: int, state: State) -> bool:
 		if self._namespace_factory.get_human_operator(session_id) is not None:
 			return False
