@@ -23,7 +23,7 @@ value, *strings)`: the first row `select_rows_where` would return, as a
 `{column: cell}` dict, for a script that wants one whole record without
 parsing a table — never a model tool either: TOOL_METHODS is the driver's
 own say on which of its methods the model gets. A whole-file read is
-`attachment.read(name)`'s job (on-exit/task only, see
+`attachment.<doc_id>.read()`'s job (on-exit/task only, see
 tracking.actuators.attachment_namespace) — SourceDriver itself has no
 such method at all: every method here must return a bounded result, and
 a whole file is exactly what bounding a result doesn't make sense for.

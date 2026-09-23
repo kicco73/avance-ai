@@ -1,7 +1,7 @@
 """Where a project's own files are read from, at run time.
 
 Three places need this: a source with a `url: avance:<path>` (see
-tracking.sources.avance_archive), `attachment.read(name)` (see
+tracking.sources.avance_archive), `attachment.<doc_id>.read()` (see
 tracking.actuators.attachment_namespace), and every turn's own
 attachments, which the automaton carries as paths and never as bytes
 (see tracking.attachments). All ask the same two questions — resolve a name to a stored path, and

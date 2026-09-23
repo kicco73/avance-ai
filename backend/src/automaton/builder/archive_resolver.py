@@ -4,7 +4,7 @@ Build time is the only place that both knows every file the project
 carries and has its bytes in hand, so it is where a declared
 `attachments:` name is turned into the stored path it means — an exact
 match, or a unique basename — and where the few checks that must look
-inside a file (attachment.read's text-only/size limits) happen.
+inside a file (attachment.<doc_id>.read()'s text-only/size limits) happen.
 
 What comes out of here is a name, never a file: an Automaton carries the
 paths its declarations resolved to, and the bytes are read per turn

@@ -1,6 +1,7 @@
 """`media.<doc_id>.url()` — an on-exit-only namespace, one attribute per
 file uploaded under a project's own `media/` folder, `doc_id` its
-basename without extension. Unlike attachment.read (a whole-file text
+name lowercased, every non-identifier character an underscore, no
+extension. Unlike attachment.<doc_id>.read() (a whole-file text
 read, task/on-exit), it never touches the file's own bytes — it only
 returns the same download url every other reader of a project's files
 already serves off, for chat.show_media(url) to hand to the browser.
@@ -56,6 +57,14 @@ def test_media_url_is_readable_from_an_env_or_local_assignment_too():
         {"media/report.pdf": b"%PDF fake"},
     )
     assert "media.report.url()" in automaton.states["a"].actions[0].on_exit
+
+
+def test_a_file_is_reached_by_its_name_lowercased_and_never_as_it_is_spelled():
+    archives = {"media/Manuel Neutro.png": b"\x89PNG"}
+    automaton = _build("        on-exit: chat.show_media(media.manuel_neutro.url())\n", archives)
+    assert automaton.states["a"].actions[0].on_exit == "chat.show_media(media.manuel_neutro.url())"
+    with pytest.raises(ValueError, match=r"undefined name\(s\).*media\.Manuel_Neutro"):
+        _build("        on-exit: chat.show_media(media.Manuel_Neutro.url())\n", archives)
 
 
 def test_an_undeclared_doc_id_is_rejected():

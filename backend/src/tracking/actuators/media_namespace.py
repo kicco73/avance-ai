@@ -1,12 +1,12 @@
 """The `media` namespace — `media.<doc_id>.url()` returns the download
 URL for one of this project's own files uploaded under its `media/`
-folder, `doc_id` being the file's basename without extension (see
+folder, `doc_id` derived from the file's name (see
 automaton.file_types.media_doc_id_for — the same derivation
 AutomatonValidator's own build-time reference check and
 ProjectInspector's own autocomplete registry use, so a name valid in one
 is valid, and known, in all three). Reachable only from an action's own
 on-exit script (see IdentifierRegistry.for_on_exit) — there is no reason
-to hand out a download link anywhere else the way attachment.read hands
+to hand out a download link anywhere else the way attachment.<doc_id>.read() hands
 out a file's own text.
 
 The url itself is the same one every other reader of a project's files

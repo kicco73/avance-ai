@@ -242,7 +242,7 @@ class CoreAutomaton(object):
     def set_storage_location(self, revision: int) -> None:
         """Which stored revision this automaton's own files are read at.
         Everything that reads one — a source with an `avance:` url,
-        attachment.read, a turn's own attachments — goes through
+        attachment.<doc_id>.read(), a turn's own attachments — goes through
         tracking.project_files.ProjectFiles, and this is what tells it
         where to look when the automaton points at a database rather than
         carrying its files (see archives_dir above)."""

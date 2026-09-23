@@ -609,7 +609,7 @@ detected). Implements every `select_rows_*` read, `value`, `column`,
 `select_subtable` and `row_where` — nothing writes. Every read goes straight to the project's
 own stored file, at the conversation's own pinned revision — the same
 content for every session, no per-session copy of anything. A
-whole-file read is `attachment.read(name)`'s job (`on-exit`/`task` only), not a
+whole-file read is `attachment.<doc_id>.read()`'s job (`on-exit`/`task` only), not a
 `source.*` capability.
 
 **`websearch:user` — the last web search this user ran.** The same reads
@@ -913,30 +913,38 @@ span several lines, and a `#` comment just works). Each line is
 
 Unlike `task` (§5.4), no `task.<name>(...)` calls: `task:`'s own
 `task.<name>(...)` calls stay off-limits, that remains `task`'s own
-job. `attachment.read(name)` (§5.2, data sources) is available in either shape, under
-the same build-time checks — a string-literal name, an existing text
-file, under the size limit — so an action can store a file in an env
-key or show one, e.g. `chat.show(attachment.read('rules.md'))`.
+job. `attachment.<doc_id>.read()` (§5.2, data sources) is available in
+either shape: one attribute per file directly under this project's own
+`behaviour/` folder, returning that file whole, as text — so an action
+can store a file in an env key or show one, e.g.
+`chat.show(attachment.rules.read())`.
 
-`attachment.render(name)` is `attachment.read(name)` for a template: every
+`doc_id` is the file's name without its extension, lowercased, with
+every character that can't be part of a Python identifier turned into
+`_`: `Template informe.txt` is `attachment.template_informe`. A name that
+still isn't an identifier after that — it starts with a digit, or is a
+Python keyword — is not reachable this way, only by name in the file
+explorer. The build refuses a reference to a file that isn't there, that
+isn't text, that is over the size limit, or whose `doc_id` two files
+share.
+
+`attachment.<doc_id>.render()` is `read()` for a template: every
 `{{ expression }}` in the file is replaced by that expression's value,
 evaluated where the script runs — the same names a line of the script
 could read, its own earlier locals included — and everything outside
 `{{ }}` stays exactly as written, so `%`, single braces and underscores in
 the Markdown need no escaping. A file holding
 `Hola {{ user.name }}, paciente {{ env.paciente }}` is shown with
-`chat.show(attachment.render('informe.md'))`. On top of `attachment.read`'s
-own build-time checks, every expression in the file is checked when the
-project is built, like any other expression in the script.
+`chat.show(attachment.informe.render())`. Every expression in the file is
+checked when the project is built, like any other expression in the
+script.
 
 `media.<doc_id>.url()` is available the same way, on-exit only — one
 attribute per file uploaded under this project's own `media/` folder,
-`doc_id` its basename without extension (a file whose basename doesn't
-parse as a Python identifier isn't reachable this way, only by name in
-the file explorer). Unlike `attachment.read`, it never reads the file's
-own bytes — it returns the same download url the frontend already
-fetches every other project file's content from, for `chat.show_media`
-(above) to hand to the browser, e.g.
+`doc_id` derived from its name exactly as `attachment`'s is. Unlike
+`attachment`, it never reads the file's own bytes — it returns the same
+download url the frontend already fetches every other project file's
+content from, for `chat.show_media` (above) to hand to the browser, e.g.
 `chat.show_media(media.report.url())`.
 
 ```yaml

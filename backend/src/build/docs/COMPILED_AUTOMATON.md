@@ -247,7 +247,7 @@ forced for debugging and a forgotten `apps-dir` cannot quietly take over.
 
 Both ways a project reads its own files went to the database at the
 automaton's pinned revision — `AvanceArchiveSource` for `source.*`,
-`AttachmentNamespace` for `attachment.read` — which is the one thing a
+`AttachmentNamespace` for `attachment.<doc_id>.read()` — which is the one thing a
 compiled automaton cannot do: it has no storage location.
 
 Both now ask a `ProjectFiles` (`tracking/project_files.py`) the same two
@@ -274,7 +274,7 @@ whatever database it is handed. `SourceNamespace.__init__` and
 Nothing about the URL, the project YAML or the design view changes: a
 compiled project answers
 `source.tickets_sold.value('julien.fernandez@hotmail.com', key='codice_volo')`
-with `VY6008`, and `attachment.read('tickets.csv')` with the file, with
+with `VY6008`, and `attachment.tickets.read()` with the file, with
 no database at all.
 
 ## The automaton no longer carries its project's files
@@ -441,7 +441,7 @@ Done:
   earlier attempt embedded every declared source as a project-level
   attachment and rewrote the states' own `ai-may-*-sources`; it was
   rolled back, because a source's bounded `select_rows_*` and a
-  whole-file `attachment.read` are not the same value, and `attachment`
+  whole-file `attachment.<doc_id>.read()` are not the same value, and `attachment`
   is excluded from the trigger and on-exit scopes anyway.)
 - the automaton carrying no project file at all
 
