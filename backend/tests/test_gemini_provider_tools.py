@@ -13,6 +13,7 @@ from google.genai import types
 
 from ai.ai_service import AiService
 from ai.llm_provider import SystemPrompt, ToolCall, ToolCallsRequested
+from ai.response_schema import StringField
 from provider_tools_helpers import (
     SELECT_SPEC, FakeToolSet, GeminiCandidate, GeminiChunk, GeminiContent, GeminiFunctionCall, GeminiHarness, GeminiPart,
     GeminiUsage, drain,
@@ -24,13 +25,13 @@ harness = GeminiHarness()
 async def _raise_tool_calls(responses, history=()) -> ToolCallsRequested:
     provider, _ = harness.provider([responses])
     with pytest.raises(ToolCallsRequested) as raised:
-        await drain(provider.generate_stream_with_schema("sys", list(history), {"text": "t"}, tools=[SELECT_SPEC]))
+        await drain(provider.generate_stream_with_schema("sys", list(history), {"text": StringField("t")}, tools=[SELECT_SPEC]))
     return raised.value
 
 
 async def test_a_plain_text_answer_still_streams_when_tools_are_offered_and_a_call_with_no_id_gets_one_generated():
     provider, _ = harness.provider([harness.text_response('{"text": "no lookup needed"}')])
-    assert await drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, tools=[SELECT_SPEC])) == '{"text": "no lookup needed"}'
+    assert await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}, tools=[SELECT_SPEC])) == "no lookup needed"
 
     requested = await _raise_tool_calls(harness.function_call_response("source_flights_select", {"value": "paris"}, call_id=None))
     assert requested.calls[0].id
@@ -52,7 +53,7 @@ async def test_build_contents_round_trips_the_neutral_history_grouping_a_rounds_
         {"role": "tool", "tool_call_id": "call_2", "content": "berlin row"},
     ]
 
-    await drain(provider.generate_stream_with_schema("sys", history, {"text": "t"}))
+    await drain(provider.generate_stream_with_schema("sys", history, {"text": StringField("t")}))
 
     contents = harness.calls(fake_client)[0]["contents"]
     assert len(contents) == 3
@@ -73,7 +74,7 @@ async def test_the_respond_fallback_is_declared_alongside_the_real_tools_and_for
     provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
     await drain(provider.generate_stream_with_schema(
-        "sys", [], {"text": "the reply", "env": "context"}, tools=[SELECT_SPEC],
+        "sys", [], {"text": StringField("the reply"), "env": StringField("context")}, tools=[SELECT_SPEC],
     ))
 
     call = harness.calls(fake_client)[0]
@@ -87,7 +88,7 @@ async def test_the_respond_fallback_is_parsed_exactly_like_a_schema_response():
     chunks = [
         chunk async for chunk in AiService(provider).generate_stream_with_metadata(
             "sys", [], on_metadata=lambda k, v: reported.__setitem__(k, v),
-            schema={"text": "the reply", "env": "context"}, tool_set=FakeToolSet([SELECT_SPEC], results=[]),
+            schema={"text": StringField("the reply"), "env": StringField("context")}, tool_set=FakeToolSet([SELECT_SPEC], results=[]),
         )
     ]
 
@@ -107,7 +108,7 @@ async def test_a_tool_calls_thought_signature_is_replayed_verbatim_through_the_h
     ])
     with pytest.raises(ToolCallsRequested) as raised:
         await drain(provider.generate_stream_with_schema(
-            "sys", [{"role": "user", "content": "hi"}], {"text": "t"}, tools=[SELECT_SPEC],
+            "sys", [{"role": "user", "content": "hi"}], {"text": StringField("t")}, tools=[SELECT_SPEC],
         ))
     requested = raised.value
     history = [
@@ -116,7 +117,7 @@ async def test_a_tool_calls_thought_signature_is_replayed_verbatim_through_the_h
         {"role": "tool", "tool_call_id": requested.calls[0].id, "content": "row"},
     ]
 
-    await drain(provider.generate_stream_with_schema("sys", history, {"text": "t"}, tools=[SELECT_SPEC]))
+    await drain(provider.generate_stream_with_schema("sys", history, {"text": StringField("t")}, tools=[SELECT_SPEC]))
 
     contents = harness.calls(fake_client)[1]["contents"]
     model_turn = contents[1]
@@ -156,8 +157,8 @@ async def test_a_signature_streamed_on_its_own_chunk_and_text_streamed_alongside
 async def test_system_prompt_is_sent_as_is_or_as_stable_then_volatile_concatenated():
     provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')] * 2)
 
-    await drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}))
-    await drain(provider.generate_stream_with_schema(SystemPrompt(stable="stable part", volatile="volatile part"), [], {"text": "t"}))
+    await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}))
+    await drain(provider.generate_stream_with_schema(SystemPrompt(stable="stable part", volatile="volatile part"), [], {"text": StringField("t")}))
 
     plain, split = (call["config"].system_instruction for call in fake_client.aio.models.calls)
     assert plain == "sys"
@@ -168,7 +169,7 @@ async def test_cache_read_tokens_are_reported_kept_across_chunks_that_omit_them_
     async def _events(chunks) -> list[tuple[str, object]]:
         provider, _ = harness.provider([chunks])
         events: list[tuple[str, object]] = []
-        await drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, on_metadata=lambda k, v: events.append((k, v))))
+        await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}, on_metadata=lambda k, v: events.append((k, v))))
         return events
 
     reported = await _events([GeminiChunk(

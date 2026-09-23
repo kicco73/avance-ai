@@ -12,6 +12,7 @@ from google.genai import types
 from google.genai.errors import APIError
 
 from system.cascade import OnRetry
+from ai.response_schema import Field, ObjectField
 from system.logging_factory import LoggerFactory
 from ai.llm_provider import (
 	AIServiceConfig,
@@ -148,27 +149,12 @@ class GeminiProvider(LLMProvider):
 		for stale_loop in [loop for loop in self.__clients if loop.is_closed()]:
 			del self.__clients[stale_loop]
 
-	def build_schema(self, tags: dict[str, str]) -> dict:
-		properties: dict[str, dict] = {}
-		required: list[str] = []
-
-		for name, description in tags.items():
-			properties[name] = {
-				"type": "STRING",
-				"description": description,
-				"nullable": False,
-			}
-			required.append(name)
-
-		return {
-			"type": "OBJECT",
-			"properties": properties,
-			"required": required,
-		}
+	def build_schema(self, schema: dict[str, Field]) -> dict:
+		return self.__json_schema_to_gemini(ObjectField(schema).json_schema())
 
 	def __build_contents(self, history: list[dict[str, Any]]) -> list[types.Content]:
 		"""Two more provider-neutral message shapes beyond plain
-		{role, content} — see LLMProvider.generate_stream_with_schema's own
+		{role, content} — see LLMProvider.stream_json's own
 		docstring: an assistant turn that asked for tools (translated to a
 		"model" Content whose parts are its own text, if any, plus one
 		functionCall part per call) and a tool's own result (a "user"
@@ -244,6 +230,8 @@ class GeminiProvider(LLMProvider):
 
 	@classmethod
 	def __json_schema_to_gemini(cls, schema: dict) -> dict:
+		if "anyOf" in schema:
+			return cls.__nullable_to_gemini(schema)
 		converted: dict = {"type": str(schema.get("type", "string")).upper()}
 		if "description" in schema:
 			converted["description"] = schema["description"]
@@ -259,23 +247,23 @@ class GeminiProvider(LLMProvider):
 			converted["items"] = cls.__json_schema_to_gemini(schema["items"])
 		return converted
 
-	def __respond_tool_declaration(self, schema: dict[str, str]) -> types.FunctionDeclaration:
+	@classmethod
+	def __nullable_to_gemini(cls, schema: dict) -> dict:
+		inner = next(option for option in schema["anyOf"] if option.get("type") != "null")
+		described = {"description": schema["description"]} if "description" in schema else {}
+		return {**cls.__json_schema_to_gemini({**inner, **described}), "nullable": True}
+
+	def __respond_tool_declaration(self, schema: dict[str, Field]) -> types.FunctionDeclaration:
 		return types.FunctionDeclaration(
 			name=_RESPOND_TOOL_NAME,
 			description=(
 				"Call this with your final structured reply once you have everything you need — "
 				"its own arguments *are* the answer, one per field below."
 			),
-			parameters={
-				"type": "OBJECT",
-				"properties": {
-					name: {"type": "STRING", "description": description} for name, description in schema.items()
-				},
-				"required": list(schema.keys()),
-			},
+			parameters=self.build_schema(schema),
 		)
 
-	def __tool_declarations(self, tools: list[ToolSpec], schema: dict[str, str]) -> list[types.FunctionDeclaration]:
+	def __tool_declarations(self, tools: list[ToolSpec], schema: dict[str, Field]) -> list[types.FunctionDeclaration]:
 		return [
 			self.__respond_tool_declaration(schema),
 			*(
@@ -287,11 +275,11 @@ class GeminiProvider(LLMProvider):
 			),
 		]
 
-	async def generate_stream_with_schema(
+	async def stream_json(
 		self,
 		system_prompt: "str | SystemPrompt",
 		history: list[dict[str, Any]],
-		schema: dict[str, str] | None = None,
+		schema: dict[str, Field] | None = None,
 		on_metadata: MetadataCallback | None = None,
 		tools: list[ToolSpec] | None = None,
 		tool_round: int = 1,

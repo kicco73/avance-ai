@@ -5,6 +5,7 @@ import pytest
 from openai import APIConnectionError, APIStatusError
 
 from ai.llm_provider import AIServiceProviderPermanentError, AIServiceRequestError
+from ai.response_schema import StringField
 from provider_tools_helpers import OpenAIHarness
 
 harness = OpenAIHarness()
@@ -25,7 +26,7 @@ async def test_connection_refused_cascades_instead_of_getting_stuck() -> None:
     provider, _ = harness.provider([], errors=[connection_error])
 
     with pytest.raises(AIServiceProviderPermanentError):
-        async for _ in provider.generate_stream_with_schema("system prompt", []):
+        async for _ in provider.generate_stream_with_schema("system prompt", [], {"text": StringField("t")}):
             pass
 
 
@@ -36,5 +37,5 @@ async def test_bad_request_maps_to_request_error_not_permanent() -> None:
     provider, _ = harness.provider([], errors=[status_error])
 
     with pytest.raises(AIServiceRequestError):
-        async for _ in provider.generate_stream_with_schema("system prompt", []):
+        async for _ in provider.generate_stream_with_schema("system prompt", [], {"text": StringField("t")}):
             pass

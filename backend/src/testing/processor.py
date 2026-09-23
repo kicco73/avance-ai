@@ -15,6 +15,7 @@ from tracking.session_facts import SessionFacts
 from tracking.tracking_engine import TestObservationSink, TrackingEngine
 from testing.metrics_provider import TestMetricsProvider
 from testing.replay_messages import next_assistant_message_id
+from turn.turn_transaction import RowHandle
 
 
 class TestSignalSource(Protocol):
@@ -108,7 +109,7 @@ class TestProcessor(object):
             self._env.update_action_set(output_for_env, origin="output")
         self._tracking_engine.apply_transition(
             self._automaton, state, action, signal_values, ChoiceSelection.NONE, session_id,
-            message_id=observation_message_id,
+            message_id=RowHandle(observation_message_id),
             origin='trigger',
             output_values=output_values,
         )

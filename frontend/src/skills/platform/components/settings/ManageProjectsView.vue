@@ -103,6 +103,16 @@ async function load() {
   }
 }
 
+async function loadProject(id) {
+  if (!rows.value.some((row) => row.id === id)) return load()
+  try {
+    rows.value = (await getProjectsRuntimeStatus()).projects
+  } catch {
+  }
+  loadMetadata([id])
+  loadIcons([id])
+}
+
 function projectTitle(id) {
   return metadataById.value[id]?.ui_label || id
 }
@@ -208,7 +218,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(onProjectsChanged(load))
-onBeforeUnmount(onProjectChanged(load))
+onBeforeUnmount(onProjectChanged(loadProject))
 
 onBeforeUnmount(() => {
   restoreCanvasColor(previousCanvasColor)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from testing.processor import TestProcessor
+from turn.turn_transaction import row_id
 
 pytestmark = pytest.mark.contract
 
@@ -34,7 +35,7 @@ class _FakeTrackingEngine:
         self, automaton, state, action, signal_values, selection, session_id, message_id=None, origin=None,
         output_values=None,
     ):
-        self.apply_transition_message_ids.append(message_id)
+        self.apply_transition_message_ids.append(row_id(message_id))
         self.apply_transition_origins.append(origin)
 
 

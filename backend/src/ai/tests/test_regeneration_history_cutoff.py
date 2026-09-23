@@ -62,7 +62,7 @@ class RecordingAiService:
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         self.histories.append(history)
         if len(self.histories) == 1:
-            on_metadata("signals", '{"mood": 80}')
+            on_metadata("signals", {"mood": 80.0})
             yield "draft "
         else:
             yield "final "

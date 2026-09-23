@@ -14,6 +14,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from auth.auth_middleware import AuthMiddleware
+from config import REPLY_SILENCE_SECONDS
 from automaton.project_services import ProjectServices
 from system import bus
 from system.audio_format import PcmWavCodec
@@ -173,6 +174,7 @@ class _FakeTurns:
         self.terms_content: str = "Please accept to continue."
         self.accepted_terms_for: list[str] = []
         self.in_turn = False
+        self.reply_silence_seconds = REPLY_SILENCE_SECONDS
 
     async def enter_session(self, project_id, type):
         self.calls.append(("enter", project_id, type))
@@ -213,7 +215,7 @@ class _FakeTurns:
             POINT_SPOKEN_REPLY, SpokenReply(services=ProjectServices({}), session_id=session_id),
         ).asked
 
-    async def process_turn(self, session_id, text, on_metadata=None, user_message_ids=None):
+    async def process_turn(self, session_id, text, on_metadata=None, user_messages=None):
         self.calls.append(("turn", session_id, text))
         self.in_turn = True
         try:

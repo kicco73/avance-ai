@@ -10,6 +10,7 @@ import pytest
 
 from ai.ai_service import AiService
 from ai.llm_provider import SystemPrompt, ToolCall, ToolCallsRequested
+from ai.response_schema import StringField
 from db.models import AiUsage
 from provider_tools_helpers import (
     SELECT_SPEC, AnthropicFinalMessage, AnthropicHarness, AnthropicTextBlock, AnthropicToolUseBlock, AnthropicUsage,
@@ -22,7 +23,7 @@ harness = AnthropicHarness()
 async def _raise_tool_calls(final: AnthropicFinalMessage) -> ToolCallsRequested:
     provider, _ = harness.provider([([], final)])
     with pytest.raises(ToolCallsRequested) as exc_info:
-        async for _ in provider.generate_stream_with_schema("sys", [], {"text": "t"}, tools=[SELECT_SPEC]):
+        async for _ in provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}, tools=[SELECT_SPEC]):
             pass
     return exc_info.value
 
@@ -53,7 +54,7 @@ async def test_build_messages_round_trips_the_neutral_tool_history_shapes_omitti
         {"role": "assistant", "tool_calls": [ToolCall(id="call_2", name="source_flights_read", arguments={})], "content": None},
     ]
 
-    await drain(provider.generate_stream_with_schema("sys", history, {"text": "t"}))
+    await drain(provider.generate_stream_with_schema("sys", history, {"text": StringField("t")}))
 
     assert harness.calls(fake_client)[0]["messages"] == [
         {"role": "user", "content": "where's my flight?"},
@@ -92,7 +93,7 @@ async def test_the_token_usage_tap_never_pairs_a_round_s_input_with_a_stale_outp
     tool_set = FakeToolSet([SELECT_SPEC], results=["paris row", "berlin row"])
 
     async for _ in ai_service.generate_stream_with_metadata(
-        "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")}, tool_set=tool_set,
     ):
         pass
 
@@ -103,9 +104,9 @@ async def test_the_token_usage_tap_never_pairs_a_round_s_input_with_a_stale_outp
 async def test_system_prompt_gets_one_cached_block_plus_an_uncached_volatile_tail_when_present():
     provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')] * 3)
 
-    await drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}))
-    await drain(provider.generate_stream_with_schema(SystemPrompt(stable="sys"), [], {"text": "t"}))
-    await drain(provider.generate_stream_with_schema(SystemPrompt(stable="stable part", volatile="volatile part"), [], {"text": "t"}))
+    await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}))
+    await drain(provider.generate_stream_with_schema(SystemPrompt(stable="sys"), [], {"text": StringField("t")}))
+    await drain(provider.generate_stream_with_schema(SystemPrompt(stable="stable part", volatile="volatile part"), [], {"text": StringField("t")}))
 
     plain, stable_only, with_volatile = (call["system"] for call in fake_client.messages.calls)
     assert plain == [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}]
@@ -121,7 +122,7 @@ async def test_cache_read_and_creation_tokens_are_normalized_into_the_input_tota
     provider, _ = harness.provider([(['{"text": "hi"}'], AnthropicFinalMessage("end_turn", usage=usage))])
     events: list[tuple[str, object]] = []
 
-    await drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, on_metadata=lambda k, v: events.append((k, v))))
+    await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}, on_metadata=lambda k, v: events.append((k, v))))
 
     assert ("cache_read_tokens", 100) in events
     assert ("cache_creation_tokens", 20) in events
@@ -132,7 +133,7 @@ async def test_cache_read_and_creation_tokens_are_normalized_into_the_input_tota
     provider, _ = harness.provider([(['{"text": "hi"}'], AnthropicFinalMessage("end_turn", usage=AnthropicUsage(input_tokens=10, output_tokens=5)))])
     events = []
 
-    await drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, on_metadata=lambda k, v: events.append((k, v))))
+    await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}, on_metadata=lambda k, v: events.append((k, v))))
 
     assert ("cache_read_tokens", 0) in events
     assert ("cache_creation_tokens", 0) in events
@@ -144,7 +145,7 @@ async def test_a_row_is_recorded_with_the_normalized_input_total_and_both_cache_
     provider, _ = harness.provider([(['{"text": "hi"}'], AnthropicFinalMessage("end_turn", usage=usage))])
     ai_service = AiService(provider, db=db)
 
-    async for _ in ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}):
+    async for _ in ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")}):
         pass
 
     row = AiUsage.get()

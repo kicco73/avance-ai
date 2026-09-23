@@ -45,7 +45,7 @@ def test_timeline_excludes_signal_rows_but_still_includes_the_initial_state(clie
     assert response.status_code == 200
     body = response.json()
     assert body["signals"] == []
-    assert [t["new_state"] for t in body["transitions"]] == ["Hello"]
+    assert [t["new_state"] for t in body["transitions"]] == ["Hello", "Hello"]
 
 
 def test_timeline_includes_state_transitions(client, app_db, hello_project):

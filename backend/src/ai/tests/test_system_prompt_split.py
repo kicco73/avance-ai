@@ -43,7 +43,7 @@ class _CapturingAiService:
 
 def _prompt(memory_text: str) -> Prompt:
     return Prompt.chain(
-        SignalsPrompt(SIGNAL_DEFINITION), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv(memory_text)),
+        SignalsPrompt(SIGNAL_DEFINITION, ["mood"]), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv(memory_text)),
     )
 
 

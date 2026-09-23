@@ -1,15 +1,17 @@
 import { computed, nextTick, ref } from 'vue'
-import { getProjectFiles, putProjectFile, putProjectFileBinary, deleteProjectFile, renameProjectFile, postAddLegalTerms } from './api.js'
+import { putProjectFile, putProjectFileBinary, deleteProjectFile, renameProjectFile, postAddLegalTerms } from './api.js'
 import { setApiError, clearApiError } from '../../errorStore.js'
 import { confirmDialog, promptDialog, chooseDialog } from '../../dialogStore.js'
 import { findActionLine, findAttachmentLine, findEnvKeyLine, findInitActionLine, findSignalLine, findStateLine } from '../../indexYmlLineFinder.js'
 import { ensureProjectFileTypes, projectFileTypes } from '../../projectFileTypes.js'
+import { projectFiles, refreshProjectFiles } from './projectFiles.js'
 
 const LEGAL_TERMS_FILE_NAME = 'legal/terms.md'
 
 export function useProjectFiles(projectId, emit) {
   const filesLoading = ref(true)
-  const files = ref([])
+  const files = projectFiles
+  files.value = []
   const currentFileName = ref('index.yml')
 
   const uploading = ref(false)
@@ -52,7 +54,7 @@ export function useProjectFiles(projectId, emit) {
     filesLoading.value = true
     try {
       await ensureProjectFileTypes()
-      files.value = (await getProjectFiles(projectId)).files
+      await refreshProjectFiles(projectId)
     } catch {
     } finally {
       filesLoading.value = false
@@ -326,7 +328,6 @@ export function useProjectFiles(projectId, emit) {
     clearApiError()
     try {
       const result = await renameProjectFile(projectId, fileName, trimmed)
-      await loadFiles()
       if (fileName === currentFileName.value) {
         switchFile(result.new_name)
       } else {

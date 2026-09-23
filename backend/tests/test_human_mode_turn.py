@@ -50,12 +50,15 @@ class _FakeHumanTalker(BaseTalker):
     """Stands in for talker.human_talker.HumanTalker: same one-chunk-then-
     the-whole-reply shape, without a real BusHumanRelay/websocket."""
 
-    def __init__(self, reply_text: str, *, delay: "asyncio.Event | None" = None) -> None:
+    def __init__(self, reply_text: str, *, delay: "asyncio.Event | None" = None, entered: "asyncio.Event | None" = None) -> None:
         self._reply_text = reply_text
         self._delay = delay
+        self._entered = entered
 
     async def chat(self, channels, chat_history, on_metadata, tool_set=None, force_required_tools=False, env_block=None):
         yield ""
+        if self._entered is not None:
+            self._entered.set()
         if self._delay is not None:
             await self._delay.wait()
         yield self._reply_text
@@ -81,10 +84,10 @@ def turn_service_for(tmp_path):
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
 
-    def make(automaton, *, reply_text: str = "sure, let me check", delay_first=None):
+    def make(automaton, *, reply_text: str = "sure, let me check", delay_first=None, first_entered=None):
         automaton.set_storage_location(db.get_project_revision(PROJECT_ID))
         ai_service = AiService(_FakeProvider())
-        project_service = FakeProjectService(automaton)
+        project_service = FakeProjectService(automaton, db=db)
         metric_service = MetricService(db, project_service)
         scheduler_service = make_test_scheduler_service(db)
         namespace_factory = make_test_namespace_factory(db, scheduler_service)
@@ -94,7 +97,9 @@ def turn_service_for(tmp_path):
         def build_talker(username, session_id, session_type, project_id):
             calls["count"] += 1
             is_first = calls["count"] == 1
-            return _FakeHumanTalker(reply_text, delay=delay_first if is_first else None)
+            return _FakeHumanTalker(
+                reply_text, delay=delay_first if is_first else None, entered=first_entered if is_first else None,
+            )
 
         tracking_service.set_human_talker_factory(build_talker)
         service = TurnService(
@@ -106,6 +111,13 @@ def turn_service_for(tmp_path):
 
     make.db = db
     return make
+
+
+async def _wait_for(predicate, timeout: float = 5.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not predicate():
+        assert asyncio.get_running_loop().time() < deadline, "condition never held"
+        await asyncio.sleep(0.005)
 
 
 async def _run_turn(turn_service: TurnService, db, session_id: int, turn_id: str, text: str) -> list[tuple[str, dict]]:
@@ -134,37 +146,36 @@ async def test_a_second_message_waits_for_the_operator_rather_than_being_answere
     fixed the moment it arrives — and taken into the next answer (see
     turn/input_listener.py's own coalescing). Human mode is no exception:
     one person writing one reply answers what arrived while they wrote."""
-    started = asyncio.Event()
+    entered = asyncio.Event()
     finish = asyncio.Event()
     turn_service, namespace_factory = turn_service_for(
-        one_state_automaton(with_sources=False, autotracking_on_ai_message=True), delay_first=finish,
+        one_state_automaton(with_sources=False, autotracking_on_ai_message=True),
+        delay_first=finish, first_entered=entered,
     )
+    db = turn_service_for.db
     session = await turn_service.enter_session(PROJECT_ID, 'live')
-    namespace_factory.set_human_operator(session["id"], OPERATOR)
+    session_id = session["id"]
+    namespace_factory.set_human_operator(session_id, OPERATOR)
 
-    async def first_turn():
-        started.set()
-        return await _run_turn(turn_service, turn_service_for.db, session["id"], "turn-1", "first message")
-
-    task = asyncio.create_task(first_turn())
-    await started.wait()
-    await asyncio.sleep(0)
-
+    first = asyncio.create_task(_run_turn(turn_service, db, session_id, "turn-1", "first message"))
+    await asyncio.wait_for(entered.wait(), timeout=5)
     second = asyncio.create_task(_run_turn(
-        turn_service, turn_service_for.db, session["id"], "turn-2",
-        "second message, sent before the first is answered",
+        turn_service, db, session_id, "turn-2", "second message, sent before the first is answered",
     ))
-    await asyncio.sleep(0)
-    assert [m["content"] for m in turn_service_for.db.get_messages(session["id"]) if m["role"] == "user"] == [
+    await _wait_for(lambda: len([m for m in turn_service.read_history(session_id) if m["role"] == "user"]) == 2)
+
+    assert [m["content"] for m in turn_service.read_history(session_id)] == [
         "first message", "second message, sent before the first is answered",
     ]
-    assert not second.done()
+    assert not [m for m in db.get_messages(session_id) if m["role"] == "assistant"]
 
     finish.set()
-    first_events = await asyncio.wait_for(task, timeout=1.0)
-    second_events = await asyncio.wait_for(second, timeout=1.0)
-    assert [event for event, _ in first_events][-1] == "output.text"
-    assert [event for event, _ in second_events][-1] == "output.text"
+    await asyncio.wait_for(asyncio.gather(first, second), timeout=5)
+    await _wait_for(lambda: len([m for m in db.get_messages(session_id) if m["role"] == "assistant"]) == 2)
+    assert [(m["role"], m["content"]) for m in db.get_messages(session_id)] == [
+        ("user", "first message"), ("assistant", "sure, let me check"),
+        ("user", "second message, sent before the first is answered"), ("assistant", "sure, let me check"),
+    ]
 
 
 async def test_a_human_mode_session_never_auto_generates_an_opening_message(turn_service_for):

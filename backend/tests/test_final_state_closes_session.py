@@ -77,7 +77,7 @@ def _greeted(ws, project_id: str) -> int:
     flight. Returns the session's id."""
     ws.send_json({"type": "session.enter", "project_id": project_id, "session_type": "live"})
     frames: list[dict] = []
-    while frames[-1:] == [] or frames[-1]["type"] != "output.text":
+    while frames[-1:] == [] or frames[-1]["type"] != "state.buttons" or "output.text" not in [f["type"] for f in frames]:
         frames.append(ws.receive_json())
     return session_of(frames)
 

@@ -41,7 +41,7 @@ def _memory_channel() -> MemoryPrompt:
 
 
 def _signals_channel() -> SignalsPrompt:
-	return SignalsPrompt(None)
+	return SignalsPrompt(None, ["mood", "engagement"])
 
 
 def test_memory_decode_reads_forgiving_key_value_lines_ignoring_bullets_blanks_noise_and_empty_content():
@@ -83,9 +83,9 @@ def test_memory_batch_decode_raises_on_the_spot_for_anything_that_is_not_a_compl
 		assert mentions in str(excinfo.value)
 
 
-def test_signals_decode_reads_a_flat_json_object_or_an_empty_dict_for_empty_content():
-	assert _signals_channel().decode('{"mood": 50.2, "engagement": 70}') == {"mood": 50.2, "engagement": 70}
-	assert _signals_channel().decode("") == {}
+def test_signals_decode_reads_the_signals_object_or_an_empty_dict_for_empty_content():
+	assert _signals_channel().decode({"mood": 50.2, "engagement": 70.0}) == {"mood": 50.2, "engagement": 70.0}
+	assert _signals_channel().decode({}) == {}
 	assert _signals_channel().decode(None) == {}
 
 
@@ -122,7 +122,7 @@ def test_the_final_prompt_renders_stored_env_values_only_and_the_given_signal_de
 	db.set_env(session_id, {"favorite_color": "blue"})
 	env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id)
 	composed = Prompt.chain(
-		SignalsPrompt('- Definition of signals:\n\t- Signal "mood":\nmood definition'),
+		SignalsPrompt('- Definition of signals:\n\t- Signal "mood":\nmood definition', ["mood"]),
 		TextPrompt("base prompt"), MemoryPrompt(env),
 	)
 

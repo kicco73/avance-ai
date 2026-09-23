@@ -7,6 +7,7 @@ import pytest
 from ai import AiService
 from ai._providers.cascading_llm_provider import AutoLiveLLMProvider
 from ai.llm_provider import AIServiceProviderRateLimitedError
+from ai.response_schema import Field, StringField
 
 pytestmark = pytest.mark.contract
 
@@ -20,8 +21,8 @@ class _FakeProvider:
         self._tokens = tokens
         self._chunks: list[str] = []
 
-    async def generate_stream_with_schema(
-        self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata=None,
+    async def stream_json(
+        self, system_prompt: str, history: list[dict], schema: dict[str, Field], on_metadata=None,
     ) -> AsyncIterator[str]:
         for chunk in self._chunks:
             yield chunk
@@ -41,7 +42,7 @@ class TestAutoLiveLLMProviderGetTotalTokens:
         cascade = AutoLiveLLMProvider([("a", _FakeProvider(10)), ("b", _FakeProvider(5))])
 
         with pytest.raises(AIServiceProviderRateLimitedError):
-            async for _ in cascade.generate_stream_with_schema("sys", [], {"text": "t"}):
+            async for _ in cascade.generate_stream_with_schema("sys", [], {"text": StringField("t")}):
                 pass
 
         assert cascade.current_index == 1

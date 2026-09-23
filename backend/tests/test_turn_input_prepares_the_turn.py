@@ -20,6 +20,7 @@ import asyncio
 
 import pytest
 
+from ai.llm_provider import LLMProvider
 from automaton.automaton import Action, Automaton, State
 from system import bus
 from system.bus import INPUT_TEXT, Message
@@ -32,8 +33,8 @@ pytestmark = pytest.mark.regression
 _WRAP_UP = "Your flight is on time."
 
 
-class _FakeProvider:
-    async def generate_stream_with_schema(
+class _FakeProvider(LLMProvider):
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ):
         yield '{"text": "%s"}' % _WRAP_UP
@@ -112,5 +113,5 @@ async def test_an_ordinary_turn_prepares_nothing_and_leaves_reply_to_the_turn(tu
 
     frames = await _frames_of(turn_service, turn_service_for.db, "hello")
 
-    assert frames[-1].type == "output.text"
+    assert [f.type for f in frames][-2:] == ["output.text", "state.buttons"]
     assert [f.body["text"] for f in frames if f.type == "output.text"] == [_WRAP_UP]

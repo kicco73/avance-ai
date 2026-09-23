@@ -8,7 +8,8 @@ from __future__ import annotations
 import logging
 
 from ai.ai_service import AiService
-from ai.llm_provider import ToolCall, ToolCallsRequested, ToolSpec
+from ai.llm_provider import LLMProvider, ToolCall, ToolCallsRequested, ToolSpec
+from ai.response_schema import StringField
 
 _SELECT_SPEC = ToolSpec(
     name="source_flights_select",
@@ -45,14 +46,15 @@ class _FakeToolSet:
         return "city,country\nParis,France\n"
 
 
-class _FakeProvider:
+class _FakeProvider(LLMProvider):
     """One tool-call round, then a final answer — just enough for
     AiService's own loop to log both a per-call line and the end-of-turn summary."""
 
     def __init__(self) -> None:
+        super().__init__()
         self._round = 0
 
-    async def generate_stream_with_schema(self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None):
+    async def stream_json(self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None):
         self._round += 1
         if on_metadata is not None:
             on_metadata("input_tokens", 10 * self._round)
@@ -77,7 +79,7 @@ async def test_a_tool_call_is_logged_at_info(caplog):
 
     with caplog.at_level(logging.INFO, logger="ai.ai_service"):
         async for _ in ai_service.generate_stream_with_metadata(
-            "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+            "sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")}, tool_set=tool_set,
         ):
             pass
 
@@ -98,7 +100,7 @@ async def test_the_end_of_turn_summary_reports_rounds_and_summed_input_tokens(ca
 
     with caplog.at_level(logging.INFO, logger="ai.ai_service"):
         async for _ in ai_service.generate_stream_with_metadata(
-            "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+            "sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")}, tool_set=tool_set,
         ):
             pass
 

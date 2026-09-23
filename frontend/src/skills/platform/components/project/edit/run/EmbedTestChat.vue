@@ -14,7 +14,6 @@ import { useAppBoot } from '../../../../../../composables/useAppBoot.js'
 import { useViewStack } from '../../../../../../composables/useViewStack.js'
 import { testStore } from '../../../../testChatStore.js'
 import { transcriptOf } from './runTranscript.js'
-import { deleteSession } from '../../../../api.js'
 
 const props = defineProps({
   projectId: { type: String, required: true },
@@ -142,12 +141,6 @@ const expectedSessionId = ref(props.sessionId)
 let restartResolve = null
 
 async function restartSession() {
-  const oldSessionId = testStore.currentSessionId.value
-  if (oldSessionId != null) {
-    try {
-      await deleteSession(oldSessionId)
-    } catch {}
-  }
   const newSessionId = await new Promise((resolve) => {
     restartResolve = resolve
     testStore.handleNewSession()

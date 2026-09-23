@@ -5,7 +5,6 @@ translated text reaches the buttons a turn's caller gets back.
 """
 from __future__ import annotations
 
-import json
 import re
 
 import pytest
@@ -50,8 +49,8 @@ class UppercasingSchemaAiService:
 	):
 		translations = {name: text.upper() for name, text in _LABEL_RE.findall(system_prompt.stable)}
 		if translations:
-			on_metadata("translations", json.dumps(translations))
-			on_metadata("lang", json.dumps({"src": "en-US", "dst": "it-IT"}))
+			on_metadata("translations", translations)
+			on_metadata("lang", {"src": "en-US", "dst": "it-IT"})
 		yield "reply "
 
 
@@ -170,8 +169,8 @@ async def test_same_source_and_destination_language_writes_nothing_to_the_transl
 		):
 			translations = {name: text for name, text in _LABEL_RE.findall(system_prompt.stable)}
 			if translations:
-				on_metadata("translations", json.dumps(translations))
-				on_metadata("lang", json.dumps({"src": "en-US", "dst": "en-US"}))
+				on_metadata("translations", translations)
+				on_metadata("lang", {"src": "en-US", "dst": "en-US"})
 			yield "reply "
 
 	db = turn_service_for.db
@@ -186,14 +185,13 @@ async def test_same_source_and_destination_language_writes_nothing_to_the_transl
 
 
 @pytest.mark.parametrize("raw", [
-	'{"src": "en", "dst": "it"}',
-	'{"src": "en-US", "dst": "it"}',
-	"not json",
-	"",
-], ids=["bare-codes", "one-bare-code", "malformed", "empty"])
+	{"src": "en", "dst": "it"},
+	{"src": "en-US", "dst": "it"},
+	{},
+], ids=["bare-codes", "one-bare-code", "empty"])
 def test_lang_prompt_rejects_anything_not_a_full_locale_tag(raw):
 	assert LangPrompt().decode(raw) == ("", "")
 
 
 def test_lang_prompt_accepts_a_full_locale_tag_pair():
-	assert LangPrompt().decode('{"src": "en-US", "dst": "it-IT"}') == ("en-US", "it-IT")
+	assert LangPrompt().decode({"src": "en-US", "dst": "it-IT"}) == ("en-US", "it-IT")

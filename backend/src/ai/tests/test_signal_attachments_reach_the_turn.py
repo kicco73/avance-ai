@@ -116,7 +116,7 @@ class RecordingSchemaAiService:
         self.calls.append(dict(schema))
         self.histories.append(history)
         if len(self.calls) == 1:
-            on_metadata("signals", '{"mood": 80}')
+            on_metadata("signals", {"mood": 80.0})
             yield "draft "
         else:
             yield "final "

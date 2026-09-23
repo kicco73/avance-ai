@@ -375,7 +375,10 @@ and independent of `ai-may-read-sources`/`ai-must-read-sources` above
   discarded outright.
 - **`output`** — the model's own structured reply carries a separate
   `output` field, one value per name in this state's `output`; each name
-  is described to the model from its own env key's `ai-definition` (§5.3).
+  is described to the model from its own env key's `ai-definition` (§5.3)
+  and asked for in its own env key's `type` — a `string` is a string (a
+  Markdown text included), a `number` a number, a `bool` a boolean, or
+  null when this turn gives none, which leaves the key unset.
   Once the turn completes, every reported name that's actually in this
   state's `output` is copied onto the real env key — anything else the
   model reports under `output` is ignored. That copy lands *before* the

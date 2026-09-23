@@ -40,11 +40,8 @@ def _automaton_with_env(trigger_expr: str, action_env: dict | None, target: str 
 
 
 class FakeSchemaAiService:
-    """A v2 (schema)-shaped fake — reports `signals` straight through
-    on_metadata as a raw JSON string, independent of any tag-scanning."""
-
-    def __init__(self, signals_json: str) -> None:
-        self._signals_json = signals_json
+    def __init__(self, signals: dict) -> None:
+        self._signals = signals
 
     def get_models_info(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
@@ -56,12 +53,12 @@ class FakeSchemaAiService:
         return True
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema):
-        on_metadata("signals", self._signals_json)
+        on_metadata("signals", self._signals)
         yield "Hi!"
 
 
-async def _talking_in(turn_service_for, automaton: Automaton, signals_json: str = '{"mySignal": 1}'):
-    turn_service = turn_service_for(automaton, ai_service=FakeSchemaAiService(signals_json))
+async def _talking_in(turn_service_for, automaton: Automaton, signals: dict | None = None):
+    turn_service = turn_service_for(automaton, ai_service=FakeSchemaAiService(signals or {"mySignal": 1}))
     db = turn_service_for.db
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     session = await turn_service.enter_session(PROJECT_ID, 'live')
@@ -129,7 +126,7 @@ async def test_self_referencing_an_env_key_that_was_never_stored_yet_leaves_it_u
 async def test_env_can_reference_a_signal_value_from_this_same_turn(turn_service_for):
     turn_service, session_id = await _talking_in(
         turn_service_for, _automaton_with_env("signal.mySignal >= 1", {"last_signal": "signal.mySignal"}),
-        '{"mySignal": 7}',
+        {"mySignal": 7},
     )
 
     await turn_service.process_turn(session_id, "hello")

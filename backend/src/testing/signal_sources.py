@@ -69,9 +69,11 @@ class TurnByTurnSignalSource:
         protocol = kit.TurnProtocolUsingSchema(self._ai_service)
 
         chat_history = self._build_chat_history(message_id)
-        output_prompt = kit.OutputPrompt(None) if state.output else None
+        output_prompt = (
+            kit.OutputPrompt(None, kit.build_output_fields(self._automaton, state.output)) if state.output else None
+        )
         prompt = kit.Prompt.chain(
-            output_prompt, kit.SignalsPrompt(None), kit.MemoryPrompt(Env()), kit.TextPrompt(base_prompt),
+            output_prompt, kit.SignalsPrompt(None, signal_names), kit.MemoryPrompt(Env()), kit.TextPrompt(base_prompt),
         )
         signal_values: dict = {}
         stored_memory: dict = {}

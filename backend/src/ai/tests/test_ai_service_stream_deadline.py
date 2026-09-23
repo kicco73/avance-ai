@@ -26,6 +26,7 @@ import time
 import pytest
 
 from ai import AiService
+from ai.response_schema import StringField
 from ai.llm_provider import AIServiceProviderUnavailableError, LLMProvider, ToolCall, ToolCallsRequested, ToolSpec
 from ai.stream_deadline import StreamDeadline
 from provider_tools_helpers import FakeToolSet
@@ -42,7 +43,7 @@ class _Provider(LLMProvider):
 		self.torn_down = False
 		self.advanced = 0
 
-	async def generate_stream_with_schema(
+	async def stream_json(
 		self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
 	):
 		try:
@@ -66,7 +67,7 @@ class _SilentToolRoundProvider(_Provider):
 		self._silence = silence
 		self._round = 0
 
-	async def generate_stream_with_schema(
+	async def stream_json(
 		self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
 	):
 		self._round += 1
@@ -79,7 +80,7 @@ class _SilentToolRoundProvider(_Provider):
 async def _reply(service: AiService, tool_set=None) -> str:
 	text = ""
 	async for delta in service.generate_stream_with_metadata(
-		"sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+		"sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")}, tool_set=tool_set,
 	):
 		text += delta
 	return text
@@ -114,7 +115,7 @@ async def test_a_reply_that_goes_quiet_half_way_is_given_up_at_the_next_chunk_de
 	delivered = ""
 	with pytest.raises(AIServiceProviderUnavailableError, match="sent nothing for 0.1s"):
 		async for delta in service.generate_stream_with_metadata(
-			"sys", [], on_metadata=lambda k, v: None, schema={"text": "t"},
+			"sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")},
 		):
 			delivered += delta
 

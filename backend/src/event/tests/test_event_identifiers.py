@@ -124,3 +124,17 @@ def test_event_namespace_lists_every_other_same_family_project_never_the_active_
     assert f"event.{project_id}" not in body
     assert body[f"event.{other_id}"] == {"state": f"The '{other_id}' project's own current state."}
     assert body[f"event.{other_id}.env"] == {"budget": "Remaining shared budget."}
+
+
+def test_a_sibling_edited_between_two_reads_is_listed_as_it_now_reads(client):
+    other_id = _upload_and_activate(client, OTHER_PROJECT)
+    project_id = _upload_and_activate(client, PROJECT)
+    assert f"event.{other_id}" in client.get(f"/api/core/projects/{project_id}/identifiers").json()
+
+    edited = client.put(
+        f"/api/skills/platform/projects/{other_id}/files/index.yml",
+        content=OTHER_PROJECT.replace("family: shared", "family: elsewhere"),
+    )
+    assert edited.status_code == 200, edited.text
+
+    assert f"event.{other_id}" not in client.get(f"/api/core/projects/{project_id}/identifiers").json()

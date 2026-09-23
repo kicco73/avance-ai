@@ -7,9 +7,8 @@ import threading
 import time
 from collections import OrderedDict
 from http import HTTPStatus
-from typing import Any, AsyncIterator, Sequence, TYPE_CHECKING, overload
+from typing import Any, AsyncIterator, Iterator, Sequence, TYPE_CHECKING, overload
 
-import partial_json_parser
 from turn.errors import TurnServiceError
 from ai.llm_provider import (
 	AIServiceConfig,
@@ -25,6 +24,7 @@ from ai.llm_provider import (
 	ToolCallsRequested,
 	content_to_text,
 )
+from ai.response_schema import Field, StringField
 from ai._providers.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
 from ai.stream_deadline import StreamDeadline, StreamStalled
 from ai._providers import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
@@ -309,8 +309,8 @@ class AiService(object):
 	) -> str | dict[str, str]:
 		if not channels:
 			return await self.generate("", [{"role": "user", "content": prompt}], tool_set=tool_set)
-		schema = {"text": "Normal textual response, in markdown format, rendered as text."}
-		schema.update({name: f"The requested '{name}', rendered as plain text." for name in channels})
+		schema: dict[str, Field] = {"text": StringField("Normal textual response, in markdown format.")}
+		schema.update({name: StringField(f"The requested '{name}', as plain text.") for name in channels})
 		values: dict[str, str] = {}
 		chunks: list[str] = []
 		async for chunk in self.generate_stream_with_metadata(
@@ -331,7 +331,7 @@ class AiService(object):
 	) -> AsyncIterator[str]:
 		return self.generate_stream_with_metadata(
 			system_prompt, history, on_metadata=lambda name, value: None,
-			schema={"text": "Normal textual response, in markdown format, rendered as text."},
+			schema={"text": StringField("Normal textual response, in markdown format.")},
 			tool_set=tool_set,
 		)
 
@@ -401,20 +401,14 @@ class AiService(object):
 		system_prompt: "str | SystemPrompt",
 		history: list[dict[str, Any]],
 		on_metadata: MetadataCallback,
-		schema: dict[str, str],
+		schema: dict[str, Field],
 		tool_set: "ToolSet | None" = None,
 		force_required_tools: bool = False,
 	) -> AsyncIterator[str]:
-		"""With no tool_set, this is exactly the single call it always was
-		— same request, same live incremental parsing/yielding, byte for
-		byte (see _stream_final_answer, unchanged from before tools
-		existed). With one, the model may end a round asking for tools
-		instead of answering: that round's own text (the model rarely
-		produces any under a JSON-schema response, but nothing here
-		assumes it doesn't) is drained and discarded, never yielded here —
-		only the round that finally completes without a further
-		ToolCallsRequested streams outward, so the partial-JSON parser
-		below never has to reason about a tool-only interruption."""
+		"""With a tool_set, the model may end a round asking for tools
+		instead of answering: that round's text and fields are drained and
+		discarded, never yielded here — only the round that finally
+		completes without a further ToolCallsRequested reaches the caller."""
 		provider_label = self._current_provider_label
 		tapped_on_metadata = self._tap_usage(on_metadata, provider_label)
 
@@ -425,7 +419,7 @@ class AiService(object):
 				response_stream = self._deadline.streaming(self._active_provider.generate_stream_with_schema(
 					system_prompt, history, schema=schema, on_metadata=tapped_on_metadata,
 				), provider_label) # type: ignore
-				async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
+				async for chunk in self._text_of(response_stream, tapped_on_metadata, provider_label):
 					yield chunk
 				return
 			turn_history = list(history)
@@ -454,12 +448,14 @@ class AiService(object):
 					f"required_tools={[spec.name for spec in required_this_round] if required_this_round else []}"
 				)
 				tapped_on_metadata.round_started()
+				round_reply = _RoundReply(_tally_input_tokens)
 				response_stream = self._deadline.tool_round(self._active_provider.generate_stream_with_schema(
-					system_prompt, turn_history, schema=schema, on_metadata=_tally_input_tokens, tools=tool_specs,
+					system_prompt, turn_history, schema=schema, on_metadata=round_reply, tools=tool_specs,
 					tool_round=round_number, required_tools=required_this_round,
 				), provider_label) # type: ignore
 				try:
-					round_chunks = [chunk async for chunk in self._within_deadline(response_stream, tapped_on_metadata)]
+					async for chunk in self._within_deadline(response_stream, tapped_on_metadata):
+						round_reply.text(chunk)
 				except ToolCallsRequested as requested:
 					turn_history.append({
 						"role": "assistant", "tool_calls": requested.calls, "content": requested.assistant_content,
@@ -487,9 +483,7 @@ class AiService(object):
 					f"total_input_tokens={sum(input_tokens_by_round)} cache_read_tokens={sum(cache_read_tokens_by_round)} "
 					f"cache_creation_tokens={sum(cache_creation_tokens_by_round)}"
 				)
-				async for chunk in self._stream_final_answer(
-					self._as_async_iter(round_chunks), schema, tapped_on_metadata, provider_label,
-				):
+				for chunk in round_reply.replay():
 					yield chunk
 				return
 
@@ -501,16 +495,11 @@ class AiService(object):
 			response_stream = self._deadline.streaming(self._active_provider.generate_stream_with_schema(
 				system_prompt, turn_history, schema=schema, on_metadata=tapped_on_metadata,
 			), provider_label) # type: ignore
-			async for chunk in self._stream_final_answer(response_stream, schema, tapped_on_metadata, provider_label):
+			async for chunk in self._text_of(response_stream, tapped_on_metadata, provider_label):
 				yield chunk
 		except (AIServiceError, AIServiceProviderOutputTruncatedError) as exc:
 			tapped_on_metadata.record_failure(exc)
 			raise
-
-	@staticmethod
-	async def _as_async_iter(items: list[str]) -> AsyncIterator[str]:
-		for item in items:
-			yield item
 
 	async def _within_deadline(
 		self, stream: AsyncIterator[str], tap: "_UsageTap | _UntappedMetadata",
@@ -523,61 +512,13 @@ class AiService(object):
 			self._active_provider.advance()
 			raise
 
-	async def _stream_final_answer(
-		self,
-		response_stream: AsyncIterator[str],
-		schema: dict[str, str],
-		on_metadata: "_UsageTap | _UntappedMetadata",
-		provider_label: str,
+	async def _text_of(
+		self, response_stream: AsyncIterator[str], tap: "_UsageTap | _UntappedMetadata", provider_label: str,
 	) -> AsyncIterator[str]:
-		"""The model's own actual answer to `schema` — incremental
-		partial-JSON parsing exactly as generate_stream_with_metadata
-		always did it, before tool calls existed. `response_stream` is
-		either the live provider call directly (no tool_set) or an
-		already-fully-collected round's chunks replayed in order (a tool
-		turn's own final round) — this method has no way to tell the two
-		apart, and doesn't need to."""
-		accumulated_json = ""
-		emitted: set[str] = set()
-		last_text_length = 0
-
-		try:
-			async for chunk in self._within_deadline(response_stream, on_metadata):
-				accumulated_json += chunk
-				parsed = partial_json_parser.parse_json(accumulated_json)
-				if not isinstance(parsed, dict):
-					continue
-
-				if len(parsed):
-					emitting = set(parsed.keys()) - emitted
-					potentially_incomplete = next(reversed(parsed))
-					completed = emitting - {potentially_incomplete}
-
-					for name in completed:
-						if name != "text":
-							on_metadata(name, parsed[name])
-							emitted.add(name)
-
-				if "text" in parsed:
-					current_text = str(parsed["text"])
-
-					if len(current_text) > last_text_length:
-						delta = current_text[last_text_length:]
-						last_text_length = len(current_text)
-						yield delta
-		except AIServiceProviderOutputTruncatedError as exc:
-			logger.critical(f"{exc} -- discarding unterminated trailing field")
-			if "text" not in schema:
-				return
-			raise
-
-		logger.info(f"generate_stream_with_metadata: stream ended normally, provider={provider_label} accumulated_json_length={len(accumulated_json)}")
-		final_parsed = partial_json_parser.parse_json(accumulated_json)
-		if not isinstance(final_parsed, dict) or not final_parsed:
-			return
-		last_inserted = next(reversed(final_parsed))
-		if last_inserted != 'text' and last_inserted not in emitted:
-			on_metadata(last_inserted, final_parsed[last_inserted])
+		async for chunk in self._within_deadline(response_stream, tap):
+			if chunk:
+				yield chunk
+		logger.info(f"generate_stream_with_metadata: stream ended normally, provider={provider_label}")
 
 
 _OUTCOME_BY_ERROR: tuple[tuple[type[Exception], str], ...] = (
@@ -603,6 +544,48 @@ def _outcome_for(exc: Exception) -> str:
 		if isinstance(exc, error_type):
 			return outcome
 	return "error"
+
+
+_USAGE_KEYS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens")
+
+
+class _Emitted:
+	def __init__(self, name: str, value: Any) -> None:
+		self._name = name
+		self._value = value
+
+	def replay(self, on_metadata: MetadataCallback) -> str:
+		on_metadata(self._name, self._value)
+		return ""
+
+
+class _Text:
+	def __init__(self, chunk: str) -> None:
+		self._chunk = chunk
+
+	def replay(self, on_metadata: MetadataCallback) -> str:
+		return self._chunk
+
+
+class _RoundReply:
+	def __init__(self, on_metadata: MetadataCallback) -> None:
+		self._on_metadata = on_metadata
+		self._events: list[_Emitted | _Text] = []
+
+	def __call__(self, name: str, value: Any) -> None:
+		if name in _USAGE_KEYS:
+			self._on_metadata(name, value)
+			return
+		self._events.append(_Emitted(name, value))
+
+	def text(self, chunk: str) -> None:
+		self._events.append(_Text(chunk))
+
+	def replay(self) -> Iterator[str]:
+		for event in self._events:
+			chunk = event.replay(self._on_metadata)
+			if chunk:
+				yield chunk
 
 
 class _UntappedMetadata:
@@ -638,10 +621,7 @@ class _UsageTap:
 
 	def first_chunk_received(self) -> None:
 		"""Marks the first byte this round's stream ever produced — a no-op
-		past the first call, so replaying an already-collected round's
-		chunks through `_stream_final_answer` (see the tool-round loop in
-		generate_stream_with_metadata) doesn't overwrite the timing the
-		live pass already captured."""
+		past the first call."""
 		if self._first_chunk_at is None:
 			self._first_chunk_at = asyncio.get_running_loop().time()
 
@@ -662,7 +642,7 @@ class _UsageTap:
 		)
 
 	def __call__(self, name: str, value: Any) -> None:
-		if name in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"):
+		if name in _USAGE_KEYS:
 			self._captured[name] = value
 			if "input_tokens" in self._captured and "output_tokens" in self._captured:
 				self._db.record_ai_usage(

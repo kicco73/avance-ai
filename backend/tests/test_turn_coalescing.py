@@ -10,7 +10,8 @@ import asyncio
 
 import pytest
 
-from ai.llm_provider import content_to_text, is_text_fragments
+from ai.llm_provider import LLMProvider, content_to_text, is_text_fragments
+from ai.response_schema import StringField
 from provider_tools_helpers import AnthropicHarness, GeminiHarness, OpenAIHarness, drain
 from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # noqa: F401 — a pytest fixture, used by name
 
@@ -113,7 +114,7 @@ class TestProviderPayloads:
         harness = AnthropicHarness()
         provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
-        await drain(provider.generate_stream_with_schema("sys", FRAGMENTS, {"text": "t"}))
+        await drain(provider.generate_stream_with_schema("sys", FRAGMENTS, {"text": StringField("t")}))
 
         assert harness.calls(fake_client)[0]["messages"] == [{
             "role": "user",
@@ -127,7 +128,7 @@ class TestProviderPayloads:
         harness = OpenAIHarness()
         provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
-        await drain(provider.generate_stream_with_schema("sys", FRAGMENTS, {"text": "t"}))
+        await drain(provider.generate_stream_with_schema("sys", FRAGMENTS, {"text": StringField("t")}))
 
         assert harness.calls(fake_client)[0]["messages"][1:] == [{
             "role": "user",
@@ -141,7 +142,7 @@ class TestProviderPayloads:
         harness = OpenAIHarness()
         provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
-        await drain(provider.generate_stream_with_schema("sys", [{"role": "user", "content": "just one"}], {"text": "t"}))
+        await drain(provider.generate_stream_with_schema("sys", [{"role": "user", "content": "just one"}], {"text": StringField("t")}))
 
         assert harness.calls(fake_client)[0]["messages"][1:] == [{"role": "user", "content": "just one"}]
 
@@ -149,7 +150,7 @@ class TestProviderPayloads:
         harness = GeminiHarness()
         provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
-        await drain(provider.generate_stream_with_schema("sys", FRAGMENTS, {"text": "t"}))
+        await drain(provider.generate_stream_with_schema("sys", FRAGMENTS, {"text": StringField("t")}))
 
         contents = harness.calls(fake_client)[0]["contents"]
         assert len(contents) == 1
@@ -157,16 +158,17 @@ class TestProviderPayloads:
         assert [part.text for part in contents[0].parts] == ["I have a problem", "with VY3003"]
 
 
-class _GatedProvider:
+class _GatedProvider(LLMProvider):
     """Holds the first round until released, and records the history it
     was handed on every round — what the model actually saw."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.first_round_started = asyncio.Event()
         self.release = asyncio.Event()
         self.histories: list[list[dict]] = []
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ):
         self.histories.append([dict(m) for m in history])

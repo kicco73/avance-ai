@@ -59,7 +59,7 @@ def _protocol() -> TurnProtocolUsingSchema:
 
 async def _run():
     protocol = _protocol()
-    prompt = Prompt.chain(SignalsPrompt(SIGNAL_DEFINITION), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv()))
+    prompt = Prompt.chain(SignalsPrompt(SIGNAL_DEFINITION, ["mood"]), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv()))
     chunks: list[str] = []
     live_metadata: dict[str, object] = {}
 

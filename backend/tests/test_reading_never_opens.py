@@ -4,16 +4,18 @@ import asyncio
 
 import pytest
 
+from ai.llm_provider import LLMProvider
 from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # noqa: F401 — turn_service_for is a fixture
 
 pytestmark = pytest.mark.regression
 
 
-class _CountingProvider:
+class _CountingProvider(LLMProvider):
     def __init__(self) -> None:
+        super().__init__()
         self.answers = 0
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ):
         self.answers += 1

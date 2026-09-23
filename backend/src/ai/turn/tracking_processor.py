@@ -31,7 +31,7 @@ from .env_prompt_block import EnvPromptBlock
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from .prompt import (
 	AudioPrompt, LangPrompt, MemoryPrompt, OutputPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt,
-	TranslatePrompt, build_output_definition_for_names,
+	TranslatePrompt, build_output_definition_for_names, build_output_fields,
 )
 from .attachments import load_attachments
 from .priming import build_priming_messages
@@ -182,6 +182,7 @@ class TrackingProcessor(object):
 		return processors()[state.input_processor].reply_after_answer(self, state, on_metadata)
 
 	async def regenerate_reply(self, state: State, on_metadata: MetadataCallback) -> AsyncIterator[str]:
+		self._blank_output(state)
 		prompt, chat_history, env_block = self._build_base_prompt_and_history(state)
 		async for chunk in self.assistant_talker.chat(
 			prompt, chat_history, on_metadata=on_metadata,
@@ -276,6 +277,13 @@ class TrackingProcessor(object):
 
 		return self._build_turn_response(user_message, assistant_message)
 
+	def _blank_output(self, state: State) -> None:
+		self.metadata.output = {}
+		current = self.env.action_set()
+		blanked = {name: None for name in state.output if name not in state.input and name in current}
+		self.env.drop_action_set_keys(set(blanked))
+		self.out.env_changed.update(blanked)
+
 	def _apply_output_to_env(self, state: State) -> None:
 		output_for_env = {
 			name: value for name, value in self.metadata.output.items() if name in state.output
@@ -363,6 +371,7 @@ class TrackingProcessor(object):
 		return bool(self.metadata.signals) or bool(self.metadata.output) or self.out.action is not None
 
 	def generate_reply(self, state: State, on_metadata: MetadataCallback) -> AsyncIterator[str]:
+		self._blank_output(state)
 		base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(
 			self.user.automaton, state, self._evaluate_signals_for(state),
 		)
@@ -503,8 +512,11 @@ class TrackingProcessor(object):
 		)
 		reactions_enabled = self.user.automaton.reactions_enabled_for(self.user.state)
 
-		output = OutputPrompt(output_definition) if state.output else None
-		signals = SignalsPrompt(signal_definition) if self._evaluate_signals_for(state) else None
+		output = OutputPrompt(output_definition, build_output_fields(self.user.automaton, state.output)) if state.output else None
+		signals = (
+			SignalsPrompt(signal_definition, self.user.automaton.tracked_signal_names(state.key))
+			if self._evaluate_signals_for(state) else None
+		)
 		reaction = ReactionPrompt(reaction_definition) if reactions_enabled else None
 		audio = AudioPrompt() if talk_enabled else None
 		text = TextPrompt(base_prompt)
@@ -550,7 +562,7 @@ class TrackingProcessor(object):
 		call. `state` is also the one call site that actually knows the
 		post-transition state at prompt-build time — so this is where
 		button translation is genuinely correct after a transition."""
-		output = OutputPrompt(output_definition) if state.output else None
+		output = OutputPrompt(output_definition, build_output_fields(self.user.automaton, state.output)) if state.output else None
 		memory_store = self._memory_store_for(state)
 		memory = MemoryPrompt(memory_store) if memory_store is not None else None
 		prompt = Prompt.chain(AudioPrompt(), TextPrompt(base_prompt), output, memory)
@@ -705,8 +717,8 @@ def estimate_state_prompt(
 	turn_attachments = load_attachments(files, _turn_attachment_paths(automaton, state, True))
 	env = Env(action_set={key.name: ENV_TYPE_DEFAULTS[key.type] for key in automaton.env_keys})
 	has_to_evaluate_signals_before_ai_reply = not automaton.autotracking_on_ai_message
-	output_prompt = OutputPrompt(output_definition) if state.output else None
-	signals_prompt = SignalsPrompt(signal_definition)
+	output_prompt = OutputPrompt(output_definition, build_output_fields(automaton, state.output)) if state.output else None
+	signals_prompt = SignalsPrompt(signal_definition, automaton.tracked_signal_names(state.key))
 	reaction_prompt = ReactionPrompt(reaction_definition) if automaton.reactions_enabled_for(state) else None
 	audio_prompt = AudioPrompt() if _spoken_reply_possible(automaton.services) else None
 	text_prompt = TextPrompt(base_prompt)

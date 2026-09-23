@@ -75,7 +75,7 @@ class RecordingSchemaAiService:
         self.calls.append(dict(schema))
         self.prompts.append(system_prompt)
         if len(self.calls) == 1:
-            on_metadata("signals", '{"mood": 80}')
+            on_metadata("signals", {"mood": 80.0})
             yield "draft "
         else:
             yield "final "

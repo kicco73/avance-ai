@@ -117,7 +117,7 @@ def turn_service_for(db):
     db.publish_project(PROJECT_ID)
 
     def make(automaton: Automaton, *, ai_service=None) -> TurnService:
-        ai_service = ai_service or FakeSchemaAiService([{"signals": '{"foo": 1}'}])
+        ai_service = ai_service or FakeSchemaAiService([{"signals": {"foo": 1}}])
         project_service = FakeProjectService(automaton)
         metric_service = MetricService(db, project_service)
         scheduler_service = make_test_scheduler_service(db)
@@ -149,7 +149,7 @@ async def _opened_session(turn_service: TurnService) -> int:
 
 @pytest.mark.regression
 async def test_transition_from_optimistic_guess_links_the_causing_user_message(db, turn_service_for):
-    ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}, {"signals": '{"foo": 1}'}])
+    ai_service = FakeSchemaAiService([{"signals": {"foo": 1}}, {"signals": {"foo": 1}}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _opened_session(turn_service)
     ai_service.call_count = 0
@@ -166,7 +166,7 @@ async def test_transition_from_optimistic_guess_links_the_causing_user_message(d
 
 @pytest.mark.regression
 async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimistic_guess_is_right(db, turn_service_for):
-    ai_service = FakeSchemaAiService([{"signals": '{"foo": -1}'}])
+    ai_service = FakeSchemaAiService([{"signals": {"foo": -1}}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _opened_session(turn_service)
     ai_service.call_count = 0
@@ -273,7 +273,7 @@ async def test_set_message_expected_signals_rejects_an_out_of_range_value(db, tu
 
 @pytest.mark.regression
 async def test_opening_message_never_evaluates_signals_in_before_mode(db, turn_service_for):
-    ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}])
+    ai_service = FakeSchemaAiService([{"signals": {"foo": 1}}])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _opened_session(turn_service)
 
@@ -299,8 +299,8 @@ async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, turn_s
     row the regenerated reply reported.
     """
     ai_service = FakeSchemaAiService([
-        {"signals": '{"foo": -1}', "memory": "stage: opening"},
-        {"signals": '{"foo": 1}', "memory": "stage: guessed"},
+        {"signals": {"foo": -1}, "memory": "stage: opening"},
+        {"signals": {"foo": 1}, "memory": "stage: guessed"},
         {"memory": "stage: crisis"},
     ])
     turn_service = turn_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)

@@ -31,6 +31,7 @@ from ai.llm_provider import (
 	content_to_text,
 	is_text_fragments,
 )
+from ai.response_schema import Field, ObjectField
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -134,33 +135,15 @@ class AnthropicProvider(LLMProvider):
 					self._async_clients[loop] = client
 		return client
 
-	def build_schema(
-		self,
-		tags: dict[str, str],
-	) -> dict[str, Any]:
-		properties: dict[str, dict[str, Any]] = {}
-		required: list[str] = []
-
-		for name, description in tags.items():
-			properties[name] = {
-				"type": "string",
-				"description": description,
-			}
-			required.append(name)
-
-		return {
-			"type": "object",
-			"properties": properties,
-			"required": required,
-			"additionalProperties": False,
-		}
+	def build_schema(self, schema: dict[str, Field]) -> dict[str, Any]:
+		return ObjectField(schema).json_schema()
 
 	def __build_messages(
 		self,
 		history: list[dict[str, Any]],
 	) -> list[MessageParam]:
 		"""Two more provider-neutral message shapes beyond plain
-		{role, content} — see LLMProvider.generate_stream_with_schema's own
+		{role, content} — see LLMProvider.stream_json's own
 		docstring: an assistant turn that asked for tools (translated to
 		one text block, if it said anything, plus one tool_use block per
 		call), and a tool's own result (translated to a *user* message
@@ -272,7 +255,7 @@ class AnthropicProvider(LLMProvider):
 
 	def _build_output_config(
 		self,
-		schema: dict[str, str],
+		schema: dict[str, Field],
 	) -> Any:
 		response_schema: dict[str, Any] = self.build_schema(
 			schema
@@ -284,11 +267,11 @@ class AnthropicProvider(LLMProvider):
 			}
 		}
 
-	async def generate_stream_with_schema(
+	async def stream_json(
 		self,
 		system_prompt: "str | SystemPrompt",
 		history: list[dict[str, Any]],
-		schema: dict[str, str] | None = None,
+		schema: dict[str, Field] | None = None,
 		on_metadata: MetadataCallback | None = None,
 		tools: list[ToolSpec] | None = None,
 		tool_round: int = 1,

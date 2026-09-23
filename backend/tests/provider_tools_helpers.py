@@ -286,14 +286,17 @@ class OpenAIHarness:
             OpenAIChunk(choices=[_OpenAIChoice(_OpenAIDelta(), finish_reason=finish_reason)], usage=OpenAIUsage()),
         ]
 
-    def tool_call_response(self, call_id: str, name: str, args: dict) -> list[OpenAIChunk]:
-        arguments_json = json.dumps(args)
+    def tool_call_response(
+        self, call_id: str | None, name: str, args: dict, finish_reason: str = "tool_calls",
+        arguments_json: str | None = None,
+    ) -> list[OpenAIChunk]:
+        arguments_json = json.dumps(args) if arguments_json is None else arguments_json
         midpoint = len(arguments_json) // 2
         return [
             OpenAIChunk(choices=[_OpenAIChoice(_OpenAIDelta(tool_calls=[_OpenAIDeltaToolCall(0, id=call_id, name=name)]))]),
             OpenAIChunk(choices=[_OpenAIChoice(_OpenAIDelta(tool_calls=[_OpenAIDeltaToolCall(0, arguments=arguments_json[:midpoint])]))]),
             OpenAIChunk(choices=[_OpenAIChoice(_OpenAIDelta(tool_calls=[_OpenAIDeltaToolCall(0, arguments=arguments_json[midpoint:])]))]),
-            OpenAIChunk(choices=[_OpenAIChoice(_OpenAIDelta(), finish_reason="tool_calls")], usage=OpenAIUsage()),
+            OpenAIChunk(choices=[_OpenAIChoice(_OpenAIDelta(), finish_reason=finish_reason)], usage=OpenAIUsage()),
         ]
 
     def calls(self, fake_client) -> list[dict]:

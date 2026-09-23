@@ -9,6 +9,7 @@ import asyncio
 
 import pytest
 
+from ai.llm_provider import LLMProvider
 from automaton.automaton import Action, Automaton, State
 from automaton.model import Signal
 from system import bus
@@ -22,11 +23,11 @@ pytestmark = pytest.mark.regression
 MOOD = Signal(name="mood", ui_label="Mood", definition="how it is going")
 
 
-class _FakeProvider:
+class _FakeProvider(LLMProvider):
     """Answers with this turn's signal values alongside the text, the way
     an auto-tracking turn's own structured output carries them."""
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ):
         yield '{"signals": {"mood": 0.5}, "text": "noted."}'

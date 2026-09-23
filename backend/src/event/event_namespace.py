@@ -49,6 +49,9 @@ def watched_from(automaton: Automaton, state_key: str) -> set[str]:
 class EventNamespace(TriggerNamespace):
     name = NAME
 
+    def __init__(self) -> None:
+        self._declared: dict[str, tuple[str, _Declared | None]] = {}
+
     def check_action(self, state: State, action: Action, env_keys: dict[str, EnvKey]) -> None:
         if not action.trigger:
             return
@@ -82,12 +85,23 @@ class EventNamespace(TriggerNamespace):
         for other_id in db.list_projects():
             if other_id == automaton.project_id:
                 continue
-            declared = _declared_in(db.get_archive(other_id, "index.yml", revision=db.get_project_revision(other_id)))
+            declared = self._declared_by(db, other_id)
             if declared is None or declared.family != automaton.family:
                 continue
             registry[f"{NAME}.{other_id}"] = {"state": f"The '{other_id}' project's own current state."}
             registry[f"{NAME}.{other_id}.env"] = declared.env_descriptions
         return registry
+
+    def _declared_by(self, db, project_id: str) -> _Declared | None:
+        row = db.get_archive_row(project_id, "index.yml")
+        if row is None:
+            return None
+        known = self._declared.get(project_id)
+        if known is not None and known[0] == row.hash_id:
+            return known[1]
+        declared = _declared_in(row.content)
+        self._declared[project_id] = (row.hash_id, declared)
+        return declared
 
     @staticmethod
     def _core() -> dict:

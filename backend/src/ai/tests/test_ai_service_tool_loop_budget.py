@@ -21,7 +21,8 @@ from http import HTTPStatus
 import pytest
 
 from ai.ai_service import AiService
-from ai.llm_provider import ToolCall, ToolCallsRequested, ToolSpec
+from ai.llm_provider import LLMProvider, ToolCall, ToolCallsRequested, ToolSpec
+from ai.response_schema import StringField
 from turn.errors import TurnServiceError
 
 _SELECT_SPEC = ToolSpec(
@@ -63,15 +64,16 @@ class _FakeToolSet:
         return self._result
 
 
-class _TwoRoundProvider:
+class _TwoRoundProvider(LLMProvider):
     """Round 1 always asks for a tool call with `assistant_content`
     (None, or a provider-specific opaque dict); round 2 always answers."""
 
     def __init__(self, assistant_content) -> None:
+        super().__init__()
         self._round = 0
         self._assistant_content = assistant_content
 
-    async def generate_stream_with_schema(self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None):
+    async def stream_json(self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None):
         self._round += 1
         if self._round == 1:
             raise ToolCallsRequested(
@@ -91,7 +93,7 @@ async def _run(provider, tool_set, budget=None, db=None) -> str:
     ai_service = AiService(provider, db=db, input_token_budget_per_turn=budget)
     chunks = []
     async for chunk in ai_service.generate_stream_with_metadata(
-        "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")}, tool_set=tool_set,
     ):
         chunks.append(chunk)
     return "".join(chunks)

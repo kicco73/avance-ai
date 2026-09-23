@@ -13,6 +13,7 @@ import pytest
 
 from ai.ai_service import AiService, MAX_TOOL_ROUNDS, _TOOL_ERROR_DIRECTIVE
 from ai.llm_provider import ToolCall, ToolCallsRequested
+from ai.response_schema import StringField
 from provider_tools_helpers import HARNESSES, SELECT_SPEC, TICKETS_SPEC, FakeToolSet, drain
 
 
@@ -24,7 +25,7 @@ def harness(request):
 async def _run(ai_service: AiService, tool_set: FakeToolSet, history=(), **kwargs) -> str:
     chunks = [
         chunk async for chunk in ai_service.generate_stream_with_metadata(
-            "sys", list(history), on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set, **kwargs,
+            "sys", list(history), on_metadata=lambda k, v: None, schema={"text": StringField("t")}, tool_set=tool_set, **kwargs,
         )
     ]
     return "".join(chunks)
@@ -33,9 +34,9 @@ async def _run(ai_service: AiService, tool_set: FakeToolSet, history=(), **kwarg
 async def test_no_tools_streams_normally_and_never_sends_a_tools_declaration(harness):
     provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
 
-    out = await drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}))
+    out = await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}))
 
-    assert out == '{"text": "hi"}'
+    assert out == "hi"
     harness.assert_no_tools_sent(harness.calls(fake_client)[0])
 
 
@@ -43,7 +44,7 @@ async def test_a_tool_call_raises_ToolCallsRequested_after_declaring_the_tool_in
     provider, fake_client = harness.provider([harness.tool_call_response("call_1", "source_flights_select", {"value": "paris"})])
 
     with pytest.raises(ToolCallsRequested) as exc_info:
-        async for _ in provider.generate_stream_with_schema("sys", [], {"text": "t"}, tools=[SELECT_SPEC]):
+        async for _ in provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}, tools=[SELECT_SPEC]):
             pass
 
     assert exc_info.value.calls == [ToolCall(id="call_1", name="source_flights_select", arguments={"value": "paris"})]
@@ -109,9 +110,9 @@ async def test_required_tools_restricts_and_forces_the_callable_set_while_none_s
     provider, fake_client = harness.provider([harness.text_response('{"text": "ok"}'), harness.text_response('{"text": "ok"}')])
 
     await drain(provider.generate_stream_with_schema(
-        "sys", [], {"text": "t"}, tools=[SELECT_SPEC, TICKETS_SPEC], required_tools=[SELECT_SPEC],
+        "sys", [], {"text": StringField("t")}, tools=[SELECT_SPEC, TICKETS_SPEC], required_tools=[SELECT_SPEC],
     ))
-    await drain(provider.generate_stream_with_schema("sys", [], {"text": "t"}, tools=[SELECT_SPEC, TICKETS_SPEC]))
+    await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}, tools=[SELECT_SPEC, TICKETS_SPEC]))
 
     forced, unforced = harness.calls(fake_client)
     assert harness.forced_names(forced) == ["source_flights_select"]

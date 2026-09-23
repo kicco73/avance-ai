@@ -63,7 +63,7 @@ class RecordingSchemaAiService:
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         self.calls.append(dict(schema))
-        on_metadata("output", '{"summary": "done"}')
+        on_metadata("output", {"summary": "done"})
         yield "reply "
 
 

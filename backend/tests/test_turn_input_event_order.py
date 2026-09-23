@@ -20,7 +20,7 @@ import asyncio
 
 import pytest
 
-from ai.llm_provider import ToolCall, ToolCallsRequested
+from ai.llm_provider import LLMProvider, ToolCall, ToolCallsRequested
 from system import bus
 from system.bus import INPUT_TEXT, Message
 from system.web_session import WebSession
@@ -33,12 +33,13 @@ pytestmark = pytest.mark.regression
 _ANSWER_PIECES = ['{"text": "Your ', 'flight ', 'is on time."}']
 
 
-class _FakeProvider:
+class _FakeProvider(LLMProvider):
     def __init__(self, *, tool_rounds: int) -> None:
+        super().__init__()
         self._tool_rounds = tool_rounds
         self._round = 0
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ):
         self._round += 1

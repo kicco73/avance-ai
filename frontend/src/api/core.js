@@ -113,3 +113,9 @@ export async function projectFetch(projectId, url, options, fetchOpts) {
   await emitProjectChanged(result?.project_id ?? projectId)
   return result
 }
+
+export async function projectFetchAnnouncing(projectId, url, options, fetchOpts) {
+  const result = await apiFetch(url, options, fetchOpts)
+  emitProjectChanged(result?.project_id ?? projectId)
+  return result
+}

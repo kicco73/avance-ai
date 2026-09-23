@@ -1,4 +1,4 @@
-import { apiFetch, projectFetch } from '../../../api/core.js'
+import { apiFetch, projectFetch, projectFetchAnnouncing } from '../../../api/core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -64,7 +64,7 @@ export function putProjectFile(projectId, fileName, content) {
 }
 
 export function renameProjectFile(projectId, fileName, newName) {
-  return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(fileName)}/rename`, {
+  return projectFetchAnnouncing(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(fileName)}/rename`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ new_name: newName })

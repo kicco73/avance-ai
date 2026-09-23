@@ -57,8 +57,8 @@ def test_the_buttons_queued_for_translation_are_exactly_the_ones_the_state_shows
 
 
 class RecordingSchemaAiService:
-	def __init__(self, translations_json: str | None) -> None:
-		self._translations_json = translations_json
+	def __init__(self, translations: dict | None) -> None:
+		self._translations = translations
 		self.calls: list[dict[str, str]] = []
 
 	def is_provider_with_schema(self) -> bool:
@@ -71,19 +71,19 @@ class RecordingSchemaAiService:
 		self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False,
 	):
 		self.calls.append(dict(schema))
-		if self._translations_json is not None:
-			on_metadata("translations", self._translations_json)
+		if self._translations is not None:
+			on_metadata("translations", self._translations)
 		yield "reply "
 
 
-@pytest.mark.parametrize(("translations_json", "expected_button"), [
-	('{"advance": "Avanti"}', "Avanti"),
-	("not json", "Advance"),
-], ids=["translated", "malformed-falls-back"])
+@pytest.mark.parametrize(("translations", "expected_button"), [
+	({"advance": "Avanti"}, "Avanti"),
+	({}, "Advance"),
+], ids=["translated", "skipped-falls-back"])
 async def test_a_state_with_a_manual_action_requests_translations_and_the_result_reaches_the_final_state_payload(
-	turn_service_for, translations_json, expected_button,
+	turn_service_for, translations, expected_button,
 ):
-	ai_service = RecordingSchemaAiService(translations_json=translations_json)
+	ai_service = RecordingSchemaAiService(translations=translations)
 	automaton = _automaton_showing(Action(name="advance", ui_label="Advance", ui_button="Advance", target="b"))
 	turn_service = turn_service_for(automaton, ai_service=ai_service)
 	turn_service_for.db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)

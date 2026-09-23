@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 import re
 from typing import Any, Iterable, NoReturn
 
@@ -10,6 +9,7 @@ from system.logging_factory import LoggerFactory
 from system.try_again_error import TryAgainError
 
 from ai import SystemPrompt
+from ai.response_schema import BooleanField, Field, NumberField, ObjectField, StringField
 from automaton.automaton import Automaton
 from tracking.markdown_repairer import MarkdownRepairer
 
@@ -60,6 +60,14 @@ def build_output_definition_for_names(automaton: Automaton, names: Iterable[str]
 	return "- Definition of output fields:\n" + "\n\n".join(render(name) for name in unique_names)
 
 
+_FIELD_BY_ENV_TYPE: dict[str, Field] = {"number": NumberField(), "string": StringField(), "bool": BooleanField()}
+
+
+def build_output_fields(automaton: Automaton, names: Iterable[str]) -> dict[str, Field]:
+	env_keys_by_name = {env_key.name: env_key for env_key in automaton.env_keys}
+	return {name: _FIELD_BY_ENV_TYPE[env_keys_by_name[name].type] for name in dict.fromkeys(names)}
+
+
 def _turns_in_order(channel: str, by_turn: dict[int, Any], expected_turns: int, terminated: bool, raw: str | None) -> list[Any]:
 	"""Shared by SignalsBatchPrompt/MemoryBatchPrompt's own decode: both
 	must demonstrably cover every turn 1..expected_turns, terminated by
@@ -107,18 +115,6 @@ def _decode_turn_keyed_lines(channel: str, raw: str, expected_turns: int) -> lis
 	return _turns_in_order(channel, by_turn, expected_turns, terminated, raw)
 
 
-def _decode_json_object(raw: str, raw_label: str) -> dict[str, Any]:
-	decoded: dict[str, Any] = {}
-	if not raw:
-		return decoded
-	try:
-		decoded = json.loads(raw, strict=False) or {}
-		assert isinstance(decoded, dict)
-	except Exception as exc:
-		logger.error(f"{exc} -- {raw_label}: {raw}")
-	return decoded
-
-
 class Prompt:
 	"""One channel's own prompt, or a composition of several. Internally a
 	dict {channel: leaf Prompt} — a freshly-constructed subclass instance
@@ -134,8 +130,9 @@ class Prompt:
 	`channel` is the wire name (both the on_metadata key and the JSON
 	schema field name). `definition` is this channel's own static
 	instructions. `content` (set at construction) is this turn's own
-	dynamic text, appended right after `definition`. `decode` turns the
-	model's raw string answer for this channel into whatever a caller
+	dynamic text, appended right after `definition`. `field` is the type
+	this channel asks the provider for; `decode` turns the value the
+	provider returned, already of that type, into whatever a caller
 	actually wants — default: passed through unchanged."""
 
 	channel: str
@@ -160,7 +157,7 @@ class Prompt:
 		unless overridden (see MemoryPrompt)."""
 		return ""
 
-	def decode(self, raw: str) -> Any:
+	def decode(self, raw: Any) -> Any:
 		return raw
 
 	def compose(self, other: "Prompt | None") -> "Prompt":
@@ -183,8 +180,11 @@ class Prompt:
 			result = result.compose(part)
 		return result
 
-	def schema(self) -> dict[str, str]:
-		return {channel: leaf.schema_description for channel, leaf in self._channels.items()}
+	def field(self) -> Field:
+		return StringField(self.schema_description)
+
+	def schema(self) -> dict[str, Field]:
+		return {channel: leaf.field() for channel, leaf in self._channels.items()}
 
 	def to_system_prompt(self) -> SystemPrompt:
 		"""The SystemPrompt(stable, volatile) TurnProtocolUsingSchema.
@@ -221,7 +221,7 @@ class Prompt:
 		order = "\n".join(f"\t- {channel}" for channel in self._channels)
 		return f"{definitions}{SCHEMA_ORDER_PROMPT}\n{order}"
 
-	def decode_channel(self, channel: str, raw: str) -> Any:
+	def decode_channel(self, channel: str, raw: Any) -> Any:
 		leaf = self._channels.get(channel)
 		return leaf.decode(raw) if leaf is not None else raw
 
@@ -285,11 +285,11 @@ class ReactionPrompt(Prompt):
 
 EMBED_OUTPUT_TAG_PROMPT = """
 Definition of output fields:
-	- a JSON object, formatted as valid JSON text (e.g. "{\\"rating\\": 4.5, \\"pnr\\": \\"ABC123\\"}").
+	- an object with one entry per output field declared below, each holding that field's own value.
 	- it is vitally important to check each output field declared below against this turn, every turn
 	  — never skip one because it seemed unlikely to apply.
-	- fill in a field the moment this turn actually gives its value; leave a field out of the object
-	  only once you have checked it and this turn truly gives none.
+	- fill in a field the moment this turn actually gives its value; set a field to null only once you
+	  have checked it and this turn truly gives none.
 
 Always fill in the 'output' field of your structured response:
 """
@@ -298,21 +298,23 @@ Always fill in the 'output' field of your structured response:
 class OutputPrompt(Prompt):
 	channel = "output"
 	definition = EMBED_OUTPUT_TAG_PROMPT
-	schema_description = "JSON object with output field values, rendered as text."
+	schema_description = "One entry per declared output field: its value this turn, or null when this turn gives none."
 
-	def __init__(self, output_definition: str | None) -> None:
+	def __init__(self, output_definition: str | None, fields: dict[str, Field]) -> None:
 		super().__init__(output_definition or "")
+		self._fields = fields
 
-	def decode(self, raw: str) -> dict[str, Any]:
-		return _decode_json_object(raw, "raw output")
+	def field(self) -> Field:
+		return ObjectField({name: field.nullable() for name, field in self._fields.items()}, self.schema_description)
+
+	def decode(self, raw: dict[str, Any] | None) -> dict[str, Any]:
+		return {name: value for name, value in (raw or {}).items() if value is not None}
 
 
 EMBED_SIGNAL_TAG_PROMPT = """
 Definition of signals metadata:
-	- a string containing a JSON object, formatted as valid JSON text (e.g. "{\"mood\": 50.2}"),
-	 not a nested object.
+	- an object with one numeric entry per signal specified in the list below, keyed by the signal's own name.
 	- it is vitally important to always calculate and return the value for each and any signal specified in the list below.
-	- put all of the signals using their own name as the key and their value as the value.
 
 Always fill in the 'signals' field of your structured response:
 """
@@ -321,14 +323,19 @@ Always fill in the 'signals' field of your structured response:
 class SignalsPrompt(Prompt):
 	channel = "signals"
 	definition = EMBED_SIGNAL_TAG_PROMPT
-	schema_description = "JSON dictionary containing required calculated signal values, rendered as text."
+	schema_description = "The calculated value of each required signal."
 
-	def __init__(self, signal_definition: str | None) -> None:
+	def __init__(self, signal_definition: str | None, names: Iterable[str]) -> None:
 		super().__init__(signal_definition or "")
+		self._names = sorted(set(names))
 
-	def decode(self, raw: str) -> dict[str, float]:
-		"""Single-turn format only: a JSON object, e.g. '{"mood": 50.2}'."""
-		return _decode_json_object(raw, "raw signal")
+	def field(self) -> Field:
+		return ObjectField({name: NumberField() for name in self._names}, self.schema_description)
+
+	def decode(self, raw: dict[str, float] | None) -> dict[str, float]:
+		return dict(raw or {})
+
+
 EMBED_SIGNAL_BATCH_TAG_PROMPT = """
 Definition of signals metadata:
 	- a small CSV table, as plain text (not a JSON object).
@@ -553,15 +560,13 @@ _LANG_TAG_RE = re.compile(r"^[a-z]{2}-[A-Z]{2}$")
 
 EMBED_LANG_TAG_PROMPT = """
 Definition of lang metadata:
-	- a string containing a JSON object, formatted as valid JSON text (e.g. "{\"src\": \"en-US\", \"dst\": \"it-IT\"}"),
-	  not a nested object.
 	- "src": the language and region the labels below were originally written in.
 	- "dst": the language and region the user's last message is written in — what a translation of those
 	  labels should be written in.
 	- always a full locale tag, lowercase language + uppercase region joined by a hyphen (e.g. "it-IT",
 	  "es-ES", "en-GB", "pt-BR"), following the IETF BCP 47 standard — never a bare language code.
 
-Always fill in the 'lang' field of your structured response with a JSON object with keys "src" and "dst".
+Always fill in the 'lang' field of your structured response with its "src" and "dst".
 """
 
 
@@ -569,34 +574,30 @@ class LangPrompt(Prompt):
 	channel = "lang"
 	definition = EMBED_LANG_TAG_PROMPT
 	schema_description = (
-		"JSON object {src, dst}: the locale tag (IETF BCP 47, e.g. \"it-IT\") of the labels' own language "
-		"and of the language to translate them into (the user's last message's own language), rendered as text."
+		"The locale tag (IETF BCP 47, e.g. \"it-IT\") of the labels' own language (src) and of the language "
+		"to translate them into (dst), the user's last message's own language."
 	)
 
-	def decode(self, raw: str) -> tuple[str, str]:
-		try:
-			value = json.loads(raw, strict=False) if raw else {}
-			assert isinstance(value, dict)
-			src, dst = value.get("src"), value.get("dst")
-			if isinstance(src, str) and isinstance(dst, str) and _LANG_TAG_RE.match(src) and _LANG_TAG_RE.match(dst):
-				return src, dst
-		except Exception as exc:
-			logger.error(f"lang: {exc} -- raw: {raw!r}")
+	def field(self) -> Field:
+		return ObjectField({"src": StringField(), "dst": StringField()}, self.schema_description)
+
+	def decode(self, raw: dict[str, str] | None) -> tuple[str, str]:
+		src, dst = (raw or {}).get("src", ""), (raw or {}).get("dst", "")
+		if _LANG_TAG_RE.match(src) and _LANG_TAG_RE.match(dst):
+			return src, dst
+		logger.error(f"lang: not a locale pair -- raw: {raw!r}")
 		return "", ""
 
 
 EMBED_TRANSLATE_TAG_PROMPT = """
 Definition of translations metadata:
-	- a string containing a JSON object, formatted as valid JSON text (e.g. "{\"advance\": \"Avanti\"}"),
-	 not a nested object.
 	- one entry per label listed below: its own name as the key, and a translation of its text into
 	  the same language the user's last message is written in, as the value.
 	- translate the text naturally for its own UI context; never translate the name itself (the key).
 	- if a label is already in the right language, or you cannot confidently translate it, return it
 	  unchanged rather than guessing.
 
-Always fill in the 'translations' field of your structured response with a JSON object mapping
-each name below to its translated label:
+Always fill in the 'translations' field of your structured response with each name below and its translated label:
 """
 
 
@@ -609,32 +610,24 @@ class TranslatePrompt(Prompt):
 	TrackingProcessor._button_labels_to_translate), composed as the turn's
 	last channel. Decoding is deliberately lenient: a translated
 	label is a UX nicety layered on top of an otherwise-complete reply,
-	never core protocol correctness like signals/env, so a malformed
-	response falls back to the original text rather than raising and
+	never core protocol correctness like signals/env, so a missing
+	translation falls back to the original text rather than raising and
 	losing the whole turn."""
 	channel = "translations"
 	definition = EMBED_TRANSLATE_TAG_PROMPT
-	schema_description = (
-		"JSON object mapping each of the listed name to a translation of its label into the same "
-		"language as the user's last message, rendered as text."
-	)
+	schema_description = "Each listed name mapped to a translation of its label into the language of the user's last message."
 
 	def __init__(self, originals: dict[str, str]) -> None:
 		self._originals = originals
 		content = "\n".join(f'\t- "{name}": "{text}"' for name, text in originals.items())
 		super().__init__(content)
 
-	def decode(self, raw: str) -> dict[str, str]:
+	def field(self) -> Field:
+		return ObjectField({name: StringField() for name in self._originals}, self.schema_description)
+
+	def decode(self, raw: dict[str, str] | None) -> dict[str, str]:
 		"""Always covers every name this channel was built for — one the
-		model skipped, mistranslated into a non-string, or lost entirely
-		to a malformed/unparseable response falls back to its own
-		original text rather than leaving a gap: an untranslated label
-		beats a missing one."""
-		translated: dict[str, str] = {}
-		try:
-			value = json.loads(raw, strict=False) if raw else {}
-			assert isinstance(value, dict)
-			translated = {k: v for k, v in value.items() if isinstance(v, str)}
-		except Exception as exc:
-			logger.error(f"translations: {exc} -- raw: {raw!r}")
+		model skipped or left empty falls back to its own original text
+		rather than leaving a gap: an untranslated label beats a missing one."""
+		translated = {name: text for name, text in (raw or {}).items() if isinstance(text, str) and text}
 		return {**self._originals, **translated}

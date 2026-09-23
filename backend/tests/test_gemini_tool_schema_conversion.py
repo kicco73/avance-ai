@@ -12,6 +12,7 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from ai.llm_provider import ToolSpec
+from ai.response_schema import StringField
 from provider_tools_helpers import GeminiHarness, drain
 from tracking.sources import METHOD_SCHEMAS
 
@@ -24,7 +25,7 @@ async def _declaration(parameters: dict):
     provider, fake_client = harness.provider([harness.text_response('{"text": "hi"}')])
     spec = ToolSpec(name="source_env_update", description="d", parameters=parameters)
 
-    await drain(provider.generate_stream_with_schema("sys", [], {"text": "the reply"}, tools=[spec]))
+    await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("the reply")}, tools=[spec]))
 
     declarations = harness.calls(fake_client)[0]["config"].tools[0].function_declarations
     return next(declaration for declaration in declarations if declaration.name == "source_env_update")

@@ -69,8 +69,8 @@ class TrackingMixin:
         signals = []
         transitions = []
         for row in rows:
-            if row.values is not None:
-                signals.append({'timestamp': _utc_iso(row.timestamp), 'values': json.loads(row.values)})
+            for values in filter(None, [json.loads(row.values or 'null')]):
+                signals.append({'timestamp': _utc_iso(row.timestamp), 'values': values})
             if row.new_state is not None:
                 transitions.append({'timestamp': _utc_iso(row.timestamp), 'new_state': row.new_state})
         return {'signals': signals, 'transitions': transitions}

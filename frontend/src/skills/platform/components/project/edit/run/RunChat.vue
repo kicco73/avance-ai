@@ -1,9 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import SessionsPanel from '../../../../../../components/chat/SessionsPanel.vue'
 import AspectMenu from './AspectMenu.vue'
 import { aspectFor } from './aspects.js'
-import { getHistory, getProjectFiles, putProjectFileBinary } from '../../../../api.js'
+import { deleteSession, getHistory, getProjectFiles, putProjectFileBinary } from '../../../../api.js'
 import { totalTokenBudgetPerSession } from '../../../../../../chatStoreFactory.js'
 import { infoDialog } from '../../../../../../dialogStore.js'
 import { testStore } from '../../../../testChatStore.js'
@@ -13,7 +12,7 @@ import { useFloatingTooltip } from '../../../../../../useFloatingTooltip.js'
 
 const {
   actuatorsEnabled, actuatorsLoading, toggleActuators,
-  sessions, sessionsLoading, currentSessionId, currentProjectId, loadSessions, selectSession, handleNewSession, handleDeleteSession,
+  currentSessionId, currentProjectId, selectSession,
   turnCount
 } = testStore
 
@@ -85,11 +84,6 @@ function onEmbedMessage(event) {
     emit(data.type, message)
   }
 }
-
-const sessionExplorerOpen = ref(false)
-const sessionExplorerWidth = ref(240)
-const deletingSessionId = ref(null)
-let draggingSessionExplorer = false
 
 const chatIframeEl = ref(null)
 defineExpose({
@@ -185,26 +179,9 @@ async function captureSnapshot() {
   }
 }
 
-function toggleSessionExplorer() {
-  sessionExplorerOpen.value = !sessionExplorerOpen.value
-  if (sessionExplorerOpen.value) loadSessions()
-}
-
-function createSession() {
-  handleNewSession()
-}
-
-async function onDeleteSession(session) {
-  deletingSessionId.value = session.id
-  try {
-    await handleDeleteSession(session)
-  } finally {
-    deletingSessionId.value = null
-  }
-}
-
 async function onClearSession() {
   if (!chatIframeEl.value?.contentWindow) return
+  await deleteSession(currentSessionId.value)
   const newSessionId = await new Promise((resolve) => {
     pendingRestartResolve = resolve
     chatIframeEl.value.contentWindow.postMessage({ source: 'run-chat-parent', type: 'restart-session' }, window.location.origin)
@@ -215,34 +192,15 @@ async function onClearSession() {
   })
   if (newSessionId == null) return
   await selectSession({ id: newSessionId, current: true })
-  await loadSessions()
-}
-
-function startSessionExplorerDrag(event) {
-  draggingSessionExplorer = true
-  event.preventDefault()
-}
-
-function onSessionExplorerDrag(event) {
-  if (!draggingSessionExplorer) return
-  sessionExplorerWidth.value = Math.min(420, Math.max(160, sessionExplorerWidth.value + event.movementX))
-}
-
-function stopSessionExplorerDrag() {
-  draggingSessionExplorer = false
 }
 
 onMounted(() => {
-  window.addEventListener('mousemove', onSessionExplorerDrag)
-  window.addEventListener('mouseup', stopSessionExplorerDrag)
   window.addEventListener('message', onEmbedMessage)
   updateAvailableStageSize()
   stageResizeObserver = new ResizeObserver(updateAvailableStageSize)
   if (stageWrapEl.value) stageResizeObserver.observe(stageWrapEl.value)
 })
 onBeforeUnmount(() => {
-  window.removeEventListener('mousemove', onSessionExplorerDrag)
-  window.removeEventListener('mouseup', stopSessionExplorerDrag)
   window.removeEventListener('message', onEmbedMessage)
   stageResizeObserver?.disconnect()
 })
@@ -250,26 +208,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="project-run-panel">
-    <div
-      class="run-sessions-panel"
-      :class="{ 'run-sessions-panel-collapsed': !sessionExplorerOpen }"
-      :style="sessionExplorerOpen ? { width: sessionExplorerWidth + 'px' } : null"
-    >
-      <SessionsPanel
-        :sessions="sessions"
-        :loading="sessionsLoading"
-        :current-session-id="currentSessionId"
-        :deleting-session-id="deletingSessionId"
-        :collapsed="!sessionExplorerOpen"
-        @update:collapsed="toggleSessionExplorer"
-        @select="selectSession"
-        @create="createSession"
-        @delete="onDeleteSession"
-      />
-    </div>
-
-    <div v-if="sessionExplorerOpen" class="run-split-divider" @mousedown="startSessionExplorerDrag"></div>
-
     <div class="edit-project-chat-panel">
       <div class="edit-project-chat-toolbar">
         <div
@@ -344,12 +282,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .project-run-panel { flex: 1; display: flex; flex-direction: row; min-width: 0; min-height: 0; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
-
-.run-sessions-panel { display: flex; flex-direction: column; flex: none; min-height: 0; border-right: 1px solid #ddd; background: #f9fafb; transition: width 0.15s ease; }
-.run-sessions-panel-collapsed { width: 2.4rem !important; }
-
-.run-split-divider { flex-shrink: 0; width: 6px; border-radius: 3px; background: transparent; cursor: col-resize; }
-.run-split-divider:hover { background: #dbe4f0; }
 
 .edit-project-chat-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .edit-project-chat-toolbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #f5f5f7; border-bottom: 1px solid #ddd; flex-shrink: 0; }

@@ -39,11 +39,8 @@ def _automaton_with_trigger(trigger_expr: str, target: str = "b") -> Automaton:
 
 
 class FakeSchemaAiService:
-    """A v2 (schema)-shaped fake — reports `signals` straight through
-    on_metadata as a raw JSON string."""
-
-    def __init__(self, signals_json: str) -> None:
-        self._signals_json = signals_json
+    def __init__(self, signals: dict) -> None:
+        self._signals = signals
 
     def get_models_info(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
@@ -56,15 +53,15 @@ class FakeSchemaAiService:
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema):
         if "signals" in schema:
-            on_metadata("signals", self._signals_json)
+            on_metadata("signals", self._signals)
         yield "Hi!"
 
 
-async def _talking_in(turn_service_for, automaton: Automaton, signals_json: str = '{"mySignal": 1}'):
+async def _talking_in(turn_service_for, automaton: Automaton, signals: dict | None = None):
     """A turn service over `automaton`, and a live session to talk in —
     a freshly entered session already scores "engagement" above zero via
     its session component alone, enough to drive these triggers."""
-    turn_service = turn_service_for(automaton, ai_service=FakeSchemaAiService(signals_json))
+    turn_service = turn_service_for(automaton, ai_service=FakeSchemaAiService(signals or {"mySignal": 1}))
     db = turn_service_for.db
     db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
     session = await turn_service.enter_session(PROJECT_ID, 'live')
@@ -91,7 +88,7 @@ async def test_a_metric_referencing_trigger_that_is_not_met_does_not_fire(turn_s
 
 async def test_metric_values_used_for_evaluation_are_never_persisted(turn_service_for):
     turn_service, session_id = await _talking_in(
-        turn_service_for, _automaton_with_trigger("signal.mySignal >= 1 and engagement >= 1"), '{"mySignal": 42}',
+        turn_service_for, _automaton_with_trigger("signal.mySignal >= 1 and engagement >= 1"), {"mySignal": 42},
     )
 
     await turn_service.process_turn(session_id, "hello")
@@ -115,7 +112,7 @@ def test_metric_values_are_merged_into_the_evaluation_names_only_when_a_trigger_
 
 async def test_a_trigger_can_combine_a_signal_and_a_metric(turn_service_for):
     turn_service, session_id = await _talking_in(
-        turn_service_for, _automaton_with_trigger("signal.mySignal >= 40 and engagement >= 1"), '{"mySignal": 42}',
+        turn_service_for, _automaton_with_trigger("signal.mySignal >= 40 and engagement >= 1"), {"mySignal": 42},
     )
 
     result = await turn_service.process_turn(session_id, "hello")
@@ -161,8 +158,9 @@ async def test_a_trigger_referencing_only_env_is_evaluated_before_the_reply_too(
 async def test_a_signal_less_evaluation_that_fires_nothing_leaves_no_snapshot_row(turn_service_for):
     turn_service, session_id = await _talking_in(turn_service_for, _automaton_with_trigger("env.ready == 'yes'"))
     turn_service_for.db.set_action_env(session_id, {"ready": "no"})
+    rows_before = turn_service.get_session_signals(session_id)
 
     result = await turn_service.process_turn(session_id, "hello")
 
     assert result["state_changed"] is False
-    assert turn_service.get_session_signals(session_id) == []
+    assert turn_service.get_session_signals(session_id) == rows_before

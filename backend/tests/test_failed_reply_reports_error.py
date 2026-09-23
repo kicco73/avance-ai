@@ -36,7 +36,7 @@ class _ProviderFailingOnce(LLMProvider):
 		super().__init__()
 		self.calls = 0
 
-	async def generate_stream_with_schema(
+	async def stream_json(
 		self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
 	):
 		self.calls += 1
@@ -130,7 +130,7 @@ class _BlockingProvider(LLMProvider):
 		self.called = asyncio.Event()
 		self.release = asyncio.Event()
 
-	async def generate_stream_with_schema(
+	async def stream_json(
 		self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
 	):
 		self.called.set()
@@ -162,7 +162,7 @@ class _SignalsThenCrash:
 		self.calls += 1
 		if self.calls == 2:
 			raise RuntimeError("the provider went away")
-		on_metadata("signals", '{"mySignal": 1}')
+		on_metadata("signals", {"mySignal": 1})
 		yield "Hi!"
 
 

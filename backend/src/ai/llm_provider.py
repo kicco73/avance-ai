@@ -5,7 +5,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable
 
+import partial_json_parser
 
+from ai.response_schema import Field
 from content_text import content_to_text, is_text_fragments  # noqa: F401 — re-exported, ai/__init__.py's own public contract
 from tool_spec import ToolSpec  # noqa: F401 — re-exported, ai/__init__.py's own public contract
 from system.cascade import ProviderError, ProviderRateLimitedError, ProviderUnavailableError
@@ -103,7 +105,7 @@ class ToolCall:
 
 
 class ToolCallsRequested(Exception):
-	"""Raised by generate_stream_with_schema in place of completing the
+	"""Raised by stream_json in place of completing the
 	stream: the model ended its turn asking for one or more tools instead
 	of (or before) producing a final answer. Never a failover condition
 	(retrying another provider wouldn't change what the model asked for),
@@ -119,12 +121,12 @@ class ToolCallsRequested(Exception):
 
 
 class AIServiceProviderOutputTruncatedError(Exception):
-	"""Raised by a provider's generate_stream_with_schema when its own
+	"""Raised by a provider's stream_json when its own
 	native stop/finish reason confirms the response was cut short by
 	max_output_tokens, rather than completing normally. Never a failover
 	condition (retrying another provider won't raise the same cap), so it
 	deliberately does not subclass AIServiceError/ProviderError — it is
-	meant to be caught once, by AiService.generate_stream_with_metadata,
+	meant to be caught once, by LLMProvider.generate_stream_with_schema,
 	which uses it to discard the unterminated trailing field instead of
 	guessing completeness from partial JSON."""
 	def __init__(self, reason: str) -> None:
@@ -153,14 +155,83 @@ class TokenCounter:
 			self._total_tokens += count
 
 
+def _ignore_metadata(name: str, value: Any) -> None:
+	return None
+
+
+def forward_kwargs(
+	on_metadata: MetadataCallback | None, tools: list[ToolSpec] | None,
+	tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
+) -> dict[str, Any]:
+	kwargs: dict[str, Any] = {"on_metadata": on_metadata}
+	if tools is not None:
+		kwargs["tools"] = tools
+		kwargs["tool_round"] = tool_round
+		if required_tools is not None:
+			kwargs["required_tools"] = required_tools
+	return kwargs
+
+
+class StructuredReply:
+	def __init__(self, schema: dict[str, Field], on_metadata: MetadataCallback) -> None:
+		self._schema = schema
+		self._on_metadata = on_metadata
+		self._raw = ""
+		self._emitted: set[str] = {"text"}
+		self._text_length = 0
+
+	def feed(self, chunk: str) -> str:
+		self._raw += chunk
+		parsed = partial_json_parser.parse_json(self._raw)
+		if not isinstance(parsed, dict) or not parsed:
+			return ""
+		still_streaming = next(reversed(parsed))
+		for name in [name for name in parsed if name != still_streaming]:
+			self._emit(name, parsed[name])
+		text = str(parsed.get("text", ""))
+		delta = text[self._text_length:]
+		self._text_length = max(self._text_length, len(text))
+		return delta
+
+	def finish(self) -> None:
+		parsed = partial_json_parser.parse_json(self._raw) if self._raw else None
+		if isinstance(parsed, dict) and parsed:
+			last = next(reversed(parsed))
+			self._emit(last, parsed[last])
+
+	def _emit(self, name: str, value: Any) -> None:
+		if name in self._emitted:
+			return
+		self._emitted.add(name)
+		self._on_metadata(name, self._schema.get(name, Field()).coerce(value))
+
+
 class LLMProvider(TokenCounter, ABC):
 
 	def __init__(self) -> None:
 		TokenCounter.__init__(self)
 
-	@abstractmethod
 	async def generate_stream_with_schema(
-		self, system_prompt: "str | SystemPrompt", history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
+		self, system_prompt: "str | SystemPrompt", history: list[dict], schema: dict[str, Field],
+		on_metadata: MetadataCallback | None = None,
+		tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
+	) -> AsyncIterator[str]:
+		reply = StructuredReply(schema, on_metadata or _ignore_metadata)
+		try:
+			async for chunk in self.stream_json(
+				system_prompt, history, schema, **forward_kwargs(on_metadata, tools, tool_round, required_tools),
+			):
+				yield reply.feed(chunk)
+		except AIServiceProviderOutputTruncatedError as exc:
+			logger.critical(f"{exc} -- discarding unterminated trailing field")
+			if "text" in schema:
+				raise
+			return
+		reply.finish()
+
+	@abstractmethod
+	async def stream_json(
+		self, system_prompt: "str | SystemPrompt", history: list[dict], schema: dict[str, Field], on_metadata: MetadataCallback | None = None,
 		tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
 		"""`system_prompt`: a plain str, or a SystemPrompt(stable, volatile)

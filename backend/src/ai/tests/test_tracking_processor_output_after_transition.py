@@ -13,7 +13,7 @@ from datetime import datetime
 
 import pytest
 
-from automaton.automaton import Action, Automaton, EnvKey, State
+from automaton.automaton import Action, Automaton, EnvKey, Signal, State
 from metrics.metric_service import MetricService
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -50,8 +50,8 @@ def _automaton() -> Automaton:
 
 
 class RecordingSchemaAiService:
-    def __init__(self, output_json: str) -> None:
-        self._output_json = output_json
+    def __init__(self, output: dict) -> None:
+        self._output = output
         self.calls: list[dict[str, str]] = []
 
     def is_provider_with_schema(self) -> bool:
@@ -62,7 +62,7 @@ class RecordingSchemaAiService:
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         self.calls.append(dict(schema))
-        on_metadata("output", self._output_json)
+        on_metadata("output", self._output)
         yield "report "
 
 
@@ -76,7 +76,7 @@ async def test_the_target_states_own_output_is_requested_and_applied_on_a_mid_tu
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
         start_state="a", end_state="a",
     )
-    ai_service = RecordingSchemaAiService('{"summary": "done"}')
+    ai_service = RecordingSchemaAiService({"summary": "done"})
     project_context = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_context)
     env = PersistedEnv(db, project_context, session_id)
@@ -91,3 +91,49 @@ async def test_the_target_states_own_output_is_requested_and_applied_on_a_mid_tu
     assert ai_service.calls and "output" in ai_service.calls[-1]
     assert env.action_set()["summary"] == "done"
     assert result["env_changed"]["summary"] == "done"
+
+
+class OutputOnlyOnTheFirstCallAiService(RecordingSchemaAiService):
+    async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
+        self.calls.append(dict(schema))
+        if len(self.calls) == 1:
+            on_metadata("output", self._output)
+            on_metadata("signals", {"mood": 80.0})
+        yield "report "
+
+
+async def test_an_output_the_regeneration_does_not_produce_is_blank_even_if_the_first_call_produced_it(db):
+    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50")
+    state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action], output=("summary",))
+    state_b = State(input_processor="ai", key="b", ui_label="B", final=True, contextual_prompt="You are in B.", output=("summary",))
+    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
+    automaton = Automaton(
+        init_action=init_action,
+        states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
+        general_prompt="",
+        signals=[Signal(name="mood", ui_label="Mood", definition="0-100 mood score.")],
+        general_attachments={},
+        autotracking_on_ai_message=False,
+        env_keys=[EnvKey(name="summary", type="string", ai_definition="Summary.")],
+    )
+    db.ensure_project(PROJECT_ID)
+    db.publish_project(PROJECT_ID)
+    session_id = db.create_chat_session(
+        username=USERNAME, project_id=PROJECT_ID,
+        revision=db.get_project_published_revision(PROJECT_ID),
+        datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
+        start_state="a", end_state="a",
+    )
+    ai_service = OutputOnlyOnTheFirstCallAiService({"summary": "from a"})
+    project_context = FixedProjectContext(project_id=PROJECT_ID)
+    metrics = MetricService(db, project_context)
+    env = PersistedEnv(db, project_context, session_id)
+    scope_builder = EvaluationScopeBuilder(env, metrics, SessionFacts(db, project_context), UserFacts(db), db)
+    user_variables = UserVariables(automaton=automaton, state=automaton.states["a"], project_id=PROJECT_ID, session_id=session_id)
+    processor = TrackingProcessorAfterUserMessage(ai_service, scope_builder, env, TurnTransaction(db, session_id, []), user_variables)
+
+    await processor.process("hello")
+
+    assert processor.out.state.key == "b"
+    assert len(ai_service.calls) == 2
+    assert "summary" not in env.action_set()

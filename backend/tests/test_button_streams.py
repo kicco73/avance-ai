@@ -15,6 +15,7 @@ import asyncio
 
 import pytest
 
+from ai.llm_provider import LLMProvider
 from automaton.automaton import Action, Automaton, State
 from system import bus
 from system.bus import INPUT_BUTTON, Message
@@ -35,8 +36,8 @@ _PUBLISHED = (
 _REPLY = "Here we are."
 
 
-class _FakeProvider:
-    async def generate_stream_with_schema(
+class _FakeProvider(LLMProvider):
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ):
         yield '{"text": "' + _REPLY + '"}'

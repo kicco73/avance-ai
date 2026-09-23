@@ -10,6 +10,7 @@ from ai.llm_provider import (
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
 )
+from ai.response_schema import Field, StringField
 from system.try_again_error import TryAgainError
 
 
@@ -19,8 +20,8 @@ class _FakeProvider:
         self._error = error
         self.calls = 0
 
-    async def generate_stream_with_schema(
-        self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata=None,
+    async def stream_json(
+        self, system_prompt: str, history: list[dict], schema: dict[str, Field], on_metadata=None,
     ) -> AsyncIterator[str]:
         self.calls += 1
         for chunk in self._chunks:
@@ -36,7 +37,7 @@ class _FakeProvider:
 
 
 async def _drain(provider: AutoTestLLMProvider) -> list[str]:
-    return [chunk async for chunk in provider.generate_stream_with_schema("prompt", [], {"text": "..."})]
+    return [chunk async for chunk in provider.generate_stream_with_schema("prompt", [], {"text": StringField("...")})]
 
 
 def test_transient_errors_are_try_again_errors_but_permanent_is_not() -> None:
@@ -50,7 +51,7 @@ async def test_a_failure_before_any_output_cascades_to_the_next_provider() -> No
     """A provider that fails before yielding anything has committed nothing
     to the caller yet, so retrying a different provider from scratch is safe."""
     broken = _FakeProvider([], error=AIServiceProviderRateLimitedError("rate limited"))
-    healthy = _FakeProvider(["hello", " world"])
+    healthy = _FakeProvider(['{"text": "hello', ' world"}'])
 
     result = await _drain(AutoTestLLMProvider([("broken", broken), ("healthy", healthy)]))
 
@@ -71,16 +72,16 @@ async def test_a_failure_after_partial_output_raises_instead_of_splicing_in_the_
     concatenated onto what was already sent, corrupting the combined
     stream (e.g. two independent JSON documents glued together). The
     `yielded` guard must cover every failover error type."""
-    broken = _FakeProvider(["partial "], error=error)
-    healthy = _FakeProvider(["should never be reached"])
+    broken = _FakeProvider(['{"text": "partial output'], error=error)
+    healthy = _FakeProvider(['{"text": "should never be reached"}'])
     provider = AutoTestLLMProvider([("broken", broken), ("healthy", healthy)])
 
     chunks: list[str] = []
     with pytest.raises(type(error)):
-        async for chunk in provider.generate_stream_with_schema("prompt", [], {"text": "..."}):
+        async for chunk in provider.generate_stream_with_schema("prompt", [], {"text": StringField("...")}):
             chunks.append(chunk)
 
-    assert chunks == ["partial "]
+    assert chunks == ["partial output"]
     assert broken.calls == 1
     assert healthy.calls == 0
 

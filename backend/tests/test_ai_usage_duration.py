@@ -12,6 +12,7 @@ import pytest
 
 from ai.ai_service import AiService
 from ai.llm_provider import LLMProvider, MetadataCallback
+from ai.response_schema import StringField
 from db.models import AiUsage
 from virtual_clock import VirtualClockLoop
 
@@ -23,7 +24,7 @@ class _RepliesAfterWithUsage(LLMProvider):
         super().__init__()
         self._seconds = seconds
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ) -> AsyncIterator[str]:
         report = cast(MetadataCallback, on_metadata)
@@ -40,7 +41,7 @@ def test_the_usage_row_records_the_call_s_duration_in_seconds(db):
     ai_service = AiService(_RepliesAfterWithUsage(3.5), db=db)
 
     async def scenario(clock):
-        stream = ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": "t"})
+        stream = ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")})
         drained = asyncio.ensure_future(_drain(stream))
         await clock.advance(3.5)
         await drained
@@ -62,7 +63,7 @@ class _RaisesAfter(LLMProvider):
         self._seconds = seconds
         self._error = error
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ) -> AsyncIterator[str]:
         await asyncio.sleep(self._seconds)
@@ -80,7 +81,7 @@ def test_a_failed_call_is_recorded_with_its_outcome_zero_tokens_and_the_elapsed_
 
     async def scenario(clock):
         with pytest.raises(AIServiceProviderRateLimitedError):
-            stream = ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": "t"})
+            stream = ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")})
             drained = asyncio.ensure_future(_drain(stream))
             await clock.advance(2.0)
             await drained
@@ -101,7 +102,7 @@ class _TwoChunksWithGap(LLMProvider):
         self._first_chunk_seconds = first_chunk_seconds
         self._total_seconds = total_seconds
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ) -> AsyncIterator[str]:
         report = cast(MetadataCallback, on_metadata)
@@ -120,7 +121,7 @@ def test_time_to_first_chunk_is_measured_separately_from_the_call_s_total_durati
     ai_service = AiService(_TwoChunksWithGap(1.5, 4.0), db=db)
 
     async def scenario(clock):
-        stream = ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": "t"})
+        stream = ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")})
         drained = asyncio.ensure_future(_drain(stream))
         await clock.advance(4.0)
         await drained

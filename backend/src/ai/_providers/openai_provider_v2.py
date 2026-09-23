@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
@@ -24,6 +25,7 @@ from ai.llm_provider import (
     content_to_text,
     is_text_fragments,
 )
+from ai.response_schema import Field, ObjectField
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -88,27 +90,12 @@ class OpenAICompatibleProvider(LLMProvider):
             return len(encoding.encode(prompt))
         return max(1, len(prompt) // CHARS_PER_TOKEN_ESTIMATE)
 
-    def build_schema(self, tags: Dict[str, str]) -> Dict[str, Any]:
-        properties: Dict[str, Dict[str, Any]] = {}
-        required: List[str] = []
-
-        for name, description in tags.items():
-            properties[name] = {
-                "type": "string",
-                "description": description,
-            }
-            required.append(name)
-
-        return {
-            "type": "object",
-            "properties": properties,
-            "required": required,
-            "additionalProperties": False,
-        }
+    def build_schema(self, schema: Dict[str, Field]) -> Dict[str, Any]:
+        return ObjectField(schema).json_schema()
 
     def __build_messages(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Two more provider-neutral message shapes beyond plain
-        {role, content} — see LLMProvider.generate_stream_with_schema's own
+        {role, content} — see LLMProvider.stream_json's own
         docstring: an assistant turn that asked for tools (translated to
         OpenAI's own `tool_calls` array, arguments re-encoded as a JSON
         string — OpenAI's own wire shape, unlike ToolCall.arguments'
@@ -167,11 +154,11 @@ class OpenAICompatibleProvider(LLMProvider):
             for spec in tools
         ]
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self,
         system_prompt: "str | SystemPrompt",
         history: List[Dict[str, Any]],
-        schema: Optional[Dict[str, str]] = None,
+        schema: Optional[Dict[str, Field]] = None,
         on_metadata: Optional[MetadataCallback] = None,
         tools: Optional[List[ToolSpec]] = None,
         tool_round: int = 1,
@@ -272,11 +259,17 @@ class OpenAICompatibleProvider(LLMProvider):
         except Exception as exc:
             raise AIServiceError(f"Unexpected error: {exc}") from exc
 
-        if finish_reason == "tool_calls":
-            calls = [
-                ToolCall(id=entry["id"], name=entry["name"], arguments=json.loads(entry["arguments"] or "{}"))
-                for entry in tool_call_chunks.values()
-            ]
+        if tool_call_chunks:
+            try:
+                calls = [
+                    ToolCall(
+                        id=entry["id"] or str(uuid.uuid4()), name=entry["name"],
+                        arguments=json.loads(entry["arguments"] or "{}"),
+                    )
+                    for entry in tool_call_chunks.values()
+                ]
+            except json.JSONDecodeError as exc:
+                raise AIServiceError(f"Malformed tool-call arguments: {exc}") from exc
             raise ToolCallsRequested(calls=calls, assistant_content=accumulated_text or None)
 
         if finish_reason == "length":

@@ -56,7 +56,7 @@ class RecordingAiService:
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         self.prompts.append(system_prompt.full_text() if hasattr(system_prompt, 'full_text') else system_prompt)
         if len(self.prompts) == 1:
-            on_metadata("signals", '{"mood": 80}')
+            on_metadata("signals", {"mood": 80.0})
             yield "draft "
         else:
             on_metadata("memory", "fresh: note")
@@ -85,7 +85,7 @@ class SingleCallAiService:
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         on_metadata("memory", "fresh: note")
-        on_metadata("signals", '{"mood": 80}')
+        on_metadata("signals", {"mood": 80.0})
         yield "final "
 
 

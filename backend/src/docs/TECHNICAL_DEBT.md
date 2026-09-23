@@ -86,3 +86,50 @@ DELETE` trigger matches nothing, because the FK action already nulled
 that column before the trigger body ran. The fix is `BEFORE DELETE`,
 which runs while the row (and the FK columns still pointing at it) are
 intact.
+
+## An on-exit's visual effects outlive a turn that fails
+
+A manual action or a choice runs the transition, its `on-exit` and the
+target state's reply in one `AtomicTurnTransaction`
+(`turn/input_processor.py`, `manual_action`/`choice`). When the provider
+fails — busy, 503, a stall — the transaction is discarded: no transition,
+no env write, no `chat.write`, no `task:`. The session stays in the
+source state with its buttons, and pressing again re-runs the `on-exit`
+from the untouched env, so a counter is incremented once, not twice
+(`tests/test_turn_service_provider_busy_on_transition.py`).
+
+What the transaction does not hold is the presentation `chat.*` calls:
+`chat.chart`/`chat.progress` publish on the call
+(`tracking/actuators/chat_namespace.py`), and `clear`/`celebrate`/`show`/
+`notify` are pushed at the end of the `on-exit`, before the model is
+called (`tracking/tracking_engine.py`, `apply_action_env`). The user sees
+them, then the error, then sees them again on the retry. Nothing is
+wrong in the env; the cost is visual.
+
+Holding them until the commit is not an option: the commit comes after
+the reply, and a deferred `chat.clear()` would wipe it. Running the
+action after the model answers is not one either: the action completes
+before the model because the model may read what it wrote.
+
+The candidate, not built: the transaction queues those frames like it
+queues `task:`, releases them on the reply's first chunk, releases what
+is left at commit (a `system` target state has no chunk), and drops them
+on discard. Order stays clear → chart → text. It does not cover a
+failure after the first chunk, and in a state with tools the effects
+wait for the tool rounds.
+
+The data, from `AiUsage` in the dev database, counted from the first row
+with `time_to_first_chunk` (2026-09-22 08:18; earlier rows predate the
+column). A failure row records that time too when a chunk had arrived
+(`ai/ai_service.py`, `_UsageTap.record_failure`):
+
+- 211 calls, 19 failed (≈9%), all `unavailable`, all Gemini flash-lite
+  (17 on 3.5, 2 on 3.1); Mistral 16 calls, 0 failures.
+- All 19 failures happened before the first chunk; 0 of the 189 calls
+  that received a chunk failed afterwards (upper bound ≈1.6% at 95%, rule
+  of three).
+
+Enough to say the candidate would have covered every failure seen; not
+enough to size the gain: a day and a half of dev traffic, one model,
+failures in bursts, and no count of how many fell on a state change.
+Parked until there is production data.

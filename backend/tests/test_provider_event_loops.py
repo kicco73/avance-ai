@@ -23,6 +23,7 @@ import pytest
 from ai._providers.anthropic_provider_v2 import AnthropicProvider, REQUEST_TIMEOUT_SECONDS as ANTHROPIC_REQUEST_TIMEOUT_SECONDS
 from ai._providers.gemini_provider_v2 import REQUEST_TIMEOUT_MS
 from ai.llm_provider import AIServiceConfig, AIServiceError
+from ai.response_schema import StringField
 from ai._providers.openai_provider_v2 import OpenAICompatibleProvider, REQUEST_TIMEOUT as OPENAI_REQUEST_TIMEOUT
 
 REACHES_INTO = {
@@ -31,7 +32,7 @@ REACHES_INTO = {
 
 pytestmark = [pytest.mark.contract, pytest.mark.slow]
 
-EXPECTED = '{"text": "hi"}'
+WIRE_REPLY = '{"text": "hi"}'
 
 
 class _FakeApi(BaseHTTPRequestHandler):
@@ -54,7 +55,7 @@ class _FakeApi(BaseHTTPRequestHandler):
                     "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": 2, "output_tokens": 0},
                 }}),
                 ("content_block_start", {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
-                ("content_block_delta", {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": EXPECTED}}),
+                ("content_block_delta", {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": WIRE_REPLY}}),
                 ("content_block_stop", {"type": "content_block_stop", "index": 0}),
                 ("message_delta", {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None}, "usage": {"output_tokens": 1}}),
                 ("message_stop", {"type": "message_stop"}),
@@ -62,8 +63,8 @@ class _FakeApi(BaseHTTPRequestHandler):
             body = "".join(f"event: {name}\ndata: {json.dumps(data)}\n\n" for name, data in events)
         else:
             chunks = [
-                {"choices": [{"index": 0, "delta": {"content": EXPECTED[:8]}, "finish_reason": None}]},
-                {"choices": [{"index": 0, "delta": {"content": EXPECTED[8:]}, "finish_reason": "stop"}],
+                {"choices": [{"index": 0, "delta": {"content": WIRE_REPLY[:8]}, "finish_reason": None}]},
+                {"choices": [{"index": 0, "delta": {"content": WIRE_REPLY[8:]}, "finish_reason": "stop"}],
                  "usage": {"total_tokens": 3, "prompt_tokens": 2, "completion_tokens": 1}},
             ]
             body = "".join(
@@ -123,7 +124,7 @@ def _openai(fake_api_url: str) -> OpenAICompatibleProvider:
 
 async def _one_call(provider) -> str:
     out = ""
-    async for chunk in provider.generate_stream_with_schema("s", [{"role": "user", "content": "q"}], {"text": "t"}):
+    async for chunk in provider.generate_stream_with_schema("s", [{"role": "user", "content": "q"}], {"text": StringField("t")}):
         out += chunk
     return out
 
@@ -139,7 +140,7 @@ def _drive_from_worker_loops(provider, *, workers: int = 4, calls: int = 40) -> 
         try:
             for _ in range(calls):
                 result = loop.run_until_complete(asyncio.wait_for(_one_call(provider), timeout=15))
-                assert result == EXPECTED, result
+                assert result == "hi", result
         except Exception as exc:  # noqa: BLE001 — the failure *is* the finding
             errors[index] = f"{type(exc).__name__}: {exc}"
         finally:
@@ -168,7 +169,7 @@ def test_a_shared_provider_survives_one_shot_loops_after_worker_loops(fake_api_u
     provider = make_provider(fake_api_url)
     assert _drive_from_worker_loops(provider, workers=2, calls=10) == {}
     for _ in range(5):
-        assert asyncio.run(asyncio.wait_for(_one_call(provider), timeout=15)) == EXPECTED
+        assert asyncio.run(asyncio.wait_for(_one_call(provider), timeout=15)) == "hi"
 
 
 def test_anthropic_keeps_one_client_per_loop_and_prunes_closed_ones(fake_api_url):

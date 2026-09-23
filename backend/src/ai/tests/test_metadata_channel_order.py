@@ -28,7 +28,7 @@ class FakeAiServiceV2:
     "memory", value) on_metadata calls and ("text", chunk) yields, letting a
     test dictate the full four-channel interleaving directly."""
 
-    def __init__(self, events: list[tuple[str, str]]) -> None:
+    def __init__(self, events: list[tuple[str, object]]) -> None:
         self._events = events
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema):
@@ -39,7 +39,7 @@ class FakeAiServiceV2:
                 on_metadata(kind, value)
 
 
-async def _run_v2(prompt: Prompt, events: list[tuple[str, str]]) -> list[str]:
+async def _run_v2(prompt: Prompt, events: list[tuple[str, object]]) -> list[str]:
     ai_service = FakeAiServiceV2(events)
     protocol = TurnProtocolUsingSchema(ai_service)
 
@@ -67,12 +67,12 @@ def _first_occurrence_order(events: list[str]) -> list[str]:
 
 async def test_before_mode_orders_signals_audio_text_memory():
     scripted = [
-        ("signals", "{}"),
+        ("signals", {}),
         ("audio", "hi there"),
         ("text", "some visible reply text"),
         ("memory", "k: v"),
     ]
-    prompt = Prompt.chain(SignalsPrompt(None), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv()))
+    prompt = Prompt.chain(SignalsPrompt(None, []), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv()))
     events = await _run_v2(prompt, scripted)
     assert _first_occurrence_order(events) == ["signals", "audio", "text", "memory"]
 
@@ -81,10 +81,10 @@ async def test_after_mode_orders_audio_text_signals_memory():
     scripted = [
         ("audio", "hi there"),
         ("text", "some visible reply text"),
-        ("signals", "{}"),
+        ("signals", {}),
         ("memory", "k: v"),
     ]
-    prompt = Prompt.chain(AudioPrompt(), TextPrompt(BASE_PROMPT), SignalsPrompt(None), MemoryPrompt(_StubEnv()))
+    prompt = Prompt.chain(AudioPrompt(), TextPrompt(BASE_PROMPT), SignalsPrompt(None, []), MemoryPrompt(_StubEnv()))
     events = await _run_v2(prompt, scripted)
     assert _first_occurrence_order(events) == ["audio", "text", "signals", "memory"]
 
@@ -96,7 +96,7 @@ def test_reaction_channel_excluded_by_default():
 
 def test_reaction_channel_included_right_after_signals_when_enabled():
     prompt = Prompt.chain(
-        SignalsPrompt(None), ReactionPrompt(None), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv()),
+        SignalsPrompt(None, []), ReactionPrompt(None), AudioPrompt(), TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv()),
     )
     assert list(prompt.schema()) == ["signals", "reaction", "audio", "text", "memory"]
 
@@ -116,7 +116,7 @@ async def test_reaction_definition_text_reaches_the_built_prompt():
 
     reaction_definition = '- Definition of reactions:\n\t- Reaction "supportive":\nUse when vulnerable.'
     prompt = Prompt.chain(
-        SignalsPrompt(None), ReactionPrompt(reaction_definition), AudioPrompt(),
+        SignalsPrompt(None, []), ReactionPrompt(reaction_definition), AudioPrompt(),
         TextPrompt(BASE_PROMPT), MemoryPrompt(_StubEnv()),
     )
     protocol = TurnProtocolUsingSchema(CapturingAiService())

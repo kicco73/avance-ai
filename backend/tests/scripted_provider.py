@@ -89,7 +89,7 @@ class ScriptedProvider(LLMProvider):
     def torn_down(self) -> int:
         return self.started - self.finished
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ) -> AsyncIterator[str]:
         self.started += 1

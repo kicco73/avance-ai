@@ -65,7 +65,7 @@ class LateSignalsAiService:
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         yield "Hello "
         yield "world"
-        on_metadata("signals", '{"mood": 10}')
+        on_metadata("signals", {"mood": 10.0})
 
 
 async def test_a_reply_streamed_entirely_before_signals_resolve_is_not_lost(db):

@@ -20,6 +20,7 @@ import inspect
 
 import pytest
 
+from ai.llm_provider import LLMProvider
 from automaton.automaton import Action, Automaton, State
 from metrics.metrics_framework.metrics.engagement import EngagementMetric
 from metrics.metrics_framework.normalization import Normalizer
@@ -29,12 +30,13 @@ from turn_harness import PROJECT_ID, one_state_automaton, turn_service_for  # no
 pytestmark = pytest.mark.regression
 
 
-class _RecordingProvider:
+class _RecordingProvider(LLMProvider):
     def __init__(self, input_tokens: int = 0) -> None:
+        super().__init__()
         self.histories: list[list[dict]] = []
         self._input_tokens = input_tokens
 
-    async def generate_stream_with_schema(
+    async def stream_json(
         self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
     ):
         self.histories.append([dict(m) for m in history])

@@ -5,6 +5,7 @@ same turn's own trigger evaluation (see tracking.evaluation_scope).
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
@@ -53,8 +54,8 @@ def _automaton(*, trigger: str | None = None, action_env: dict | None = None, on
 
 
 class RecordingSchemaAiService:
-    def __init__(self, output_json: str) -> None:
-        self._output_json = output_json
+    def __init__(self, output: dict) -> None:
+        self._output = output
         self.calls: list[dict[str, str]] = []
 
     def is_provider_with_schema(self) -> bool:
@@ -65,11 +66,11 @@ class RecordingSchemaAiService:
 
     async def generate_stream_with_metadata(self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False):
         self.calls.append(dict(schema))
-        on_metadata("output", self._output_json)
+        on_metadata("output", self._output)
         yield "reply "
 
 
-def _processor(db, automaton: Automaton, output_json: str) -> tuple[TrackingProcessorAfterAiMessage, RecordingSchemaAiService, PersistedEnv]:
+def _processor(db, automaton: Automaton, output: dict) -> tuple[TrackingProcessorAfterAiMessage, RecordingSchemaAiService, PersistedEnv]:
     db.ensure_project(PROJECT_ID)
     db.publish_project(PROJECT_ID)
     session_id = db.create_chat_session(
@@ -78,7 +79,7 @@ def _processor(db, automaton: Automaton, output_json: str) -> tuple[TrackingProc
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
         start_state="a", end_state="a",
     )
-    ai_service = RecordingSchemaAiService(output_json)
+    ai_service = RecordingSchemaAiService(output)
     project_context = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_context)
     env = PersistedEnv(db, project_context, session_id)
@@ -90,35 +91,47 @@ def _processor(db, automaton: Automaton, output_json: str) -> tuple[TrackingProc
 
 async def test_output_values_are_copied_onto_the_real_env_keys_they_name(db):
     automaton = _automaton()
-    processor, _, env = _processor(db, automaton, '{"status": "done", "confidence": 90}')
+    processor, _, env = _processor(db, automaton, {"status": "done", "confidence": 90.0})
 
     await processor.process("hello")
 
     assert env.action_set() == {"status": "done", "confidence": 90}
 
 
+async def test_an_output_the_model_does_not_produce_is_blanked(db):
+    automaton = _automaton()
+    processor, _, env = _processor(db, automaton, {"status": "done"})
+    env.update_action_set({"status": "old", "confidence": 40, "seen": True})
+
+    result = await processor.process("hello")
+
+    assert env.action_set() == {"status": "done", "seen": True}
+    assert result["env_changed"] == {"status": "done", "confidence": None}
+
+
+async def test_an_output_that_is_also_an_input_is_kept_when_the_model_does_not_produce_it(db):
+    automaton = _automaton()
+    automaton.states["a"] = replace(automaton.states["a"], input=("confidence",))
+    processor, _, env = _processor(db, automaton, {"status": "done"})
+    env.update_action_set({"status": "old", "confidence": 40})
+
+    await processor.process("hello")
+
+    assert env.action_set() == {"status": "done", "confidence": 40}
+
+
 async def test_a_key_not_in_the_states_own_output_is_never_copied(db):
     automaton = _automaton()
-    processor, _, env = _processor(db, automaton, '{"status": "done", "extra": "nope"}')
+    processor, _, env = _processor(db, automaton, {"status": "done", "extra": "nope"})
 
     await processor.process("hello")
 
     assert env.action_set() == {"status": "done"}
 
 
-async def test_a_literal_newline_inside_an_output_string_does_not_lose_the_turn(db):
-    automaton = _automaton()
-    output_json = '{"status": "line one\nline two", "confidence": 90}'
-    processor, _, env = _processor(db, automaton, output_json)
-
-    await processor.process("hello")
-
-    assert env.action_set() == {"status": "line one\nline two", "confidence": 90}
-
-
 async def test_a_trigger_this_same_turn_already_sees_the_fresh_output_value(db):
     automaton = _automaton(trigger="env.status == 'done'")
-    processor, _, env = _processor(db, automaton, '{"status": "done", "confidence": 90}')
+    processor, _, env = _processor(db, automaton, {"status": "done", "confidence": 90.0})
 
     await processor.process("hello")
 
@@ -128,7 +141,7 @@ async def test_a_trigger_this_same_turn_already_sees_the_fresh_output_value(db):
 
 async def test_the_turn_reports_every_key_it_wrote_whoever_wrote_it(db):
     automaton = _automaton(trigger="env.status == 'done'", action_env={"seen": "True"})
-    processor, _, _ = _processor(db, automaton, '{"status": "done", "confidence": 90}')
+    processor, _, _ = _processor(db, automaton, {"status": "done", "confidence": 90.0})
 
     result = await processor.process("hello")
 
@@ -137,11 +150,11 @@ async def test_the_turn_reports_every_key_it_wrote_whoever_wrote_it(db):
 
 async def test_the_turn_reports_where_it_moved_from_only_when_it_moved(db):
     moving = _automaton(trigger="env.status == 'done'")
-    processor, _, _ = _processor(db, moving, '{"status": "done", "confidence": 90}')
+    processor, _, _ = _processor(db, moving, {"status": "done", "confidence": 90.0})
     moved = await processor.process("hello")
 
     still = _automaton(trigger="env.status == 'never'")
-    processor, _, _ = _processor(db, still, '{"status": "done", "confidence": 90}')
+    processor, _, _ = _processor(db, still, {"status": "done", "confidence": 90.0})
     stayed = await processor.process("hello")
 
     assert (moved["from_state"], moved["new_state"]) == ("a", "b")
@@ -151,7 +164,7 @@ async def test_the_turn_reports_where_it_moved_from_only_when_it_moved(db):
 
 async def test_on_exit_is_authoritative_over_the_models_output_on_the_same_key(db):
     automaton = _automaton(trigger="env.status == 'done'", on_exit="env.status = 'verified'")
-    processor, _, env = _processor(db, automaton, '{"status": "done", "confidence": 90}')
+    processor, _, env = _processor(db, automaton, {"status": "done", "confidence": 90.0})
 
     result = await processor.process("hello")
 
@@ -162,7 +175,7 @@ async def test_on_exit_is_authoritative_over_the_models_output_on_the_same_key(d
 
 async def test_action_env_is_authoritative_over_the_models_output_on_the_same_key(db):
     automaton = _automaton(trigger="env.status == 'done'", action_env={"status": "'verified'"})
-    processor, _, env = _processor(db, automaton, '{"status": "done", "confidence": 90}')
+    processor, _, env = _processor(db, automaton, {"status": "done", "confidence": 90.0})
 
     await processor.process("hello")
 

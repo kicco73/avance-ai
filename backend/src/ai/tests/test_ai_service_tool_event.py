@@ -10,7 +10,8 @@ from __future__ import annotations
 import pytest
 
 from ai.ai_service import AiService
-from ai.llm_provider import ToolCall, ToolCallsRequested, ToolSpec
+from ai.llm_provider import LLMProvider, ToolCall, ToolCallsRequested, ToolSpec
+from ai.response_schema import StringField
 
 _SELECT_SPEC = ToolSpec(
     name="source_flights_select",
@@ -52,12 +53,13 @@ class _FakeToolSet:
         return self._results[arguments["values"][0]]
 
 
-class _OneRoundProvider:
+class _OneRoundProvider(LLMProvider):
     def __init__(self, calls: list[ToolCall]) -> None:
+        super().__init__()
         self._round = 0
         self._calls = calls
 
-    async def generate_stream_with_schema(self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None):
+    async def stream_json(self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None):
         self._round += 1
         if self._round == 1:
             raise ToolCallsRequested(calls=self._calls, assistant_content=None)
@@ -74,7 +76,7 @@ async def _run(provider, tool_set) -> list[tuple[str, object]]:
     ai_service = AiService(provider)
     events: list[tuple[str, object]] = []
     async for _ in ai_service.generate_stream_with_metadata(
-        "sys", [], on_metadata=lambda k, v: events.append((k, v)), schema={"text": "t"}, tool_set=tool_set,
+        "sys", [], on_metadata=lambda k, v: events.append((k, v)), schema={"text": StringField("t")}, tool_set=tool_set,
     ):
         pass
     return events
@@ -137,7 +139,7 @@ async def test_the_turn_still_streams_the_final_answer_after_a_tool_call():
 
     chunks = [
         chunk async for chunk in ai_service.generate_stream_with_metadata(
-            "sys", [], on_metadata=lambda k, v: None, schema={"text": "t"}, tool_set=tool_set,
+            "sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")}, tool_set=tool_set,
         )
     ]
 

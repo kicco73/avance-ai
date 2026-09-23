@@ -21,14 +21,14 @@ pytestmark = pytest.mark.contract
 def _prompt(db) -> Prompt:
     env = PersistedEnv(db, FixedProjectContext(project_id=PROJECT_ID), session_id=0)
     return Prompt.chain(
-        SignalsPrompt("- Definition of signals: ..."), AudioPrompt(), TextPrompt("base prompt"), MemoryPrompt(env),
+        SignalsPrompt("- Definition of signals: ...", ["mood"]), AudioPrompt(), TextPrompt("base prompt"), MemoryPrompt(env),
     )
 
 
 class FakeAiServiceV2:
     """Shaped like the current ai.ai_service.AiService.
     generate_stream_with_metadata: calls on_metadata once per configured
-    key with its raw (string) value, then yields whatever "text" it has."""
+    key with its already-typed value, then yields whatever "text" it has."""
 
     def __init__(self, metadata: dict | None = None, error: Exception | None = None) -> None:
         self._metadata = metadata or {}
@@ -55,7 +55,7 @@ async def _collect(protocol, db):
 
 
 async def test_v2_generate_reply_reports_the_decoded_signals_field(db):
-    protocol = TurnProtocolUsingSchema(FakeAiServiceV2(metadata={"signals": '{"mood": 75}'}))
+    protocol = TurnProtocolUsingSchema(FakeAiServiceV2(metadata={"signals": {"mood": 75.0}}))
 
     _, metadata = await _collect(protocol, db)
 
@@ -64,7 +64,7 @@ async def test_v2_generate_reply_reports_the_decoded_signals_field(db):
 
 async def test_v2_generate_reply_also_reports_audio_and_memory_under_their_own_keys(db):
     protocol = TurnProtocolUsingSchema(
-        FakeAiServiceV2(metadata={"audio": "hi", "memory": "x: y", "signals": '{"mood": 1}'}),
+        FakeAiServiceV2(metadata={"audio": "hi", "memory": "x: y", "signals": {"mood": 1.0}}),
     )
 
     _, metadata = await _collect(protocol, db)
