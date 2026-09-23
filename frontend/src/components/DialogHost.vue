@@ -118,7 +118,7 @@ function chooseOption(id) {
         <p class="dialog-about-version">Version {{ activeDialog.version }}</p>
       </template>
       <template v-else-if="activeDialog.kind === 'custom' || activeDialog.kind === 'blocking'">
-        <component :is="activeDialog.component" v-bind="activeDialog.props" />
+        <component :is="activeDialog.component" :key="activeDialog.id" v-bind="activeDialog.props" />
       </template>
       <template v-else>
         <h2 v-if="activeDialog.title" class="dialog-title">{{ activeDialog.title }}</h2>

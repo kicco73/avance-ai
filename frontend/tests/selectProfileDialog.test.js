@@ -188,6 +188,19 @@ describe('the select profile dialog as the dialog host hands it over', () => {
   let container
   let app
   let chat
+  let selection
+
+  async function shown() {
+    await nextTick()
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    await nextTick()
+  }
+
+  function ask(profileChat = chat) {
+    const asked = selectionFor(BUTTONS, profileChat)
+    blockingDialog({ component: SelectProfileDialog, props: { selection: asked } })
+    return asked
+  }
 
   beforeEach(async () => {
     container = document.createElement('div')
@@ -196,10 +209,8 @@ describe('the select profile dialog as the dialog host hands it over', () => {
     app = createApp(DialogHost)
     app.mount(container)
     chat = fakeChat()
-    blockingDialog({ component: SelectProfileDialog, props: { selection: selectionFor(BUTTONS, chat) } })
-    await nextTick()
-    await new Promise((resolve) => requestAnimationFrame(resolve))
-    await nextTick()
+    selection = ask()
+    await shown()
   })
 
   afterEach(() => {
@@ -220,5 +231,18 @@ describe('the select profile dialog as the dialog host hands it over', () => {
     await nextTick()
 
     expect(container.querySelector('.profile-select').disabled).toBe(false)
+  })
+
+  it('opens the next asking on its first profile, however far the last one was browsed', async () => {
+    container.querySelector('[aria-label="Next"]').click()
+    await shown()
+    expect(container.querySelector('.profile-card.is-current .profile-title').textContent).toBe('Grace')
+
+    ask()
+    selection.withdraw()
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    await shown()
+
+    expect(container.querySelector('.profile-card.is-current .profile-title').textContent).toBe('Ada')
   })
 })
