@@ -668,7 +668,7 @@ class LegacyMediaDocId(LegacyScriptSpelling):
     """`media.<doc_id>` is the file's name lowercased now (see
     automaton.file_types.doc_id_for)."""
 
-    PATTERN = re.compile(r"\bmedia\.([A-Za-z_][A-Za-z0-9_]*)(?=\.)")
+    PATTERN = re.compile(r"\bmedia\.((?!\d)\w+)(?=\.)")
 
     @classmethod
     def respelled(cls, match: re.Match) -> str | None:

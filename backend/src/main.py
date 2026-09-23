@@ -40,7 +40,7 @@ from tracking.actuators import TaskNamespaceFactory
 from tracking.legacy_env_migration import migrate_env_rows
 from tracking.tracking_service import TrackingService
 
-__version__ = "2.6.22"
+__version__ = "2.6.23"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -79,11 +79,13 @@ def create_app() -> FastAPI:
         configure_project_file_cache(config.project_file_cache_bytes)
 
         migrate_env_rows(db)
-        if migrate_aspect_archives(db) | modernize_stored_revisions(db):
-            discard_all_packages(config.build_service_config.apps_dir)
+        renamed = migrate_aspect_archives(db)
 
         bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({"db": db}))
+        bus.contribute(POINT_TRIGGER_NAMESPACES, lambda namespaces: namespaces.declare(ChoiceNamespace()))
         skills.start_all(config.raw, config.path)
+        if renamed | modernize_stored_revisions(db):
+            discard_all_packages(config.build_service_config.apps_dir)
         core_services = bus.collect(POINT_CORE_SERVICES, {})
         ai_live_service = core_services.get("ai_live_service")
         ai_test_service = core_services.get("ai_test_service")
@@ -122,7 +124,6 @@ def create_app() -> FastAPI:
             reply_silence_seconds=config.reply_silence_seconds,
         )
         TurnInput(turn_service, db).register()
-        bus.contribute(POINT_TRIGGER_NAMESPACES, lambda namespaces: namespaces.declare(ChoiceNamespace()))
         progress_broadcaster.bind_loop()
         bus_channel = BusChannel(auth_service)
         bus.contribute(POINT_CORE_SERVICES, lambda registry: registry.update({

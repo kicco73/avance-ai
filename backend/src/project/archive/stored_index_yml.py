@@ -36,8 +36,11 @@ class StoredIndexYml:
             automaton = AutomatonBuilder().build(
                 {**contents, "index.yml": repaired.text}, legacy_project_id=self._project_id,
             )
-        except AutomatonBuildError:
-            raise refusal from None
+        except AutomatonBuildError as remaining:
+            raise AutomatonBuildError(
+                f"{remaining} (still refused after rewriting {'; '.join(repaired.fixes)})",
+                section=remaining.section,
+            ) from refusal
         self._store(repaired.text, repaired.fixes)
         contents["index.yml"] = repaired.text
         return automaton
