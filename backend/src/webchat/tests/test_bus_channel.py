@@ -812,7 +812,7 @@ async def test_two_turn_frames_in_one_tick_persist_the_user_messages_in_frame_or
     assert [m["content"] for m in persisted if m["role"] == "user"] == ["I have a problem", "with flight VY3003"]
     own = _frames_of(websocket.sent, session["id"])
     assert own[0] == {**own[0], "type": "output.text_stream", "text": ""}, own
-    assert [f["type"] for f in own if f["type"] == "output.text"] and own[-1]["type"] == "output.text", own
+    assert [f["type"] for f in own[-2:]] == ["output.text", "state.buttons"], own
 
 
 @pytest.mark.regression
@@ -855,7 +855,7 @@ def test_every_outgoing_frame_of_a_turn_carries_its_turn_id_and_chunks_precede_d
     frames = chat_turn_frames(client, session_id, "hi", turn_id="abc-123")
 
     kinds = [f["type"] for f in frames]
-    assert frames[-1]["type"] == "output.text"
+    assert frames[-1]["type"] == "state.buttons"
     assert (frames[0]["type"], frames[0]["text"]) == ("output.text_stream", "")
     chunks = [f for f in frames if f["type"] == "output.text_stream" and f["text"]]
     whole = [f for f in frames if f["type"] == "output.text"]

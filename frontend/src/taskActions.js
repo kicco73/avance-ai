@@ -18,7 +18,7 @@ function show_media(url, { playBackgroundAudio }) {
   openMediaDialog(resolvedUrl)
 }
 
-export function runTaskScript(script, { playBackgroundAudio, clearTranscript } = {}) {
+export function runTaskScript(script, { playBackgroundAudio, clearTranscript, envClassBinding } = {}) {
   if (!script) return
   try {
     const taskLocals = {
@@ -27,6 +27,8 @@ export function runTaskScript(script, { playBackgroundAudio, clearTranscript } =
       show,
       show_media: (url) => show_media(url, { playBackgroundAudio }),
       clear: () => clearTranscript?.(),
+      bind_env: (key, value) => envClassBinding?.bind(key, value),
+      unbind_env_all: () => envClassBinding?.unbindAll(),
     }
     const names = Object.keys(taskLocals)
     const values = names.map((name) => taskLocals[name])

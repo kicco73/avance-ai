@@ -281,6 +281,26 @@ class TriggerExpressionAnalyzer:
         return target.attr, ast.get_source_segment(statement, stmt.value)
 
     @staticmethod
+    def env_binding(statement: str) -> str | None:
+        tree = ast.parse(statement, mode="exec")
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Expr):
+            return None
+        call = tree.body[0].value
+        if (
+            not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute)
+            or not isinstance(call.func.value, ast.Name) or call.func.value.id != "chat"
+            or call.func.attr != "bind_env" or call.keywords or len(call.args) != 1
+        ):
+            return None
+        argument = call.args[0]
+        if (
+            not isinstance(argument, ast.Attribute) or not isinstance(argument.value, ast.Name)
+            or argument.value.id != "env"
+        ):
+            return None
+        return argument.attr
+
+    @staticmethod
     def bare_namespace_call(statement: str, namespace: str) -> str | None:
         """The method name if `statement` (one already-split
         task_statements() segment) is exactly a bare `<namespace>.<method>(...)`

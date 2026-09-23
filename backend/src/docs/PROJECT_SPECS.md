@@ -985,6 +985,17 @@ there's nothing to defer. Ten methods exist:
   model sees with a state's own `history-cutoff` (§4.2) instead — the
   two are independent, and only a state that declares both blanks the
   window and forgets at once.
+- `chat.bind_env(env.<key>)` — binds one env key to the chat window's
+  look: from then on the window carries the CSS class
+  `env-<key>-<value>`, following every later `env.changed` of that key,
+  so a skin can style the window by its value. The argument must be
+  `env.<key>` itself, a declared key that is not a `list` — both checked
+  when the project is built. Several calls bind several keys. A
+  `taskActions.js` local like `clear`, carrying the key and its value as
+  this script left it.
+- `chat.unbind_env_all()` — drops every `chat.bind_env` binding, and the
+  classes with them. Moving the window to another conversation drops
+  them too.
 - `chat.switch_to_human(user_id)` — hands the session to a person:
   `user_id` (their username/email) is pushed a notification with a link
   to take over this session's next turns as the human, in place of the
@@ -1041,7 +1052,7 @@ conversation unless actuators are explicitly enabled for it — while off
 (the default there) `switch_to_human` is suppressed and reported back
 as a `notify(...)` toast describing what would have happened instead,
 same suppress-and-report contract `task:`'s own real side effects get
-(§5.4). `celebrate`/`notify`/`show`/`show_media`/`switch_to_ai`/`chart`/`progress`
+(§5.4). `celebrate`/`notify`/`show`/`show_media`/`switch_to_ai`/`chart`/`progress`/`bind_env`/`unbind_env_all`
 have no real-world side effect to suppress, so they always run.
 
 **5.4 Action `task`.** One or more statements, one per non-blank

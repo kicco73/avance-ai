@@ -294,12 +294,28 @@ class AutomatonValidator:
                     f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments, "
                     "'name = expr' locals, or a bare 'chat.<method>(...)' call."
                 )
+            if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") == "bind_env":
+                cls.validate_env_binding(statement, line_context, env_keys)
+                continue
             cls.validate_namespaced_expression(
                 statement, line_context, registry, sources, frozenset(known_locals), namespaces,
                 TASK_FUNCTION_NAMES, media_doc_ids,
             )
             cls.validate_attachment_read(statement, line_context, archives)
             cls.validate_chat_arity(statement, line_context)
+
+    @staticmethod
+    def validate_env_binding(statement: str, context: str, env_keys: dict[str, EnvKey]) -> None:
+        env_key = TriggerExpressionAnalyzer.env_binding(statement)
+        if env_key is None:
+            raise ValueError(f"{context} ('{statement}'): chat.bind_env takes exactly one env.<key>, e.g. chat.bind_env(env.mood).")
+        if env_key not in env_keys:
+            raise ValueError(
+                f"{context} ('{statement}'): env key '{env_key}' is not declared in the project's own "
+                "'env' section — declare it there first."
+            )
+        if env_key in list_key_names(env_keys):
+            raise ValueError(f"{context} ('{statement}'): '{env_key}' is a list, and a list can't be bound with chat.bind_env.")
 
     @staticmethod
     def validate_expression_types(expression: str, context: str) -> None:

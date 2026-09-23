@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Protocol, TYPE_CHECKING
 
 from automaton.automaton import JsSnippet
+from automaton.core import EnvBinding
 from system.logging_factory import LoggerFactory
 from system import bus
 from system.bus import OUTPUT_CHART, OUTPUT_PROGRESS, SESSION_TAKEN_OVER, UI_NOTIFICATION, Message
@@ -98,6 +99,12 @@ class ChatNamespace(ABC):
 
     def clear(self) -> JsSnippet | None:
         return JsSnippet("clear()")
+
+    def bind_env(self, variable: EnvBinding) -> JsSnippet | None:
+        return JsSnippet(f"bind_env({json.dumps(variable.key)}, {json.dumps(variable.value, default=str)})")
+
+    def unbind_env_all(self) -> JsSnippet | None:
+        return JsSnippet("unbind_env_all()")
 
     def switch_to_ai(self) -> None:
         """Hands the session back to the AI after switch_to_human — a

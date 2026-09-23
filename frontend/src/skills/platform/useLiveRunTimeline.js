@@ -129,7 +129,7 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
   }
 
   return {
-    signalsLog, sessionStartState, selected, runChatRef, timeline, rawLiveMessages,
+    signalsLog, sessionStartState, selected, runChatRef, timeline,
     applyRun, refreshSignalsLog, refreshSessionStartState, isStateGone,
     selectMessage, selectTransition, highlightedStateKey, firedActionEdge, untilMessageId, envEditable,
     effectiveSignalValues, restartAndPrefill, restartAndResend,

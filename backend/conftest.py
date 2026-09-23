@@ -291,12 +291,12 @@ def chat_turn(client: TestClient, session_id: int, text: str = "hi") -> dict:
     than one payload that no longer exists. Asserts the exchange did not
     fail."""
     frames = chat_turn_frames(client, session_id, text)
-    assert frames[-1]["type"] == "output.text", frames[-1]
+    assert frames[-1]["type"] == "state.buttons", frames[-1]
     said = [frame for frame in frames if frame["type"] == "output.text"]
     buttons = [frame for frame in frames if frame["type"] == "state.buttons"]
     changed = [frame for frame in frames if frame["type"] == "state.changed"]
     return {
-        **frames[-1],
+        **said[-1],
         "reply": [{"id": frame["assistant_message_id"], "content": frame["text"]} for frame in said[-1:]],
         "prepared": [{"id": frame["assistant_message_id"], "content": frame["text"]} for frame in said[:-1]],
         "assistant_message_id": said[-1]["assistant_message_id"] if said else None,

@@ -61,6 +61,7 @@ const {
   reloadMessages,
   chart,
   dismissChart,
+  envClasses,
   backgroundAudioUrl,
   backgroundAudioPlaying,
   toggleBackgroundAudio,
@@ -243,7 +244,7 @@ watch(
   <div
     class="chat-window-shell"
     ref="shellEl"
-    :class="[state?.key ? `state-${state.key}` : null, reaction ? `reaction-${reaction}` : null]"
+    :class="[state?.key ? `state-${state.key}` : null, reaction ? `reaction-${reaction}` : null, ...envClasses]"
     :data-state="state?.key ?? null"
     :data-prev-state="prevStateKey"
     :data-reaction="reaction ?? null"

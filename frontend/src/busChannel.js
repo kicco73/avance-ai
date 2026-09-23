@@ -12,6 +12,8 @@ export const SERVER_EVENTS = [
   'session.taken_over',
   'ui.progress',
   'output.drive',
+  'env.changed',
+  'env.memory_changed',
   'human_prompt'
 ]
 

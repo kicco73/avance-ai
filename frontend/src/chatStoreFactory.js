@@ -18,6 +18,7 @@ import { notify } from './toastStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
 import { runTaskScript } from './taskActions.js'
+import { EnvClassBinding } from './envClassBinding.js'
 import { createBackgroundAudio } from './backgroundAudio.js'
 import { rememberBackgroundAudio, recallBackgroundAudio, forgetBackgroundAudio } from './backgroundAudioSessionMemory.js'
 
@@ -56,6 +57,9 @@ export function createChatStore({
   const signalValues = ref({})
   const currentSessionId = ref(null)
   watch(currentSessionId, (now, before) => watchSession(now, before))
+  const envClassBinding = new EnvClassBinding(currentSessionId)
+  const envClasses = envClassBinding.classes
+  watch(currentSessionId, () => envClassBinding.unbindAll())
   const {
     backgroundAudioUrl, backgroundAudioPlaying,
     playBackgroundAudio, stopBackgroundAudio, pauseBackgroundAudio, toggleBackgroundAudio,
@@ -240,6 +244,7 @@ export function createChatStore({
         rememberBackgroundAudio(kind, frame.session_id ?? currentSessionId.value, url)
       },
       clearTranscript: () => { messages.value = [] },
+      envClassBinding,
     })
   })
 
@@ -706,7 +711,7 @@ export function createChatStore({
     backgroundAudioUrl, backgroundAudioPlaying, toggleBackgroundAudio, stopBackgroundAudio, pauseBackgroundAudio,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,
-    chart, dismissChart,
+    chart, dismissChart, envClasses,
     actuatorsEnabled, actuatorsLoading, draft, turnCount,
     setProject,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
