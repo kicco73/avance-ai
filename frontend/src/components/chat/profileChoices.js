@@ -1,7 +1,8 @@
+import { markRaw, ref } from 'vue'
+
 import { projectFileContentUrl } from '../../api.js'
 import { resolveApiUrl } from '../../api/core.js'
 
-const REOPEN_PREFIX = 'profiles:'
 const ABSOLUTE_URL_PATTERN = /^[a-z][a-z0-9+.-]*:|^\//i
 
 export class ProjectMedia {
@@ -29,12 +30,41 @@ export class ProfileChoice {
     this.profiles.push({ name: button.name, ...button.profile, picture_url: this.media.pictureUrl(button.profile.picture_url) })
   }
 
-  get reopenName() {
-    return REOPEN_PREFIX + this.key
+  get signature() {
+    return [this.key, ...this.profiles.map((profile) => `${profile.name}=${profile.title}`)].join(',')
+  }
+}
+
+export class ProfileSelection {
+  constructor(choice, chat) {
+    this.choice = choice
+    this._chat = chat
+    this._open = ref(true)
+    markRaw(this)
   }
 
-  get reopenButton() {
-    return { name: this.reopenName, ui_button: this.heading || 'Select profile', ui_label: this.heading || 'Select profile' }
+  get heading() {
+    return this.choice.heading
+  }
+
+  get profiles() {
+    return this.choice.profiles
+  }
+
+  get busy() {
+    return this._chat.actionLoading.value
+  }
+
+  get open() {
+    return this._open.value
+  }
+
+  select(name) {
+    this._chat.handleAction(name)
+  }
+
+  withdraw() {
+    this._open.value = false
   }
 }
 

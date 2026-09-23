@@ -266,9 +266,19 @@ class AtomicTurnTransaction(TurnTransaction):
         pending = [row.as_signal() for row in self._rows if row.is_evaluation_point()]
         return sorted(self._db.get_signals(session_id) + pending, key=lambda signal: signal['timestamp'])
 
+    def _pending_signal_values(self, rows: list) -> dict | None:
+        latest = _latest(rows, None)
+        return dict(latest.values or {}) if latest is not None else None
+
     def get_latest_signal_snapshot(self, project_id: str) -> dict | None:
-        latest = _latest([row for row in self._rows if row.values is not None], None)
-        return dict(latest.values or {}) if latest is not None else self._db.get_latest_signal_snapshot(project_id)
+        pending = self._pending_signal_values([row for row in self._rows if row.values is not None])
+        return pending if pending is not None else self._db.get_latest_signal_snapshot(project_id)
+
+    def get_latest_session_signal_snapshot(self, session_id: int) -> dict | None:
+        pending = self._pending_signal_values(
+            [row for row in self._rows if row.values is not None and row.session_id == session_id]
+        )
+        return pending if pending is not None else self._db.get_latest_session_signal_snapshot(session_id)
 
     def get_last_transition_timestamp(self, project_id: str, until: datetime | None = None) -> datetime | None:
         latest = _latest([row for row in self._rows if row.is_real_transition()], until)

@@ -48,3 +48,7 @@ export function aboutDialog({ version }) {
 export function customDialog({ component, props = {}, wide = false }) {
   return enqueue({ kind: 'custom', component: markRaw(component), props, wide })
 }
+
+export function blockingDialog({ component, props = {}, wide = false }) {
+  return enqueue({ kind: 'blocking', component: markRaw(component), props, wide })
+}

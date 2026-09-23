@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from system import bus
 from system.bus import (
     OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    STATE_CHANGED, ENV_CHANGED, ENV_MEMORY_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES,
+    STATE_CHANGED, STATE_SIGNALS, ENV_CHANGED, ENV_MEMORY_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES,
     SESSION_EXHAUSTED,
     Message,
 )
@@ -113,6 +113,14 @@ class Outbound(object):
                 "triggered_action": result.get("triggered_action"),
             })
 
+    def evaluated(self, result: dict) -> None:
+        """The signal values this exchange ran on, said only when it had
+        any: a reader keeps the last set it was told about, and the row
+        they were recorded in is what a reader refetches to place them in
+        the session's own history."""
+        for values in filter(None, [result.get("signals")]):
+            self.put(STATE_SIGNALS, {"values": values})
+
     def wrote(self, result: dict) -> None:
         for key, value in (result.get("env_changed") or {}).items():
             self.put(ENV_CHANGED, {"key": key, "value": value})
@@ -149,6 +157,7 @@ class Outbound(object):
         for turn in filter(None, [result]):
             self.reacted(turn)
             self.moved(turn)
+            self.evaluated(turn)
             self.wrote(turn)
             self.said(turn["reply"])
             self.offered(turn.get("buttons"))

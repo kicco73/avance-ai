@@ -8,7 +8,7 @@ import ChatWaitingPanel from './ChatWaitingPanel.vue'
 import SessionRating from './SessionRating.vue'
 import ChartDialog from './ChartDialog.vue'
 import SelectProfileDialog from './SelectProfileDialog.vue'
-import { ProjectMedia, splitProfileChoices } from './profileChoices.js'
+import { ProfileSelection, ProjectMedia, splitProfileChoices } from './profileChoices.js'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import MusicToggleButton from '../MusicToggleButton.vue'
@@ -22,7 +22,7 @@ import {
   chatConnectionState,
 } from '../../chatStoreFactory.js'
 import { onLiveSkinApplied } from '../../chatSkin.js'
-import { customDialog, infoDialog } from '../../dialogStore.js'
+import { blockingDialog, customDialog, infoDialog } from '../../dialogStore.js'
 import { BottomAnchor } from './bottomAnchor.js'
 import { SceneFade } from './sceneFade.js'
 
@@ -76,15 +76,22 @@ watch(chart, (next) => {
 const buttonRow = computed(() => (
   splitProfileChoices(buttons.value, new ProjectMedia(currentProjectId.value, currentSessionId.value))
 ))
-const rowButtons = computed(() => [...buttonRow.value.plain, ...buttonRow.value.choices.map((choice) => choice.reopenButton)])
-const reopenable = computed(() => new Map(buttonRow.value.choices.map((choice) => [choice.reopenName, choice])))
+const profileChoices = computed(() => buttonRow.value.choices)
+const offeredProfiles = computed(() => profileChoices.value.map((choice) => choice.signature).join('|'))
+
+let shownSelections = []
 
 function openProfileChoice(choice) {
-  customDialog({ component: SelectProfileDialog, props: { heading: choice.heading, profiles: choice.profiles } })
-    .then((name) => { if (name) onAction(name) })
+  const selection = new ProfileSelection(choice, props.store)
+  shownSelections.push(selection)
+  blockingDialog({ component: SelectProfileDialog, props: { selection } })
 }
 
-watch(buttonRow, ({ choices }) => choices.forEach(openProfileChoice))
+watch(offeredProfiles, () => {
+  shownSelections.forEach((selection) => selection.withdraw())
+  shownSelections = []
+  profileChoices.value.forEach(openProfileChoice)
+})
 
 const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'home', 'profile', 'logout', 'select-message'])
 
@@ -195,8 +202,6 @@ function focusInput() {
 }
 
 async function onAction(actionName) {
-  const choice = reopenable.value.get(actionName)
-  if (choice) return openProfileChoice(choice)
   await handleAction(actionName)
   await nextTick()
   focusInput()
@@ -351,7 +356,7 @@ watch(
     <div class="chat-footer">
       <ActionButtons
         v-if="selectedSessionActive"
-        :actions="rowButtons"
+        :actions="buttonRow.plain"
         :disabled="actionLoading || !chatConnected"
         @action="onAction"
       />

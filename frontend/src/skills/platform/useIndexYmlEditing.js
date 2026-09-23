@@ -143,10 +143,12 @@ export function useIndexYmlEditing(
   }
 
   function handleDeleteSignal(signalName) {
-    guardedAction('delete this signal', async () => {
+    return guardedAction('delete this signal', async () => {
       try {
         await deleteProjectSignal(projectId, signalName)
+        return true
       } catch {
+        return false
       }
     })
   }

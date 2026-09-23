@@ -91,7 +91,11 @@ TYPED_KEYS = [
         {"slot": "[{'title': 'Ada', 'picture_url': '/ada.png', 'description': 'Analyst', 'key': 'ada'}]"},
         {"slot": [{"title": "Ada", "picture_url": "/ada.png", "description": "Analyst", "key": "ada"}]},
     ),
-], ids=["every-type", "float-is-a-number", "empty-list", "profile-list"])
+    (
+        {"slot": "[{'title': 'Ada', 'description': 'Analyst', 'key': 'ada'}]"},
+        {"slot": [{"title": "Ada", "description": "Analyst", "key": "ada"}]},
+    ),
+], ids=["every-type", "float-is-a-number", "empty-list", "profile-list", "profile-list-without-a-picture"])
 def test_a_value_of_the_declared_type_is_written(env, expected):
     assert _automaton(TYPED_KEYS).eval_action_env(_action(env), {}) == (expected, ())
 
@@ -104,12 +108,16 @@ def test_a_value_of_the_declared_type_is_written(env, expected):
     ({"slot": "['a', 2]", "count": "0"}, {"count": 0}, "slot"),
     ({"slot": "'a'", "count": "0"}, {"count": 0}, "slot"),
     ({"slot": "[{'title': 'Ada', 'key': 'ada'}]", "count": "0"}, {"count": 0}, "slot"),
+    (
+        {"slot": "[{'title': 'Ada', 'description': 'A', 'key': 'ada', 'rank': 'first'}]", "count": "0"},
+        {"count": 0}, "slot",
+    ),
     ({"slot": "['a', {'title': 'Ada', 'picture_url': '', 'description': '', 'key': 'ada'}]", "count": "0"}, {"count": 0}, "slot"),
     ({"count": "None", "flag": "True"}, {"flag": True}, "count"),
 ], ids=[
     "string-into-number", "bool-into-number", "number-into-string", "number-into-bool",
-    "non-string-option-into-list", "string-into-list", "partial-profile-into-list", "mixed-profiles-and-strings-into-list",
-    "none-into-number",
+    "non-string-option-into-list", "string-into-list", "partial-profile-into-list",
+    "profile-with-an-unknown-field-into-list", "mixed-profiles-and-strings-into-list", "none-into-number",
 ])
 def test_a_value_outside_the_declared_type_is_discarded_and_logged_while_the_other_keys_are_written(
     caplog, env, expected, logged

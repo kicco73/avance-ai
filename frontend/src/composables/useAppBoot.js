@@ -13,10 +13,7 @@ import { installModelSelector, modelSelector } from '../modelSelector.js'
 import { installChatChannel } from '../liveChatChannel.js'
 import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, observeLiveChat } from '../chatStore.js'
 
-export function useAppBoot(
-  currentUserProfile, currentUserRole, landingProjectId,
-  pushedView, chatOpen, showProfile, navDirection
-) {
+export function useAppBoot(currentUserProfile, currentUserRole, landingProjectId, viewStack) {
   const bootStatus = ref('checking')
   const needsTerms = ref(false)
   const inviteExempt = ref(false)
@@ -68,7 +65,7 @@ export function useAppBoot(
   function bootSucceeded() {
     bootStatus.value = 'ready'
     clearApiError()
-    if (currentUserRole.value === 'user' || chatOpen.value) {
+    if (currentUserRole.value === 'user' || viewStack.chatOpen.value) {
       loadMessages(landingProjectId.value)
     }
     modelSelector().load()
@@ -98,10 +95,8 @@ export function useAppBoot(
   }
 
   async function resolveLandingView() {
-    pushedView.value = null
-    chatOpen.value = false
-    showProfile.value = false
-    navDirection.value = 'forward'
+    viewStack.resetToRoot()
+    viewStack.setNavForward()
     try {
       currentUserProfile.value = await getMe()
       currentUserRole.value = currentUserProfile.value?.role ?? null
@@ -111,7 +106,7 @@ export function useAppBoot(
     const sharedProjectId = await activateInvitedProject()
     landingProjectId.value = sharedProjectId ?? await getActiveProjectId()
     if (sharedProjectId && currentUserRole.value !== 'user' && currentUserRole.value !== 'supervisor') {
-      chatOpen.value = true
+      viewStack.pushView('chat')
     }
   }
 

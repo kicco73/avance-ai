@@ -88,9 +88,10 @@ class InputProcessor(object):
             _, action, source_state_key = self._turns.resolve_manual_action(action_name, session["id"])
             transaction = self._turns.exchange(session["id"], [])
             tracking_engine, _ = self._turns.tracking_engine_for(session["id"], transaction)
+            signals = transaction.get_latest_session_signal_snapshot(session["id"])
             async with transaction:
                 _, env_changed = tracking_engine.apply_transition(
-                    automaton, source_state, action, None, ChoiceSelection.NONE, session["id"],
+                    automaton, source_state, action, signals, ChoiceSelection.NONE, session["id"],
                     origin='manual', username=WebSession().user, project_id=project_id,
                 )
                 turn_result = await self.turn_after(
@@ -98,6 +99,7 @@ class InputProcessor(object):
                 )
             return self._transition_result(
                 session["id"], source_state_key, action.name, env_changed, committed(transaction, turn_result),
+                signals,
             )
 
     async def choice(self, selection: ChoiceSelection, session_id: int, on_metadata: OnMetadata | None) -> dict | None:
@@ -117,9 +119,10 @@ class InputProcessor(object):
             action = tracking_engine.evaluate_choice(automaton, source_state.key, selection, session["id"])
             if action is None:
                 return None
+            signals = transaction.get_latest_session_signal_snapshot(session["id"])
             async with transaction:
                 _, env_changed = tracking_engine.apply_transition(
-                    automaton, source_state, action, None, selection, session["id"],
+                    automaton, source_state, action, signals, selection, session["id"],
                     origin='manual', username=WebSession().user, project_id=project_id,
                 )
                 turn_result = await self.turn_after(
@@ -127,6 +130,7 @@ class InputProcessor(object):
                 )
             return self._transition_result(
                 session["id"], source_state.key, action.name, env_changed, committed(transaction, turn_result),
+                signals,
             )
 
     def _answering(self, automaton: Automaton, source_state: State, action: Action) -> "InputProcessor":
@@ -171,6 +175,7 @@ class InputProcessor(object):
 
     def _transition_result(
         self, session_id: int, source_state_key: str, action_name: str, env_changed: dict, turn_result: dict,
+        signals: dict | None = None,
     ) -> dict:
         _, state = self._turns.automaton_and_state_for(session_id)
         self._turns.touch_session(session_id, state.key)
@@ -182,6 +187,7 @@ class InputProcessor(object):
             "new_state": fresh.get("key"),
             "triggered_action": action_name,
             "env_changed": env_changed,
+            "signals": signals,
             "buttons": self._turns.buttons_for(session_id, fresh),
             "reply": turn_result["reply"],
             "ai_model": self._turns.get_ai_models_info(),

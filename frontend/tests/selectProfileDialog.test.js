@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick } from 'vue'
+import { createApp, nextTick, ref } from 'vue'
 
 import SelectProfileDialog from '../src/components/chat/SelectProfileDialog.vue'
-import { ProjectMedia, splitProfileChoices } from '../src/components/chat/profileChoices.js'
+import DialogHost from '../src/components/DialogHost.vue'
+import { activeDialog, blockingDialog, resolveActiveDialog } from '../src/dialogStore.js'
+import { ProfileSelection, ProjectMedia, splitProfileChoices } from '../src/components/chat/profileChoices.js'
 import { projectFileContentUrl } from '../src/api.js'
 import { resolveApiUrl } from '../src/api/core.js'
 
@@ -24,7 +26,15 @@ describe('splitting a button row', () => {
     expect(choices).toHaveLength(1)
     expect(choices[0].heading).toBe('Pick your hero')
     expect(choices[0].profiles.map((p) => [p.name, p.title])).toEqual([['choice:hero:0', 'Ada'], ['choice:hero:1', 'Grace']])
-    expect(choices[0].reopenButton.ui_button).toBe('Pick your hero')
+  })
+
+  it('signs the same offer the same way, so a re-sent button row does not reopen the dialog', () => {
+    const [choice] = splitProfileChoices(BUTTONS, MEDIA).choices
+    const [again] = splitProfileChoices(BUTTONS, new ProjectMedia('heroes', 8)).choices
+    const [other] = splitProfileChoices(BUTTONS.slice(0, 2), MEDIA).choices
+
+    expect(again.signature).toBe(choice.signature)
+    expect(other.signature).not.toBe(choice.signature)
   })
 
   it('finds no profile choice in a row of plain string options', () => {
@@ -46,18 +56,29 @@ describe('splitting a button row', () => {
   })
 })
 
+function fakeChat() {
+  return { actionLoading: ref(false), handleAction: vi.fn() }
+}
+
+function selectionFor(buttons, chat) {
+  return new ProfileSelection(splitProfileChoices(buttons, MEDIA).choices[0], chat)
+}
+
 describe('the select profile dialog', () => {
   let container
   let app
   let closed
+  let chat
+  let selection
 
   beforeEach(() => {
     container = document.createElement('div')
     document.body.appendChild(container)
     closed = vi.fn()
     Element.prototype.animate = () => ({ finished: Promise.resolve() })
-    const { choices } = splitProfileChoices(BUTTONS, MEDIA)
-    app = createApp(SelectProfileDialog, { heading: choices[0].heading, profiles: choices[0].profiles })
+    chat = fakeChat()
+    selection = selectionFor(BUTTONS, chat)
+    app = createApp(SelectProfileDialog, { selection })
     app.provide('closeDialog', closed)
     app.mount(container)
   })
@@ -73,6 +94,26 @@ describe('the select profile dialog', () => {
   async function settle() {
     for (let i = 0; i < 4; i += 1) await nextTick()
   }
+
+  it('draws no avatar for a profile that carries no picture', () => {
+    const { choices } = splitProfileChoices(
+      [{ name: 'choice:hero:0', ui_button: 'Ada', profile: { title: 'Ada', description: 'The analyst.', key: 'ada' } }],
+      MEDIA,
+    )
+    const plain = document.createElement('div')
+    document.body.appendChild(plain)
+    const pictureless = createApp(SelectProfileDialog, {
+      selection: new ProfileSelection(choices[0], fakeChat())
+    })
+    pictureless.provide('closeDialog', closed)
+    pictureless.mount(plain)
+
+    expect(plain.querySelector('.profile-avatar')).toBe(null)
+    expect(plain.querySelector('.profile-title').textContent).toBe('Ada')
+
+    pictureless.unmount()
+    plain.remove()
+  })
 
   it('shows the first profile with its avatar, title and description', () => {
     expect(title()).toBe('Ada')
@@ -95,11 +136,89 @@ describe('the select profile dialog', () => {
     expect(title()).toBe('Grace')
   })
 
-  it('closes the dialog with the shown profile button name when Select is pressed', async () => {
+  it('sends the shown profile when its key button is pressed, and stays open until the turn says how it went', async () => {
     click('[aria-label="Next"]')
     await settle()
+    expect(container.querySelector('.profile-select').textContent).toBe('grace')
+
     click('.profile-select')
 
-    expect(closed).toHaveBeenCalledWith('choice:hero:1')
+    expect(chat.handleAction).toHaveBeenCalledWith('choice:hero:1')
+    expect(closed).not.toHaveBeenCalled()
+  })
+
+  const disabled = (selector) => container.querySelector(selector).disabled
+
+  it('takes no second answer while the turn it started is still running', async () => {
+    click('.profile-select')
+    chat.actionLoading.value = true
+    await settle()
+
+    expect([disabled('.profile-select'), disabled('[aria-label="Next"]'), disabled('[aria-label="Previous"]')])
+      .toEqual([true, true, true])
+
+    click('[aria-label="Next"]')
+    await settle()
+    expect(title()).toBe('Ada')
+  })
+
+  it('asks again when the turn failed, since a failed press left the same choice standing', async () => {
+    click('.profile-select')
+    chat.actionLoading.value = true
+    await settle()
+    chat.actionLoading.value = false
+    await settle()
+
+    expect(disabled('.profile-select')).toBe(false)
+    expect(closed).not.toHaveBeenCalled()
+
+    click('.profile-select')
+    expect(chat.handleAction).toHaveBeenCalledTimes(2)
+  })
+
+  it('closes when the choice it was asking is withdrawn, the turn having moved on', async () => {
+    selection.withdraw()
+    await settle()
+
+    expect(closed).toHaveBeenCalledWith(null)
+  })
+})
+
+describe('the select profile dialog as the dialog host hands it over', () => {
+  let container
+  let app
+  let chat
+
+  beforeEach(async () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    Element.prototype.animate = () => ({ finished: Promise.resolve() })
+    app = createApp(DialogHost)
+    app.mount(container)
+    chat = fakeChat()
+    blockingDialog({ component: SelectProfileDialog, props: { selection: selectionFor(BUTTONS, chat) } })
+    await nextTick()
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    await nextTick()
+  })
+
+  afterEach(() => {
+    while (activeDialog.value) resolveActiveDialog(null)
+    app.unmount()
+    container.remove()
+  })
+
+  it('still reads the turn it is waiting on through the host, whose queue would otherwise wrap it', async () => {
+    expect(container.querySelector('.profile-select').disabled).toBe(false)
+
+    chat.actionLoading.value = true
+    await nextTick()
+
+    expect(container.querySelector('.profile-select').disabled).toBe(true)
+
+    chat.actionLoading.value = false
+    await nextTick()
+
+    expect(container.querySelector('.profile-select').disabled).toBe(false)
   })
 })

@@ -2,11 +2,16 @@
 import { computed, inject, ref, watch } from 'vue'
 
 const props = defineProps({
-  heading: { type: String, default: '' },
-  profiles: { type: Array, default: () => [] }
+  selection: { type: Object, required: true }
 })
 
 const closeDialog = inject('closeDialog')
+
+const heading = computed(() => props.selection.heading)
+const profiles = computed(() => props.selection.profiles)
+const busy = computed(() => props.selection.busy)
+
+watch(() => props.selection.open, (open) => { if (!open) closeDialog(null) })
 
 const SLIDE_MS = 260
 const SLIDE_PX = 48
@@ -14,17 +19,18 @@ const SLIDE_PX = 48
 const index = ref(0)
 const direction = ref(1)
 
-const current = computed(() => props.profiles[index.value])
-const count = computed(() => props.profiles.length)
+const current = computed(() => profiles.value[index.value])
+const count = computed(() => profiles.value.length)
 const canBrowse = computed(() => count.value > 1)
 
 function show(step) {
+  if (busy.value) return
   direction.value = step
   index.value = (index.value + step + count.value) % count.value
 }
 
 function select() {
-  closeDialog(current.value.name)
+  props.selection.select(current.value.name)
 }
 
 const cardEls = ref([])
@@ -48,7 +54,7 @@ watch(index, (shown, hidden) => {
 </script>
 
 <template>
-  <div class="profile-dialog" @keydown.left="show(-1)" @keydown.right="show(1)">
+  <div class="profile-dialog" :class="{ 'is-busy': busy }" @keydown.left="show(-1)" @keydown.right="show(1)">
     <h2 v-if="heading" class="profile-heading">{{ heading }}</h2>
     <div class="profile-stage">
       <div
@@ -58,7 +64,7 @@ watch(index, (shown, hidden) => {
         class="profile-card"
         :class="{ 'is-current': i === index }"
       >
-        <div class="profile-avatar-ring">
+        <div v-if="profile.picture_url" class="profile-avatar-ring">
           <img class="profile-avatar" :src="profile.picture_url" alt="" />
         </div>
         <h3 class="profile-title">{{ profile.title }}</h3>
@@ -69,9 +75,9 @@ watch(index, (shown, hidden) => {
       <span v-for="(profile, i) in profiles" :key="profile.name" class="profile-dot" :class="{ 'is-current': i === index }"></span>
     </div>
     <div class="profile-controls">
-      <button type="button" class="profile-arrow" aria-label="Previous" :disabled="!canBrowse" @click="show(-1)">‹</button>
-      <button type="button" class="profile-select" :disabled="!current" @click="select">Select</button>
-      <button type="button" class="profile-arrow" aria-label="Next" :disabled="!canBrowse" @click="show(1)">›</button>
+      <button type="button" class="profile-arrow" aria-label="Previous" :disabled="!canBrowse || busy" @click="show(-1)">‹</button>
+      <button type="button" class="profile-select" :disabled="!current || busy" @click="select">{{ current?.key }}</button>
+      <button type="button" class="profile-arrow" aria-label="Next" :disabled="!canBrowse || busy" @click="show(1)">›</button>
     </div>
   </div>
 </template>
@@ -96,6 +102,11 @@ watch(index, (shown, hidden) => {
 
 .profile-stage {
   display: grid;
+}
+
+.profile-dialog.is-busy .profile-card {
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
 }
 
 .profile-card {

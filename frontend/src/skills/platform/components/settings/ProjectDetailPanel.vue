@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppStoreFrozenPreview from '../appStore/AppStoreFrozenPreview.vue'
 import PreviewChatFrame from '../PreviewChatFrame.vue'
@@ -17,6 +17,10 @@ const props = defineProps({
 const emit = defineEmits(['edit', 'label', 'download', 'share', 'delete', 'publish', 'open-skill-view'])
 
 const previewing = ref(false)
+
+watch(currentSessionId, (sessionId) => {
+  if (sessionId == null) previewing.value = false
+})
 
 function appTitle(app) {
   return app?.ui_label || app?.id || ''

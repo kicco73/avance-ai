@@ -18,10 +18,16 @@ function show_media(url, { playBackgroundAudio }) {
   openMediaDialog(resolvedUrl)
 }
 
-export function runTaskScript(script, { playBackgroundAudio } = {}) {
+export function runTaskScript(script, { playBackgroundAudio, clearTranscript } = {}) {
   if (!script) return
   try {
-    const taskLocals = { celebrate, notify, show, show_media: (url) => show_media(url, { playBackgroundAudio }) }
+    const taskLocals = {
+      celebrate,
+      notify,
+      show,
+      show_media: (url) => show_media(url, { playBackgroundAudio }),
+      clear: () => clearTranscript?.(),
+    }
     const names = Object.keys(taskLocals)
     const values = names.map((name) => taskLocals[name])
     const run = new Function(...names, script)

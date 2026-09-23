@@ -16,9 +16,13 @@ export function useProjectSignals(props) {
     await loadSignals()
   }
 
+  function removeSignal(signalName) {
+    signals.value = signals.value.filter((s) => s.signal.name !== signalName)
+  }
+
   watch(() => props.stateKey, loadSignals)
   watch(() => props.sessionId, loadSignals)
   onMounted(loadSignals)
 
-  return { signals, signalsLoading, loadSignals, refresh }
+  return { signals, signalsLoading, loadSignals, refresh, removeSignal }
 }

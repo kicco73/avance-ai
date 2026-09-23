@@ -52,6 +52,7 @@ export function createSampleChatStore({ stateKey = ref(''), reactionKey = ref(''
     actionLoading: ref(false),
     draft: ref(''),
     currentSessionId: ref(null),
+    currentProjectId: appId,
     selectedSessionActive: ref(true),
     sessionEndReason: ref(null),
     conversationElsewhere: ref(false),

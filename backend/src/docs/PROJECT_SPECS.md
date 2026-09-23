@@ -742,20 +742,28 @@ states:
 ```
 
 **Profiles.** A `list` key may hold, instead of strings, a list of
-*profiles*: dictionaries with exactly the four string fields `title`,
-`picture_url`, `description` and `key`. Nothing else changes in the
-automaton — the options are offered the same way, and `choice.<key>` is
-the pressed profile's `key`, a string, so the trigger above reads
-unchanged. What changes is the presentation: a chat that receives
-profiles shows one at a time in a dialog — picture, title, description
-and a full-width "Select" button flanked by arrows that move through
-them — instead of a row of buttons; a channel with no dialog shows the
-titles as buttons. `picture_url` is what `media.<doc_id>.url()` returns
-for an image among the project's files, or any absolute URL, used as
-written; a bare file name (`'ada.png'`) is served from the project's
-media the way a skin's `url(...)` is. A list mixing strings and profiles, or a dictionary
-missing or adding a field, is not a `list` value and is discarded like
-any other value outside its type (below).
+*profiles*: dictionaries with the three string fields `title`,
+`description` and `key`, plus an optional `picture_url`. Nothing else
+changes in the automaton — the options are offered the same way, and
+`choice.<key>` is the pressed profile's `key`, a string, so the trigger
+above reads unchanged. What changes is the presentation: a chat that
+receives profiles shows one at a time in a dialog — picture, title,
+description and a full-width button labelled with the profile's `key`,
+flanked by arrows that move through them — instead of a row of buttons.
+The dialog has no way out but choosing: no close button, no Escape, and
+the options are nowhere else, so offering profiles is asking a question
+the person has to answer. Choosing does not close it — it goes quiet
+until the turn it started says how it went, and closes only once the
+options are withdrawn, which a transition does. A turn that fails
+instead leaves the same options standing, and the dialog asks again. A channel with no dialog shows the titles as
+buttons. `picture_url` is
+what `media.<doc_id>.url()` returns for an image among the project's
+files, or any absolute URL, used as written; a bare file name
+(`'ada.png'`) is served from the project's media the way a skin's
+`url(...)` is. A profile that carries no `picture_url` is shown without
+a picture. A list mixing strings and profiles, or a dictionary missing
+a required field or adding one of its own, is not a `list` value and is
+discarded like any other value outside its type (below).
 
 ```yaml
       - name: offer
@@ -969,6 +977,14 @@ there's nothing to defer. Ten methods exist:
   over the websocket as a single `ui.notification` frame — the exact same
   frame shape `task:`'s own tunneled calls use (§5.4), just pushed
   inline instead of from a background worker.
+- `chat.clear()` — blanks the chat window, so whatever is said next
+  opens it as its first message. Purely what is on screen, and a
+  `taskActions.js` local like `celebrate`: nothing is deleted and no
+  history is cut, so the model still sees the whole conversation and
+  reopening or reloading shows the transcript whole again. Cut what the
+  model sees with a state's own `history-cutoff` (§4.2) instead — the
+  two are independent, and only a state that declares both blanks the
+  window and forgets at once.
 - `chat.switch_to_human(user_id)` — hands the session to a person:
   `user_id` (their username/email) is pushed a notification with a link
   to take over this session's next turns as the human, in place of the

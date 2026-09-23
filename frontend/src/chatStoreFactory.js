@@ -53,6 +53,7 @@ export function createChatStore({
 }) {
   const state = ref(null)
   const reaction = ref(null)
+  const signalValues = ref({})
   const currentSessionId = ref(null)
   watch(currentSessionId, (now, before) => watchSession(now, before))
   const {
@@ -224,6 +225,11 @@ export function createChatStore({
     handleStateChange(frame.state ?? {})
   })
 
+  busChannel.subscribe('state.signals', (frame) => {
+    if (frame.session_id !== currentSessionId.value) return
+    signalValues.value = frame.values ?? {}
+  })
+
   busChannel.subscribe('ui.notification', (frame) => {
     if (!visualEffects) return
     if (!frame.task) return
@@ -233,6 +239,7 @@ export function createChatStore({
         playBackgroundAudio(url)
         rememberBackgroundAudio(kind, frame.session_id ?? currentSessionId.value, url)
       },
+      clearTranscript: () => { messages.value = [] },
     })
   })
 
@@ -633,6 +640,7 @@ export function createChatStore({
 
   function clearChatUi() {
     messages.value = []
+    signalValues.value = {}
     showButtons([])
     dismissChart()
     clearApiError()
@@ -693,7 +701,7 @@ export function createChatStore({
 
   return {
     abandonOpenReplies,
-    state, reaction, currentSessionId, selectedSessionActive, sessionEndReason, sessionChannel, conversationElsewhere,
+    state, reaction, signalValues, currentSessionId, selectedSessionActive, sessionEndReason, sessionChannel, conversationElsewhere,
     blockedReason, blockedDetail,
     backgroundAudioUrl, backgroundAudioPlaying, toggleBackgroundAudio, stopBackgroundAudio, pauseBackgroundAudio,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,

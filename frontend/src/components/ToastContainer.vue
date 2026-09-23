@@ -22,7 +22,7 @@ import { renderMarkdown } from '../markdown.js'
   position: fixed;
   top: 1rem;
   right: 1rem;
-  z-index: 1000;
+  z-index: 2050;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;

@@ -8,10 +8,16 @@ defineOptions({ inheritAttrs: false })
 const props = defineProps({
   projectId: { type: String, required: true },
   stateKey: { type: String, default: null },
-  sessionId: { type: [Number, String], default: null }
+  sessionId: { type: [Number, String], default: null },
+  deleteSignal: { type: Function, default: () => false }
 })
 
-const { signals, signalsLoading, loadSignals, refresh } = useProjectSignals(props)
+const { signals, signalsLoading, loadSignals, refresh, removeSignal } = useProjectSignals(props)
+
+async function onDeleteSignal(signalName) {
+  await props.deleteSignal(signalName)
+  removeSignal(signalName)
+}
 
 const showOnlyRelevant = ref(true)
 
@@ -34,7 +40,7 @@ defineExpose({ loadSignals, refresh, resync: refresh })
     <p v-else-if="!displayedSignals.length" class="signals-status">
       No relevant signals — none are computed in this state yet.
     </p>
-    <InspectorSignalList v-else v-bind="$attrs" :signals="displayedSignals" />
+    <InspectorSignalList v-else v-bind="$attrs" :signals="displayedSignals" @delete="onDeleteSignal" />
   </div>
 </template>
 

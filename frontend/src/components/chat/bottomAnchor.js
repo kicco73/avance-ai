@@ -5,7 +5,7 @@ export class BottomAnchor {
     this.scroller = null
     this.observer = null
     this.stuck = true
-    this.placedAt = null
+    this.placedAt = 0
   }
 
   attach(scroller, content) {
@@ -13,27 +13,13 @@ export class BottomAnchor {
     this.observer = new ResizeObserver(() => this.follow())
     this.observer.observe(content)
     this.observer.observe(scroller)
-    scroller.addEventListener('wheel', this, { passive: true })
-    scroller.addEventListener('touchmove', this, { passive: true })
-    scroller.addEventListener('keydown', this)
     this.jump()
   }
 
   detach() {
     this.observer?.disconnect()
     this.observer = null
-    const scroller = this.scroller
-    if (scroller) {
-      scroller.removeEventListener('wheel', this)
-      scroller.removeEventListener('touchmove', this)
-      scroller.removeEventListener('keydown', this)
-    }
     this.scroller = null
-    this.placedAt = null
-  }
-
-  handleEvent() {
-    this.release()
   }
 
   get bottom() {
@@ -62,15 +48,16 @@ export class BottomAnchor {
 
   onScroll() {
     if (!this.scroller) return
-    if (this.scroller.scrollTop === this.placedAt) {
-      this.placedAt = null
-      return
-    }
-    this.stuck = this.distanceFromBottom < NEAR_BOTTOM_THRESHOLD_PX
+    if (this.stuck) this.keepFollowing()
+    else this.resumeIfBackAtBottom()
   }
 
-  release() {
-    if (!this.scroller) return
+  keepFollowing() {
+    this.stuck = this.scroller.scrollTop > this.placedAt - NEAR_BOTTOM_THRESHOLD_PX
+  }
+
+  resumeIfBackAtBottom() {
     this.stuck = this.distanceFromBottom < NEAR_BOTTOM_THRESHOLD_PX
+    this.placedAt = this.scroller.scrollTop
   }
 }

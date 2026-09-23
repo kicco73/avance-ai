@@ -85,6 +85,10 @@ def test_on_exit_accepts_a_mix_of_env_assignments_and_bare_chat_calls():
     ]
 
 
+def test_on_exit_accepts_chat_clear():
+    assert _build(_go("        on-exit: chat.clear()\n")).states["a"].actions[0].on_exit == "chat.clear()"
+
+
 def test_on_exit_accepts_chat_switch_to_human_and_switch_to_ai():
     assert _build(_go("        on-exit: chat.switch_to_human(user.email)\n")).states["a"].actions[0].on_exit
     assert _build(_go("        on-exit: chat.switch_to_ai()\n")).states["a"].actions[0].on_exit

@@ -40,6 +40,15 @@ describe('pressing a chat button', () => {
     expect(chatStore.liveStore.buttons.value).toEqual([])
   })
 
+  it('leaves the row standing when the turn fails, so the same choice can be answered again', () => {
+    chatStore.handleAction('yes')
+
+    bus.deliver({ type: 'output.error', session_id: 1, message: 'No reply.', detail: 'The server said nothing.' })
+
+    expect(chatStore.actionLoading.value).toBe(false)
+    expect(chatStore.liveStore.buttons.value.map((b) => b.name)).toEqual(['yes', 'no'])
+  })
+
   it('leaves the row enabled when nothing was sent', () => {
     bus.busChannel.send.mockReturnValueOnce(false)
     chatStore.handleAction('yes')

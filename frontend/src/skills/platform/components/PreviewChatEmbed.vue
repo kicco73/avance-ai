@@ -8,6 +8,7 @@ import LoginView from '../../../components/LoginView.vue'
 import { needsLogin } from '../../../authStore.js'
 import { holdSkin } from '../../../chatSkin.js'
 import { useAppBoot } from '../../../composables/useAppBoot.js'
+import { useViewStack } from '../../../composables/useViewStack.js'
 import { appStorePreviewStore, setPreviewApp, currentSessionId } from '../appStorePreviewStore.js'
 import { AppSkinSource } from '../appSkinSource.js'
 
@@ -19,13 +20,10 @@ const props = defineProps({
 const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 const landingProjectId = ref(null)
-const pushedView = ref(null)
-const chatOpen = ref(false)
-const showProfile = ref(false)
-const navDirection = ref('forward')
+const viewStack = useViewStack(currentUserRole)
 
 const { bootStatus, needsTerms, startBootSequence, handleLoggedIn } = useAppBoot(
-  currentUserProfile, currentUserRole, landingProjectId, pushedView, chatOpen, showProfile, navDirection
+  currentUserProfile, currentUserRole, landingProjectId, viewStack
 )
 
 const releaseSkin = holdSkin(new AppSkinSource(computed(() => props.projectId)))

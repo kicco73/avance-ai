@@ -7,6 +7,7 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton import Action, Automaton, EnvKey, State
+from automaton.model import Signal
 from turn.turn_service import TurnService
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
@@ -21,11 +22,12 @@ pytestmark = pytest.mark.regression
 PROJECT_ID = "proj"
 
 
-ENV_TYPES = {"reset_counter": "bool", "number_of_steps": "number"}
+ENV_TYPES = {"reset_counter": "bool", "number_of_steps": "number", "score": "number"}
 
 
 def _automaton(
     action_env: dict, target: str = "b", model_reads_env: bool = False, target_memory: str = "global",
+    signals: list | None = None,
 ) -> Automaton:
     """`model_reads_env`: declares every written key as the destination
     state's own `input` — the one configuration under which an env value
@@ -47,7 +49,7 @@ def _automaton(
         init_action=init_action,
         states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
         general_prompt="",
-        signals=[],
+        signals=signals or [],
         general_attachments={},
         autotracking_on_ai_message=False,
         env_keys=[EnvKey(name=key, type=ENV_TYPES[key]) for key in (action_env or {})],
@@ -106,6 +108,22 @@ async def test_a_manually_fired_action_lands_through_the_same_transition_as_a_tr
     assert env.action_set() == {"reset_counter": True}
     landed = [row for row in db.get_signals(session["id"]) if row["new_state"] == "b"]
     assert [(row["old_state"], row["action"], row["origin"]) for row in landed] == [("a", "advance", "manual")]
+
+
+async def test_a_manually_fired_action_still_reads_the_signals_measured_before_it(db):
+    """Pressing a button measures nothing, but nothing has changed since
+    the last turn did: the action's own expressions read the signal
+    values that turn computed, instead of a None per declared signal."""
+    turn_service, _ = _turn_service(db, _automaton(
+        {"score": "signal.mood * 2"},
+        signals=[Signal(name="mood", ui_label="Mood", definition="how it went")],
+    ))
+    session = await turn_service.enter_session(PROJECT_ID, 'live')
+    db.save_signal_snapshot({"mood": 0.5}, session["id"])
+
+    await turn_service.apply_manual_action("advance", session["id"])
+
+    assert _env_for(db).action_set() == {"score": 1.0}
 
 
 async def test_an_action_with_no_env_field_never_touches_env(db):

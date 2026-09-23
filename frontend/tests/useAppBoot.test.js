@@ -14,6 +14,7 @@ vi.mock('../src/api.js', () => ({
 vi.mock('../src/busChannel.js', () => import('./fakeBus.js'))
 vi.mock('../src/errorStore.js', () => ({
   clearApiError: vi.fn(),
+  enterScreen: vi.fn(),
 }))
 vi.mock('../src/authStore.js', () => ({
   requireLogin: vi.fn(),
@@ -58,6 +59,7 @@ import { setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateC
 import { modelSelector } from '../src/modelSelector.js'
 import { namespaceColor } from '../src/triggerEditorSupport.js'
 import { useAppBoot } from '../src/composables/useAppBoot.js'
+import { useViewStack } from '../src/composables/useViewStack.js'
 
 function mountComposable(setup) {
   let result
@@ -68,8 +70,7 @@ function mountComposable(setup) {
 }
 
 describe('useAppBoot', () => {
-  let unmount, currentUserProfile, currentUserRole, landingProjectName,
-    pushedView, chatOpen, showProfile, navDirection
+  let unmount, currentUserProfile, currentUserRole, landingProjectName, viewStack
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -77,10 +78,11 @@ describe('useAppBoot', () => {
     currentUserProfile = ref(null)
     currentUserRole = ref(null)
     landingProjectName = ref(null)
-    pushedView = ref('chat')
-    chatOpen = ref(false)
-    showProfile = ref(true)
-    navDirection = ref('back')
+    viewStack = useViewStack(currentUserRole)
+    viewStack.pushView('manageProjects')
+    viewStack.pushView('edit', { projectId: 'left_over' })
+    viewStack.openProfile()
+    viewStack.setNavBack()
   })
 
   afterEach(() => {
@@ -90,8 +92,7 @@ describe('useAppBoot', () => {
 
   function mount() {
     const mounted = mountComposable(() => useAppBoot(
-      currentUserProfile, currentUserRole, landingProjectName,
-      pushedView, chatOpen, showProfile, navDirection
+      currentUserProfile, currentUserRole, landingProjectName, viewStack
     ))
     unmount = mounted.unmount
     return mounted.result
@@ -158,9 +159,9 @@ describe('useAppBoot', () => {
 
       expect(setInputTokenBudgetPerTurn).toHaveBeenCalledWith(null)
       expect(setTotalTokenBudgetPerSession).toHaveBeenCalledWith(null)
-      expect(pushedView.value).toBeNull()
-      expect(showProfile.value).toBe(false)
-      expect(navDirection.value).toBe('forward')
+      expect(viewStack.pushedView.value).toBeNull()
+      expect(viewStack.showProfile.value).toBe(false)
+      expect(viewStack.navDirection.value).toBe('forward')
       expect(loadMessages).not.toHaveBeenCalled()
       expect(s.bootStatus.value).toBe('ready')
     })
@@ -254,7 +255,7 @@ describe('useAppBoot', () => {
 
       await bootAs('admin')
 
-      expect(chatOpen.value).toBe(true)
+      expect(viewStack.chatOpen.value).toBe(true)
       expect(landingProjectName.value).toBe('shared-project')
       expect(loadMessages).toHaveBeenCalled()
     })
@@ -263,7 +264,7 @@ describe('useAppBoot', () => {
       await bootAs('admin')
 
       expect(activateProject).not.toHaveBeenCalled()
-      expect(pushedView.value).toBeNull()
+      expect(viewStack.pushedView.value).toBeNull()
     })
 
     it('falls back to the normal landing when the shared id no longer resolves or resolving it fails', async () => {

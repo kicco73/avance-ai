@@ -26,38 +26,64 @@ describe('BottomAnchor', () => {
     }
   })
 
-  it('keeps following when the echo of its own placement arrives after a growth larger than the near-bottom threshold', () => {
+  it('keeps following when a scroll event arrives after a growth taller than the threshold and the reader moved nothing', () => {
     const { scroller, anchor } = attached(1000)
-    scroller.scrollHeight = 1200
-    anchor.follow()
-    scroller.scrollHeight = 1600
+    scroller.scrollHeight += 600
+
     anchor.onScroll()
+
+    expect(anchor.stuck).toBe(true)
     anchor.follow()
     expect(scroller.scrollTop).toBe(bottomOf(scroller))
   })
 
-  it('stops following once the reader scrolls away, and resumes when they come back near the bottom', () => {
+  it('stops following once the reader scrolls away, and keeps the position they left', () => {
     const { scroller, anchor } = attached(2000)
-    scroller.scrollTop = 800
+    scroller.scrollTop = bottomOf(scroller) - 400
     anchor.onScroll()
-    scroller.scrollHeight = 2400
+    expect(anchor.stuck).toBe(false)
+
+    const left = scroller.scrollTop
+    scroller.scrollHeight += 600
     anchor.follow()
-    expect(scroller.scrollTop).toBe(800)
+    expect(scroller.scrollTop).toBe(left)
+  })
+
+  it('ignores a reader nudge smaller than the threshold, and follows the next growth', () => {
+    const { scroller, anchor } = attached(2000)
+    scroller.scrollTop -= 40
+    anchor.onScroll()
+
+    expect(anchor.stuck).toBe(true)
+    scroller.scrollHeight += 600
+    anchor.follow()
+    expect(scroller.scrollTop).toBe(bottomOf(scroller))
+  })
+
+  it('follows again once the reader comes back near the bottom', () => {
+    const { scroller, anchor } = attached(2000)
+    scroller.scrollTop = 500
+    anchor.onScroll()
 
     scroller.scrollTop = bottomOf(scroller) - 40
     anchor.onScroll()
-    scroller.scrollHeight = 2800
+    expect(anchor.stuck).toBe(true)
+
+    scroller.scrollHeight += 600
     anchor.follow()
     expect(scroller.scrollTop).toBe(bottomOf(scroller))
   })
 
-  it('releases on a wheel gesture that leaves the bottom', () => {
+  it('keeps following when the content shrinks and the clamped position echoes back', () => {
     const { scroller, anchor } = attached(2000)
-    scroller.scrollTop = 500
-    anchor.handleEvent()
-    scroller.scrollHeight = 2400
+    scroller.scrollHeight -= 500
     anchor.follow()
-    expect(scroller.scrollTop).toBe(500)
+    scroller.scrollTop = bottomOf(scroller)
+
+    anchor.onScroll()
+
+    expect(anchor.stuck).toBe(true)
+    expect(scroller.scrollTop).toBe(bottomOf(scroller))
   })
 
   it('follows when the scroller itself shrinks around the same content', () => {
@@ -72,10 +98,24 @@ describe('BottomAnchor', () => {
     scroller.scrollTop = 100
     anchor.onScroll()
     scroller.scrollHeight = 3000
+
     anchor.jump()
+
     expect(scroller.scrollTop).toBe(bottomOf(scroller))
     scroller.scrollHeight = 3100
     anchor.follow()
     expect(scroller.scrollTop).toBe(bottomOf(scroller))
+  })
+
+  it('does nothing once detached', () => {
+    const { scroller, anchor } = attached(2000)
+    anchor.detach()
+    scroller.scrollHeight = 5000
+
+    anchor.follow()
+    anchor.onScroll()
+    anchor.jump()
+
+    expect(scroller.scrollTop).toBe(1600)
   })
 })

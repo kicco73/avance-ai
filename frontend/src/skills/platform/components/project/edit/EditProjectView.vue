@@ -37,7 +37,7 @@ import { activeChatMode } from '../../../../../chatSkin.js'
 import { setTestProject, releaseTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
 
 const {
-  currentSessionId, turnCount, chatLoading, loadMessages, loadSessions,
+  currentSessionId, turnCount, chatLoading, loadMessages, loadSessions, handleStateChange,
   sessions: runSessions, refreshSessionsQuietly,
 } = testStore
 
@@ -221,6 +221,11 @@ const inspectorTabs = computed(() => {
 const inspectorActiveTab = ref('states')
 
 const { stateTabTokens } = useStateTabTokens(props.projectId, selectedStateKey)
+
+async function onRunAdvanced() {
+  await loadMessages()
+  await refreshSignalsLog()
+}
 
 async function ensureDraftChatSession() {
   await loadMessages()
@@ -530,6 +535,8 @@ async function handleSetSessionComment(sessionId, comment) {
           @select-message="selectMessage"
           @restart-prefill="restartAndPrefill"
           @restart-resend="restartAndResend"
+          @run-advanced="onRunAdvanced"
+          @state-changed="handleStateChange"
           @media-saved="loadFiles"
         />
 
@@ -623,6 +630,7 @@ async function handleSetSessionComment(sessionId, comment) {
               <InspectorSignalsTab
                 :ref="registerTab('signals')"
                 :project-id="projectId"
+                :session-id="currentSessionId"
                 :signal-values="effectiveSignalValues"
                 :editable-files="files"
                 :state-key="highlightedStateKey"
@@ -630,7 +638,7 @@ async function handleSetSessionComment(sessionId, comment) {
                 @jump-to-definition="jumpSilently"
                 @select-attachment="selectFile"
                 @set-field="handleSetSignalField"
-                @delete="handleDeleteSignal"
+                :delete-signal="handleDeleteSignal"
               />
             </template>
             <template #tab-design-signals="{ registerTab }">
@@ -647,7 +655,7 @@ async function handleSetSessionComment(sessionId, comment) {
                 @set-field="handleSetSignalField"
                 @set-state-field="(field, value) => handleSetStateField(selectedStateKey, field, value)"
                 @add-signal="handleAddSignal"
-                @delete="handleDeleteSignal"
+                :delete-signal="handleDeleteSignal"
               />
             </template>
             <template #tab-drive="{ registerTab }">

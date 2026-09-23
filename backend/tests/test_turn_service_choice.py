@@ -99,6 +99,17 @@ _PROFILES = [
 ]
 
 
+async def test_a_profile_without_a_picture_is_offered_like_any_other(turn_service_for):
+    db = turn_service_for.db
+    turn_service = turn_service_for(_automaton(), _FakeProvider())
+    pictureless = {"title": "Ada", "description": "The analyst.", "key": "ada"}
+    session_id = await _session_with_options(turn_service, db, [pictureless])
+
+    buttons = turn_service.buttons_for(session_id, turn_service.get_state_for_session(session_id))
+
+    assert buttons[1]["profile"] == pictureless
+
+
 async def test_a_list_of_profiles_is_a_row_of_buttons_each_carrying_its_profile(turn_service_for):
     db = turn_service_for.db
     turn_service = turn_service_for(_automaton(), _FakeProvider())

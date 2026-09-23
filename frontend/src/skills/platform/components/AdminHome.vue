@@ -1,6 +1,7 @@
 <script setup>
 import ManageProjectsView from './settings/ManageProjectsView.vue'
 import { useProjectAdminActions } from '../useProjectAdminActions.js'
+import { stopPreviewSession } from '../appStorePreviewStore.js'
 
 const props = defineProps({
   profile: { type: Object, default: null },
@@ -15,9 +16,14 @@ const {
   handleModelDelete, handlePublishProject, activateAndRefresh,
 } = useProjectAdminActions()
 
+async function openOver(view, context) {
+  await stopPreviewSession()
+  props.viewStack.pushView(view, context)
+}
+
 async function openEditor(projectId, buildError = null) {
   await activateAndRefresh(projectId)
-  props.viewStack.pushView('edit', { projectId, buildError })
+  await openOver('edit', { projectId, buildError })
 }
 
 const listeners = {
@@ -25,10 +31,10 @@ const listeners = {
   upload: triggerModelUpload,
   delete: handleModelDelete,
   edit: openEditor,
-  label: (projectId) => props.viewStack.pushView('label', { projectId }),
+  label: (projectId) => openOver('label', { projectId }),
   download: handleModelDownload,
   publish: handlePublishProject,
-  'open-skill-view': (view, projectId) => props.viewStack.pushView(view, { projectId }),
+  'open-skill-view': (view, projectId) => openOver(view, { projectId }),
   chat: (projectId) => emit('open-chat', projectId),
   about: () => emit('about'),
   close: () => emit('close'),

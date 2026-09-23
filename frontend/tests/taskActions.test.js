@@ -50,6 +50,17 @@ describe('runTaskScript', () => {
     expect(toastStore.notify).toHaveBeenCalledWith('Nice!', 'Done')
   })
 
+  it('blanks the transcript when the script is clear()', () => {
+    const clearTranscript = vi.fn()
+    taskActions.runTaskScript('clear()', { clearTranscript })
+    expect(clearTranscript).toHaveBeenCalledTimes(1)
+  })
+
+  it('catches a clear() nobody gave it a transcript for instead of throwing', () => {
+    expect(() => taskActions.runTaskScript('clear()')).not.toThrow()
+    expect(consoleErrorSpy).not.toHaveBeenCalled()
+  })
+
   it('catches a script referencing an unknown identifier instead of throwing', () => {
     expect(() => taskActions.runTaskScript('doesNotExist()')).not.toThrow()
     expect(consoleErrorSpy).toHaveBeenCalled()

@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from system import bus
-from system.bus import SESSION_ENDED, SESSION_INFO, Message
+from system.bus import SESSION_ENDED, SESSION_INFO, STATE_SIGNALS, Message
 from webchat.webchat_service import WebchatService
 
 pytestmark = pytest.mark.contract
@@ -122,3 +122,19 @@ async def test_a_closed_conversation_is_announced_to_its_watchers_and_then_stops
 
     assert [frame["reason"] for frame in connections.to_watchers] == ["channel-switch"]
     assert connections.unwatched == [SESSION]
+
+
+async def test_the_signal_values_of_a_turn_reach_the_connection_that_asked_for_it():
+    """What the Inspect panel's own bars read. The frame is a turn's, so
+    it goes back to whoever asked — the Run tab's embedded chat, not
+    every connection showing the conversation."""
+    connections = _listening()
+
+    await bus.publish(Message(
+        type=STATE_SIGNALS, username="user", session_id=SESSION, origin_id=CONNECTION,
+        body={"values": {"mood": 0.5}},
+    ))
+
+    assert connections.to_connection == [
+        {"type": STATE_SIGNALS, "session_id": SESSION, "values": {"mood": 0.5}},
+    ]

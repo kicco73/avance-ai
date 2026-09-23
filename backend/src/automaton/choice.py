@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 CHOICE_BUTTON_PREFIX = "choice:"
-PROFILE_FIELDS = ("title", "picture_url", "description", "key")
+PROFILE_FIELDS = ("title", "description", "key")
+PROFILE_OPTIONAL_FIELDS = ("picture_url",)
 
 
 @dataclass(frozen=True)
@@ -61,8 +62,8 @@ class ProfileOption:
 def is_profile(option: object) -> bool:
     return (
         isinstance(option, dict)
-        and set(option) == set(PROFILE_FIELDS)
-        and all(isinstance(option[field], str) for field in PROFILE_FIELDS)
+        and set(PROFILE_FIELDS) <= set(option) <= set(PROFILE_FIELDS + PROFILE_OPTIONAL_FIELDS)
+        and all(isinstance(text, str) for text in option.values())
     )
 
 

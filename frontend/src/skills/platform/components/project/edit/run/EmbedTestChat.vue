@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import html2canvas from 'html2canvas'
 import ChatView from '../../../../../../components/chat/ChatView.vue'
 import RestartFromHereButton from '../../../../../../components/chat/RestartFromHereButton.vue'
@@ -11,6 +11,7 @@ import LoginView from '../../../../../../components/LoginView.vue'
 import { needsLogin } from '../../../../../../authStore.js'
 import { activeChatMode } from '../../../../../../chatSkin.js'
 import { useAppBoot } from '../../../../../../composables/useAppBoot.js'
+import { useViewStack } from '../../../../../../composables/useViewStack.js'
 import { testStore } from '../../../../testChatStore.js'
 import { deleteSession } from '../../../../api.js'
 
@@ -22,13 +23,10 @@ const props = defineProps({
 const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 const landingProjectId = ref(null)
-const pushedView = ref(null)
-const chatOpen = ref(false)
-const showProfile = ref(false)
-const navDirection = ref('forward')
+const viewStack = useViewStack(currentUserRole)
 
 const { bootStatus, needsTerms, startBootSequence, handleLoggedIn } = useAppBoot(
-  currentUserProfile, currentUserRole, landingProjectId, pushedView, chatOpen, showProfile, navDirection
+  currentUserProfile, currentUserRole, landingProjectId, viewStack
 )
 
 function postToParent(type, messageId) {
@@ -38,6 +36,21 @@ function postToParent(type, messageId) {
 function onSelectMessage(message) {
   postToParent('select-message', message.messageId)
 }
+
+function reportAdvanced() {
+  window.parent.postMessage({ source: 'run-chat-embed', type: 'run-advanced' }, window.location.origin)
+}
+
+function reportStateChange(state) {
+  window.parent.postMessage(
+    { source: 'run-chat-embed', type: 'state-changed', state: toRaw(state) ?? null },
+    window.location.origin
+  )
+}
+
+watch(testStore.turnCount, reportAdvanced)
+watch(testStore.signalValues, reportAdvanced)
+watch(testStore.state, reportStateChange)
 
 function backgroundImageUrl(el) {
   const match = getComputedStyle(el).backgroundImage.match(/url\(["']?(.*?)["']?\)/)

@@ -643,6 +643,7 @@ class TrackingProcessor(object):
 			"new_state": action.target if action else None,
 			"env_changed": dict(self.out.env_changed),
 			"memory_changed": dict(self.out.memory_changed),
+			"signals": self.metadata.signals,
 			"triggered_action": action.name if action else None,
 			"ai_model": self.ai_service.get_models_info(),
 			"session_id": self.user.session_id,

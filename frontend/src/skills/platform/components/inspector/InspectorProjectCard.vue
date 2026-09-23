@@ -33,12 +33,16 @@ const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editId = ref('')
 const editGeneralPrompt = ref('')
+const editTrackOnAi = ref(false)
+const editNewSessionStrategy = ref('resume')
 
 function resetEditBuffers() {
   editUiLabel.value = props.project?.ui_label ?? ''
   editUiDescription.value = props.project?.ui_description ?? ''
   editId.value = props.project?.id ?? ''
   editGeneralPrompt.value = props.project?.general_prompt ?? ''
+  editTrackOnAi.value = props.project?.signal_tracking_on_ai_message ?? false
+  editNewSessionStrategy.value = props.project?.new_session_strategy ?? 'resume'
 }
 
 watch(() => props.project, resetEditBuffers, { immediate: true, deep: true })
@@ -69,14 +73,16 @@ function commitGeneralPrompt() {
   commitTextField('general-prompt', editGeneralPrompt.value, props.project?.general_prompt ?? '')
 }
 
-function commitBoolField(field, value) {
-  emit('set-field', field, value)
+function toggleTrackOnAi() {
+  editTrackOnAi.value = !editTrackOnAi.value
+  emit('set-field', 'signal-tracking-on-ai-message', editTrackOnAi.value)
 }
 
-const restartsEverySession = computed(() => props.project?.new_session_strategy === 'restart')
+const restartsEverySession = computed(() => editNewSessionStrategy.value === 'restart')
 
 function toggleNewSessionStrategy() {
-  emit('set-field', 'new-session-strategy', restartsEverySession.value ? 'resume' : 'restart')
+  editNewSessionStrategy.value = restartsEverySession.value ? 'resume' : 'restart'
+  emit('set-field', 'new-session-strategy', editNewSessionStrategy.value)
 }
 </script>
 
@@ -116,9 +122,9 @@ function toggleNewSessionStrategy() {
         <span
           v-if="showEditForm"
           class="inspector-detail-badge inspector-detail-badge-toggle"
-          :class="project?.signal_tracking_on_ai_message ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+          :class="editTrackOnAi ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
           title="Click to toggle"
-          @click.stop="commitBoolField('signal-tracking-on-ai-message', !project?.signal_tracking_on_ai_message)"
+          @click.stop="toggleTrackOnAi"
         >Track on AI</span>
         <span
           v-if="showEditForm"

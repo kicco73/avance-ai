@@ -45,7 +45,7 @@ const props = defineProps({
   isStateGone: { type: Function, required: true }
 })
 
-const emit = defineEmits(['select-message', 'restart-prefill', 'restart-resend', 'media-saved'])
+const emit = defineEmits(['select-message', 'restart-prefill', 'restart-resend', 'media-saved', 'run-advanced', 'state-changed'])
 
 function timelineMessageFor(rawMessage) {
   return props.timeline.find((entry) => entry.kind === 'message' && entry.message.key === rawMessage.id)?.message ?? rawMessage
@@ -70,6 +70,14 @@ function onEmbedMessage(event) {
   if (data.type === 'session-restarted') {
     pendingRestartResolve?.(data.sessionId)
     pendingRestartResolve = null
+    return
+  }
+  if (data.type === 'run-advanced') {
+    emit('run-advanced')
+    return
+  }
+  if (data.type === 'state-changed') {
+    emit('state-changed', data.state)
     return
   }
   const rawMessage = testStore.messages.value.find((m) => m.messageId === data.messageId)

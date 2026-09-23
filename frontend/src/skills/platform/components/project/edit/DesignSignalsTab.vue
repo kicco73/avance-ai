@@ -8,7 +8,8 @@ defineOptions({ inheritAttrs: false })
 const props = defineProps({
   projectId: { type: String, required: true },
   stateKey: { type: String, default: null },
-  stateData: { type: Object, default: null }
+  stateData: { type: Object, default: null },
+  deleteSignal: { type: Function, default: () => false }
 })
 
 const emit = defineEmits(['set-state-field', 'add-signal'])
@@ -18,7 +19,12 @@ const SIGNAL_TRACKING_STRATEGIES = [
   { id: 'all', label: 'All signals', title: 'Every declared signal, whether or not this state reads it' }
 ]
 
-const { signals, signalsLoading, loadSignals, refresh } = useProjectSignals(props)
+const { signals, signalsLoading, loadSignals, refresh, removeSignal } = useProjectSignals(props)
+
+async function onDeleteSignal(signalName) {
+  await props.deleteSignal(signalName)
+  removeSignal(signalName)
+}
 
 defineExpose({ loadSignals, refresh })
 </script>
@@ -35,7 +41,7 @@ defineExpose({ loadSignals, refresh })
     </div>
     <p v-if="signalsLoading" class="signals-status">Loading…</p>
     <p v-else-if="!signals.length" class="signals-status">No signals defined.</p>
-    <InspectorSignalList v-else v-bind="$attrs" :signals="signals" />
+    <InspectorSignalList v-else v-bind="$attrs" :signals="signals" @delete="onDeleteSignal" />
     <button class="inspector-signals-add-btn" @click="emit('add-signal')">+ Add signal</button>
   </div>
 </template>

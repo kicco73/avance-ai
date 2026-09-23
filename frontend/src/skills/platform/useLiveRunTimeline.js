@@ -1,10 +1,10 @@
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { getSessions, getSessionSignals } from './api.js'
 import { buildTimeline, highlightedStateKeyFor, latestSignalValues, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../testTimeline.js'
 import { testStore } from './testChatStore.js'
 
 export function useLiveRunTimeline(projectId, mode, validStateKeys) {
-  const { state: runState, messages, currentSessionId, draft, handleSend, handleTruncateFrom } = testStore
+  const { state: runState, messages, currentSessionId, signalValues, draft, handleSend, handleTruncateFrom } = testStore
 
   const signalsLog = ref([])
   const sessionStartState = ref(null)
@@ -41,6 +41,8 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
     } catch {
     }
   }
+
+  watch(signalValues, () => refreshSignalsLog())
 
   function isStateGone(message) {
     const stateKey = resultingStateKeyFor({ kind: 'message', message }, timeline.value, sessionStartState.value)

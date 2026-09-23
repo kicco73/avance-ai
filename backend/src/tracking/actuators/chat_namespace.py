@@ -96,6 +96,9 @@ class ChatNamespace(ABC):
     def show_media(self, url: str) -> JsSnippet | None:
         return JsSnippet(f"show_media({json.dumps(url)})")
 
+    def clear(self) -> JsSnippet | None:
+        return JsSnippet("clear()")
+
     def switch_to_ai(self) -> None:
         """Hands the session back to the AI after switch_to_human — a
         no-op outside a session context (see _session_id)."""

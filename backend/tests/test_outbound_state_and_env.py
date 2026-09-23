@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from conftest import RecordedMessages
-from system.bus import ENV_CHANGED, STATE_CHANGED, Message
+from system.bus import ENV_CHANGED, STATE_CHANGED, STATE_SIGNALS, Message
 from turn.outbound import Outbound
 
 pytestmark = pytest.mark.contract
@@ -24,7 +24,7 @@ def _started() -> Message:
 
 
 async def _published(result: dict) -> list[Message]:
-    recorded = RecordedMessages(STATE_CHANGED, ENV_CHANGED)
+    recorded = RecordedMessages(STATE_CHANGED, STATE_SIGNALS, ENV_CHANGED)
     outbound = Outbound(_started())
     outbound.ran(result)
     await outbound.flush()
@@ -67,3 +67,16 @@ async def test_every_written_key_is_its_own_message_with_the_turns_envelope():
 async def test_a_turn_that_wrote_nothing_says_nothing():
     assert await _published(_result(env_changed={})) == []
     assert await _published(_result()) == []
+
+
+async def test_the_signal_values_a_turn_ran_on_travel_with_the_turns_envelope():
+    (evaluated,) = await _published(_result(signals={"mood": 0.5, "focus": 1.0}))
+
+    assert evaluated.type == STATE_SIGNALS
+    assert evaluated.body == {"values": {"mood": 0.5, "focus": 1.0}}
+    assert (evaluated.project_id, evaluated.session_id) == (PROJECT_ID, 7)
+
+
+async def test_a_turn_that_measured_nothing_says_nothing_about_signals():
+    assert await _published(_result(signals={})) == []
+    assert await _published(_result(signals=None)) == []

@@ -38,15 +38,22 @@ const ServicesView = defineAsyncComponent(() => import('./components/services/Se
 const CORE_OVERLAYS = [
   { view: 'services', component: ServicesView },
 ]
-const overlayView = computed(
-  () => [...CORE_OVERLAYS, ...pushedViews.value].find((entry) => entry.view === pushedView.value) ?? null
-)
-
 const viewStack = useViewStack(currentUserRole)
 const {
-  pushedView, pushedViewContext, chatOpen, homePreviewRole, showProfile, navDirection, slideTransitionName,
-  setNavBack, pushView, popPushedView, openHomePreview, closeHomePreview, goHome, openProfile, closeProfile,
+  views, pushedView, pushedViewContext, chatOpen, homePreviewRole, showProfile, navDirection, slideTransitionName,
+  pushView, popPushedView, updateTopContext, openHomePreview, closeHomePreview, goHome, openProfile, closeProfile,
 } = viewStack
+
+const overlayStack = computed(() => views.value.flatMap((entry, depth) => {
+  const known = [...CORE_OVERLAYS, ...pushedViews.value].find((candidate) => candidate.view === entry.view)
+  if (!known) return []
+  return [{
+    component: known.component,
+    context: entry.context,
+    depth,
+    key: `${entry.view}-${entry.context.projectId}-${entry.context.sessionId}`,
+  }]
+}))
 
 const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useChatFlipTransition(navDirection)
 
@@ -57,8 +64,7 @@ const {
   startBootSequence,
   handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
 } = useAppBoot(
-  currentUserProfile, currentUserRole, landingProjectId,
-  pushedView, chatOpen, showProfile, navDirection
+  currentUserProfile, currentUserRole, landingProjectId, viewStack
 )
 
 function openChatOn(projectId) {
@@ -80,7 +86,7 @@ watch(
 )
 
 function renameOpenProject(projectId) {
-  pushedViewContext.value = { ...pushedViewContext.value, projectId }
+  updateTopContext({ projectId })
 }
 
 watch(requestedOperatorSession, (request) => {
@@ -216,21 +222,22 @@ onBeforeUnmount(() => {
             v-on="roleHomeListeners"
           />
 
-          <Transition :name="slideTransitionName">
+          <TransitionGroup :name="slideTransitionName">
             <component
-              v-if="overlayView"
-              :is="overlayView.component"
+              v-for="entry in overlayStack"
+              :is="entry.component"
+              :key="entry.key"
               class="view-pushed"
-              :key="`${pushedView}-${pushedViewContext.projectId}-${pushedViewContext.sessionId}`"
-              :project-id="pushedViewContext.projectId"
-              :session-id="pushedViewContext.sessionId"
-              :build-error="pushedViewContext.buildError"
+              :style="{ '--view-depth': 101 + entry.depth }"
+              :project-id="entry.context.projectId"
+              :session-id="entry.context.sessionId"
+              :build-error="entry.context.buildError"
               :current-user-role="currentUserRole"
               :profile="currentUserProfile"
               :view-stack="viewStack"
               v-on="overlayListeners"
             />
-          </Transition>
+          </TransitionGroup>
 
           <Transition :name="slideTransitionName">
             <LiveChatWindow
@@ -357,21 +364,15 @@ onBeforeUnmount(() => {
   transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* A pushed view and the role home underneath it are both fixed at
-   z-index 100 (AppStoreView, ManageProjectsView), so the pushed one only
-   stayed on top while a transition class raised it. The elevation belongs
-   to the pushed view itself, for as long as it is mounted. !important is
-   required: this class lands on the pushed component's own root element
-   alongside that component's own scoped z-index rule (e.g. AppStoreView's
-   .app-store-overlay), which has equal selector specificity, so without it
-   whichever stylesheet the bundler happens to insert later wins the tie. */
+/* Every pushed view and the role home underneath them are fixed at z-index
+   100 of their own (AppStoreView, ManageProjectsView), so each entry is
+   raised by its depth in the stack. !important is required: this class lands
+   on the pushed component's own root element alongside that component's own
+   scoped z-index rule (e.g. AppStoreView's .app-store-overlay), which has
+   equal selector specificity, so without it whichever stylesheet the bundler
+   happens to insert later wins the tie. */
 .view-pushed {
-  z-index: 101 !important;
-}
-
-.view-slide-forward-enter-active,
-.view-slide-back-leave-active {
-  z-index: 101 !important;
+  z-index: var(--view-depth) !important;
 }
 
 .view-slide-forward-enter-from {

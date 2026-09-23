@@ -223,6 +223,16 @@ describe('excludingNamespaces', () => {
   })
 })
 
+describe('a no-argument chat call', () => {
+  it('completes as the finished call, parentheses and all, so chat.clear() is typed by picking it', () => {
+    const registry = { ...REGISTRY, chat: { clear: 'Blanks the chat window.', notify: 'Shows a toast.' } }
+    const option = optionAt('chat.cl', 'clear', registry)
+
+    expect(option.type).toBe('function')
+    expect(option.apply).toBe('clear()')
+  })
+})
+
 describe('excludingIdentifiers', () => {
   it('drops one identifier from its own namespace, leaving the rest and every other namespace untouched', () => {
     const registry = { ...REGISTRY, chat: { write: 'Writes the reply.', notify: 'Shows a toast.' } }

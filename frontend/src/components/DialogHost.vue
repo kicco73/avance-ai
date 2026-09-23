@@ -59,12 +59,15 @@ function onNativeClose() {
 
 provide('closeDialog', (value = null) => closeWith(value))
 
+const dismissible = computed(() => activeDialog.value?.kind !== 'blocking')
+
 function onCancel(event) {
   event.preventDefault()
-  closeWith(cancelValueFor(activeDialog.value))
+  if (dismissible.value) closeWith(cancelValueFor(activeDialog.value))
 }
 
 function onBackdropClick(event) {
+  if (!dismissible.value) return
   if (event.target === dialogEl.value) closeWith(cancelValueFor(activeDialog.value))
 }
 
@@ -103,6 +106,7 @@ function chooseOption(id) {
       :class="{ 'dialog-card-visible': cardVisible, 'dialog-card-about': activeDialog.kind === 'about' }"
     >
       <button
+        v-if="dismissible"
         type="button"
         class="dialog-close-btn"
         title="Close"
@@ -113,7 +117,7 @@ function chooseOption(id) {
         <img :src="logoUrl" class="dialog-about-logo" alt="Avance" />
         <p class="dialog-about-version">Version {{ activeDialog.version }}</p>
       </template>
-      <template v-else-if="activeDialog.kind === 'custom'">
+      <template v-else-if="activeDialog.kind === 'custom' || activeDialog.kind === 'blocking'">
         <component :is="activeDialog.component" v-bind="activeDialog.props" />
       </template>
       <template v-else>

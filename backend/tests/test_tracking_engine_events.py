@@ -190,6 +190,22 @@ def test_apply_action_env_pushes_on_exits_own_chat_snippets_through_the_scopes_c
     assert chat.pushed == ['celebrate()\nnotify("Nice!", "Done.")']
 
 
+def test_apply_action_env_pushes_a_chat_clear_ahead_of_what_the_same_script_says_after_it():
+    """chat.clear() tunnels to the browser like celebrate does, in the
+    order it was written: a script that blanks the window and then shows
+    something arrives as one snippet the browser runs top to bottom, so
+    what follows the clear survives it."""
+    automaton, state, action = _automaton(
+        action_target="a", action_on_exit="chat.clear()\nchat.notify('Fresh', 'Starting over.')",
+    )
+    chat = FakeChatNamespaceRecorder()
+    engine = TrackingEngine(FakeSink(), FakeEnv(), FakeScopeBuilderWithChat(chat))
+
+    engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
+
+    assert chat.pushed == ['clear()\nnotify("Fresh", "Starting over.")']
+
+
 def test_apply_action_env_never_touches_chat_when_on_exit_writes_env_only():
     """FakeScopeBuilder's own scope carries no "chat" key at all — if
     apply_action_env ever touched it for a plain env-only on-exit

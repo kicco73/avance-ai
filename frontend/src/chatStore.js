@@ -26,7 +26,7 @@ export function observeLiveChat(observers) {
 }
 
 export const {
-  state, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
+  state, signalValues, currentSessionId, selectedSessionActive, blockedReason, blockedDetail,
   sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
   messages, historyLoaded, chatLoading, chatStatus, actionLoading,
   chart, dismissChart,
