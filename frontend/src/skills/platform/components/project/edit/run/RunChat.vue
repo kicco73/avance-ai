@@ -45,14 +45,10 @@ const props = defineProps({
   isStateGone: { type: Function, required: true }
 })
 
-const emit = defineEmits(['select-message', 'restart-prefill', 'restart-resend', 'media-saved', 'run-advanced', 'state-changed'])
+const emit = defineEmits(['select-message', 'restart-prefill', 'restart-resend', 'media-saved', 'run-advanced'])
 
-function timelineMessageFor(rawMessage) {
-  return props.timeline.find((entry) => entry.kind === 'message' && entry.message.key === rawMessage.id)?.message ?? rawMessage
-}
-
-function onSelectMessage(rawMessage) {
-  emit('select-message', timelineMessageFor(rawMessage))
+function timelineMessageFor(messageId) {
+  return props.timeline.find((entry) => entry.kind === 'message' && entry.message.id === messageId)?.message ?? null
 }
 
 let pendingSnapshotResolve = null
@@ -73,20 +69,16 @@ function onEmbedMessage(event) {
     return
   }
   if (data.type === 'run-advanced') {
-    emit('run-advanced')
+    emit('run-advanced', { state: data.state, messages: data.messages })
     return
   }
-  if (data.type === 'state-changed') {
-    emit('state-changed', data.state)
-    return
-  }
-  const rawMessage = testStore.messages.value.find((m) => m.messageId === data.messageId)
-  if (!rawMessage) return
+  const message = timelineMessageFor(data.messageId)
+  if (!message) return
   if (data.type === 'select-message') {
-    onSelectMessage(rawMessage)
+    emit('select-message', message)
   } else if (data.type === 'restart-resend' || data.type === 'restart-prefill') {
-    if (props.isStateGone(timelineMessageFor(rawMessage))) return
-    emit(data.type, rawMessage)
+    if (props.isStateGone(message)) return
+    emit(data.type, message)
   }
 }
 

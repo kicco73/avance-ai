@@ -4,15 +4,17 @@ import { buildTimeline, highlightedStateKeyFor, latestSignalValues, nearestMessa
 import { testStore } from './testChatStore.js'
 
 export function useLiveRunTimeline(projectId, mode, validStateKeys) {
-  const { state: runState, messages, currentSessionId, signalValues, draft, handleSend, handleTruncateFrom } = testStore
+  const { currentSessionId, draft, handleSend, handleTruncateFrom } = testStore
 
   const signalsLog = ref([])
   const sessionStartState = ref(null)
   const selected = ref(null)
   const runChatRef = ref(null)
+  const runState = ref(null)
+  const runMessages = ref([])
 
   const rawLiveMessages = computed(() =>
-    messages.value.map((m) => ({ ...m, id: m.messageId ?? null, key: m.id, audio_text: m.audioText }))
+    runMessages.value.map((m) => ({ ...m, id: m.messageId ?? null, key: m.id, audio_text: m.audioText }))
   )
 
   const timeline = computed(() =>
@@ -42,7 +44,23 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
     }
   }
 
-  watch(signalValues, () => refreshSignalsLog())
+  async function applyRun({ state, messages }) {
+    const incoming = messages ?? []
+    if (incoming.length !== runMessages.value.length) selected.value = null
+    runState.value = state ?? null
+    runMessages.value = incoming
+    await refreshSignalsLog()
+  }
+
+  function forgetRun() {
+    selected.value = null
+    runState.value = null
+    runMessages.value = []
+    signalsLog.value = []
+    sessionStartState.value = null
+  }
+
+  watch(currentSessionId, forgetRun)
 
   function isStateGone(message) {
     const stateKey = resultingStateKeyFor({ kind: 'message', message }, timeline.value, sessionStartState.value)
@@ -112,8 +130,8 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
   }
 
   return {
-    signalsLog, sessionStartState, selected, runChatRef, timeline,
-    refreshSignalsLog, refreshSessionStartState, isStateGone,
+    signalsLog, sessionStartState, selected, runChatRef, timeline, rawLiveMessages,
+    applyRun, refreshSignalsLog, refreshSessionStartState, isStateGone,
     selectMessage, selectTransition, highlightedStateKey, firedActionEdge, untilMessageId, envEditable,
     effectiveSignalValues, restartAndPrefill, restartAndResend,
   }

@@ -37,7 +37,7 @@ import { activeChatMode } from '../../../../../chatSkin.js'
 import { setTestProject, releaseTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
 
 const {
-  currentSessionId, turnCount, chatLoading, loadMessages, loadSessions, handleStateChange,
+  currentSessionId, turnCount, chatLoading, loadMessages, loadSessions,
   sessions: runSessions, refreshSessionsQuietly,
 } = testStore
 
@@ -185,7 +185,7 @@ const {
 
 const {
   selected, runChatRef, timeline,
-  refreshSignalsLog, refreshSessionStartState, isStateGone,
+  applyRun, refreshSignalsLog, refreshSessionStartState, isStateGone,
   selectMessage, highlightedStateKey, firedActionEdge, untilMessageId, envEditable,
   effectiveSignalValues, restartAndPrefill, restartAndResend,
 } = useLiveRunTimeline(props.projectId, mode, validStateKeys)
@@ -222,9 +222,8 @@ const inspectorActiveTab = ref('states')
 
 const { stateTabTokens } = useStateTabTokens(props.projectId, selectedStateKey)
 
-async function onRunAdvanced() {
-  await loadMessages()
-  await refreshSignalsLog()
+async function onRunAdvanced(run) {
+  await applyRun(run)
 }
 
 async function ensureDraftChatSession() {
@@ -389,7 +388,6 @@ watch(turnCount, () => {
 })
 
 watch(currentSessionId, () => {
-  selected.value = null
   refreshSessionStartState()
   refreshSignalsLog()
 })
@@ -536,7 +534,6 @@ async function handleSetSessionComment(sessionId, comment) {
           @restart-prefill="restartAndPrefill"
           @restart-resend="restartAndResend"
           @run-advanced="onRunAdvanced"
-          @state-changed="handleStateChange"
           @media-saved="loadFiles"
         />
 

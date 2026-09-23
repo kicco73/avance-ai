@@ -38,19 +38,26 @@ function onSelectMessage(message) {
 }
 
 function reportAdvanced() {
-  window.parent.postMessage({ source: 'run-chat-embed', type: 'run-advanced' }, window.location.origin)
-}
-
-function reportStateChange(state) {
-  window.parent.postMessage(
-    { source: 'run-chat-embed', type: 'state-changed', state: toRaw(state) ?? null },
-    window.location.origin
-  )
+  window.parent.postMessage({
+    source: 'run-chat-embed',
+    type: 'run-advanced',
+    sessionId: testStore.currentSessionId.value,
+    state: toRaw(testStore.state.value) ?? null,
+    messages: testStore.messages.value.map((m) => ({
+      id: m.id,
+      messageId: m.messageId ?? null,
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+      audioText: m.audioText ?? null
+    }))
+  }, window.location.origin)
 }
 
 watch(testStore.turnCount, reportAdvanced)
 watch(testStore.signalValues, reportAdvanced)
-watch(testStore.state, reportStateChange)
+watch(testStore.state, reportAdvanced)
+watch(() => testStore.messages.value.length, reportAdvanced)
 
 function backgroundImageUrl(el) {
   const match = getComputedStyle(el).backgroundImage.match(/url\(["']?(.*?)["']?\)/)
