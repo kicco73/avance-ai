@@ -6,15 +6,15 @@ from automaton.builder.archive_resolver import ProjectArchives
 from automaton.automaton import EnvKey, Source, State
 from automaton.builder.build_cursor import BuildCursor
 from automaton.choice_namespace import list_key_names
-from automaton.core import TASK_FUNCTION_NAMES, TRIGGER_FUNCTION_NAMES
+from automaton.core import TASK_FUNCTION_NAMES, TRIGGER_FUNCTION_NAMES, AttachmentTemplate
 from automaton.env_types import STORED_ENV_TYPES
-from automaton.file_types import media_doc_id_for
+from automaton.file_types import attachment_doc_id_for, media_doc_id_for
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.input_processor_kind import INPUT_PROCESSOR_KINDS
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.trigger_namespaces import TriggerNamespaces
 from metrics.metrics_framework import metric_names
-from tracking.actuators import ChatNamespace, DriveNamespace, MAX_ATTACHMENT_READ_BYTES, MediaDoc, TaskNamespace
+from tracking.actuators import AttachmentDoc, ChatNamespace, DriveNamespace, MAX_ATTACHMENT_READ_BYTES, MediaDoc, TaskNamespace
 from tracking.sources import READ_METHOD, driver_class_for
 
 STATE_SOURCE_FIELDS = (
@@ -38,12 +38,14 @@ class AutomatonValidator:
         cls, expression: str, context: str, registry: dict[str, dict[str, str]], sources: dict[str, Source],
         known_locals: frozenset[str] = frozenset(), namespaces: frozenset[str] = frozenset(),
         known_builtins: frozenset[str] = frozenset(), media_doc_ids: frozenset[str] = frozenset(),
+        attachment_doc_ids: frozenset[str] = frozenset(),
     ) -> None:
         try:
             namespace_refs = TriggerExpressionAnalyzer.namespace_refs(expression)
             bare_names = TriggerExpressionAnalyzer.bare_names(expression, namespaces)
             source_refs = TriggerExpressionAnalyzer.source_refs(expression)
             media_refs = TriggerExpressionAnalyzer.media_refs(expression)
+            attachment_refs = TriggerExpressionAnalyzer.attachment_refs(expression)
         except SyntaxError as exc:
             raise ValueError(f"{context} ('{expression}') is not a valid expression: {exc}") from exc
 
@@ -66,10 +68,15 @@ class AutomatonValidator:
                 unknown.add(f"media.{doc_id}")
                 continue
             unknown |= {f"media.{doc_id}.{m}" for m in methods - {"url"}}
+        for doc_id, methods in attachment_refs.items():
+            if doc_id not in attachment_doc_ids:
+                unknown.add(f"attachment.{doc_id}")
+                continue
+            unknown |= {f"attachment.{doc_id}.{m}" for m in methods - {"read", "render"}}
         if unknown:
             message = f"{context} references undefined name(s): {', '.join(sorted(unknown))}"
             if read_on_a_source:
-                message += " — a whole-file read is attachment.read(name)'s job (on-exit/task only), not source.*."
+                message += " — a whole-file read is attachment.<name>.read()'s job (on-exit/task only), not source.*."
             raise ValueError(message)
         cls.validate_merged_string_arguments(expression, context)
         cls.validate_source_call_arguments(expression, context, sources)
@@ -111,23 +118,31 @@ class AutomatonValidator:
 
     @classmethod
     def validate_media_call_arguments(cls, expression: str, context: str) -> None:
-        """Every `media.<doc_id>.<method>(...)` call must bind to
-        MediaDoc's own method signature — same idea as
-        validate_source_call_arguments, against the one fixed class
-        every doc id's namespace object actually is (see
-        tracking.actuators.media_namespace)."""
-        for doc_id, method_name, positional, keywords, unpacks in TriggerExpressionAnalyzer.media_calls(expression):
+        """Every `media.<doc_id>.<method>(...)` and
+        `attachment.<doc_id>.<method>(...)` call must bind to its doc
+        class's own method signature — same idea as
+        validate_source_call_arguments, against the one fixed class every
+        doc id's namespace object actually is (see tracking.actuators)."""
+        calls = [
+            (namespace, doc_class, call)
+            for namespace, doc_class, found in (
+                ("media", MediaDoc, TriggerExpressionAnalyzer.media_calls(expression)),
+                ("attachment", AttachmentDoc, TriggerExpressionAnalyzer.attachment_calls(expression)),
+            )
+            for call in found
+        ]
+        for namespace, doc_class, (doc_id, method_name, positional, keywords, unpacks) in calls:
             if unpacks:
                 continue
-            method = getattr(MediaDoc, method_name, None)
+            method = getattr(doc_class, method_name, None)
             if method is None:
                 continue
             try:
                 inspect.signature(method).bind(None, *([None] * positional), **{name: None for name in keywords})
             except TypeError as exc:
                 raise ValueError(
-                    f"{context} ('{expression}'): media.{doc_id}.{method_name}(...) {exc} — "
-                    f"expected media.{doc_id}.{method_name}{cls._signature_text(method)}"
+                    f"{context} ('{expression}'): {namespace}.{doc_id}.{method_name}(...) {exc} — "
+                    f"expected {namespace}.{doc_id}.{method_name}{cls._signature_text(method)}"
                 ) from exc
 
     @staticmethod
@@ -173,23 +188,51 @@ class AutomatonValidator:
         cls._validate_namespace_call_arity(expression, context, "drive", DriveNamespace)
 
     @staticmethod
-    def validate_attachment_read(expression: str, context: str, archives: ProjectArchives) -> None:
-        violations = TriggerExpressionAnalyzer.attachment_read_violations(expression)
-        if violations:
-            raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
-        for name in TriggerExpressionAnalyzer.attachment_read_names(expression):
-            path = archives.require([name], context)[0]
-            text = archives.text(path)
+    def attachment_docs(archives: ProjectArchives) -> dict[str, list[str]]:
+        docs: dict[str, list[str]] = {}
+        for name in archives.names():
+            for doc_id in filter(None, [attachment_doc_id_for(name)]):
+                docs.setdefault(doc_id, []).append(name)
+        return docs
+
+    @classmethod
+    def validate_script_expression(
+        cls, expression: str, context: str, archives: ProjectArchives, registry: dict[str, dict[str, str]],
+        sources: dict[str, Source], known_locals: frozenset[str], namespaces: frozenset[str] = frozenset(),
+        media_doc_ids: frozenset[str] = frozenset(),
+    ) -> None:
+        """One task/on-exit expression: every name it reads, then every
+        `attachment.<doc_id>` it reaches — the file must be one, text, under
+        the size limit, and a rendered one may only hold expressions this
+        very line could have written in its place."""
+        docs = cls.attachment_docs(archives)
+        cls.validate_namespaced_expression(
+            expression, context, registry, sources, known_locals, namespaces, TASK_FUNCTION_NAMES, media_doc_ids,
+            frozenset(docs),
+        )
+        for doc_id, methods in TriggerExpressionAnalyzer.attachment_refs(expression).items():
+            paths = docs.get(doc_id, [])
+            if len(paths) > 1:
+                raise ValueError(
+                    f"{context} ('{expression}'): attachment.{doc_id} could be any of {', '.join(sorted(paths))} — "
+                    "rename all but one of them."
+                )
+            text = archives.text(paths[0])
             if text is None:
                 raise ValueError(
-                    f"{context} ('{expression}'): attachment.read('{name}') targets a binary file — "
+                    f"{context} ('{expression}'): attachment.{doc_id} is '{paths[0]}', a binary file — "
                     "only text files can be read this way."
                 )
             size = len(text.encode("utf-8"))
             if size > MAX_ATTACHMENT_READ_BYTES:
                 raise ValueError(
-                    f"{context} ('{expression}'): attachment.read('{name}') is {size} bytes, over the "
+                    f"{context} ('{expression}'): attachment.{doc_id} is {size} bytes, over the "
                     f"{MAX_ATTACHMENT_READ_BYTES}-byte limit."
+                )
+            for placeholder in AttachmentTemplate(text).expressions() if "render" in methods else ():
+                cls.validate_namespaced_expression(
+                    placeholder, f"{context}, attachment.{doc_id}.render()", registry, sources, known_locals,
+                    namespaces, TASK_FUNCTION_NAMES, media_doc_ids, frozenset(docs),
                 )
 
     @classmethod
@@ -213,12 +256,9 @@ class AutomatonValidator:
                     f"{line_context} ('{statement}'): '{target}' is a reserved name "
                     "(a namespace or core metric) and can't be used as a task local variable."
                 )
-            cls.validate_namespaced_expression(
-                expression, line_context, registry, sources, frozenset(known_locals), known_builtins=TASK_FUNCTION_NAMES,
-            )
+            cls.validate_script_expression(expression, line_context, archives, registry, sources, frozenset(known_locals))
             cls.validate_task_arity(expression, line_context)
             cls.validate_drive_arity(expression, line_context)
-            cls.validate_attachment_read(expression, line_context, archives)
             violations = TriggerExpressionAnalyzer.defer_violations(expression)
             if violations:
                 raise ValueError(f"{line_context} ('{statement}'): {'; '.join(violations)}")
@@ -267,11 +307,9 @@ class AutomatonValidator:
                         f"{line_context}: env key '{env_key}' is not declared in the project's own "
                         "'env' section — declare it there first."
                     )
-                cls.validate_namespaced_expression(
-                    expression, line_context, registry, sources, frozenset(known_locals), namespaces,
-                    TASK_FUNCTION_NAMES, media_doc_ids,
+                cls.validate_script_expression(
+                    expression, line_context, archives, registry, sources, frozenset(known_locals), namespaces, media_doc_ids,
                 )
-                cls.validate_attachment_read(expression, line_context, archives)
                 cls.validate_env_key_type(env_keys[env_key], expression, line_context)
                 continue
             local = TriggerExpressionAnalyzer.task_assignment(statement)
@@ -282,11 +320,9 @@ class AutomatonValidator:
                         f"{line_context} ('{statement}'): '{target}' is a reserved name "
                         "(a namespace or core metric) and can't be used as an on-exit local variable."
                     )
-                cls.validate_namespaced_expression(
-                    expression, line_context, registry, sources, frozenset(known_locals), namespaces,
-                    TASK_FUNCTION_NAMES, media_doc_ids,
+                cls.validate_script_expression(
+                    expression, line_context, archives, registry, sources, frozenset(known_locals), namespaces, media_doc_ids,
                 )
-                cls.validate_attachment_read(expression, line_context, archives)
                 known_locals.add(target)
                 continue
             if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") is None:
@@ -297,11 +333,9 @@ class AutomatonValidator:
             if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") == "bind_env":
                 cls.validate_env_binding(statement, line_context, env_keys)
                 continue
-            cls.validate_namespaced_expression(
-                statement, line_context, registry, sources, frozenset(known_locals), namespaces,
-                TASK_FUNCTION_NAMES, media_doc_ids,
+            cls.validate_script_expression(
+                statement, line_context, archives, registry, sources, frozenset(known_locals), namespaces, media_doc_ids,
             )
-            cls.validate_attachment_read(statement, line_context, archives)
             cls.validate_chat_arity(statement, line_context)
 
     @staticmethod

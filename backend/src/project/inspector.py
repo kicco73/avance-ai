@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
-from automaton.file_types import media_doc_id_for
+from automaton.file_types import attachment_doc_id_for, media_doc_id_for
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_namespaces import TriggerNamespaces
 from db import Db
@@ -246,7 +246,8 @@ class ProjectInspector:
 
     def get_identifier_registry(self, project_id: str) -> dict[str, dict[str, str]]:
         """Every identifier a trigger/`env:` expression can reference:
-        signals, env keys, `source.<name>`, `media.<doc_id>`, and
+        signals, env keys, `source.<name>`, `media.<doc_id>`,
+        `attachment.<doc_id>`, and
         whatever namespace an installed contributor declares. Reads the
         unpublished draft."""
         automaton = self._automaton_loader.load(project_id)
@@ -264,6 +265,14 @@ class ProjectInspector:
             if doc_id is not None:
                 registry[f"media.{doc_id}"] = {
                     "url": f"Returns the download url for '{name}' — e.g. media.{doc_id}.url()."
+                }
+        registry["attachment"] = {}
+        for name in self._db.list_archives(project_id):
+            doc_id = attachment_doc_id_for(name)
+            if doc_id is not None:
+                registry[f"attachment.{doc_id}"] = {
+                    method: description.format(name=name, doc_id=doc_id)
+                    for method, description in IdentifierRegistry.ATTACHMENT_DOC.items()
                 }
         registry.update(TriggerNamespaces.collect().identifiers(automaton))
         return registry

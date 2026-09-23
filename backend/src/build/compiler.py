@@ -168,6 +168,7 @@ class Compiler(object):
 from pathlib import Path
 
 from automaton.automaton import CompiledAutomaton, PayloadsMixin, IntrospectionMixin
+from automaton.core import scoped_name
 from simpleeval import DEFAULT_FUNCTIONS
 from system.logging_factory import LoggerFactory
 from automaton.model import Action, EnvKey, Reaction, Signal, Source, State
@@ -555,7 +556,7 @@ def _compiled(table, text, kind):
         instead of the text it was written as."""
         bindings = "\n".join(
             f"    {root} = {cls._ADAPTERS[root]}(_scope[{root!r}])" if root in cls._ADAPTERS
-            else f"    {root} = _scope[{root!r}]"
+            else f"    {root} = scoped_name(_scope, {root!r})"
             for root in sorted(cls._roots(source, "eval") - known_builtins)
         )
         first, *rest = source.splitlines()

@@ -1,12 +1,7 @@
-"""attachment.read(name) — a task-only namespace that returns one of
-this project's own archive files' whole text content. Unlike source.*
-(grep/select over a file, bounded, usable from a trigger/env: expression
-too), attachment.read is a full read, task only, and every call is
-validated at build time (see AutomatonBuilder._validate_attachment_read):
-`name` must be a string literal resolving — exact path or unique basename
-under `behaviour/`, see AutomatonBuilder._extract_required_archives — to a
-text archive no bigger than MAX_ATTACHMENT_READ_BYTES.
-"""
+"""attachment.<doc_id>.read()/render() — one of this project's own
+files directly under `behaviour/`, reached by its name lowercased with
+every non-identifier character turned into `_` and no extension. Every
+reference is validated at build time."""
 from __future__ import annotations
 
 import pytest
@@ -45,35 +40,34 @@ def _build_task(call: str, archives: dict | None = None):
     return AutomatonBuilder().build({"index.yml": _project_with_task(call), **(archives or {})})
 
 
-def test_attachment_read_resolves_an_exact_path_or_a_unique_basename_under_a_subdirectory():
-    for archives in ({"policy.txt": "be kind"}, {"behaviour/policy.txt": "be kind"}):
-        automaton = _build_task("attachment.read('policy.txt')", archives)
-        assert automaton.states["a"].actions[0].task.strip() == "attachment.read('policy.txt')"
+def test_a_file_under_behaviour_is_reached_by_its_name_lowercased_with_every_other_character_an_underscore():
+    automaton = _build_task("attachment.template_informe.read()", {"behaviour/Template informe.txt": "be kind"})
+    assert automaton.states["a"].actions[0].task.strip() == "attachment.template_informe.read()"
 
 
 @pytest.mark.parametrize(("call", "archives", "match"), [
-    ("attachment.read()", {"policy.txt": "be kind"}, "one string literal argument"),
-    ("attachment.read('a', 'b')", {"policy.txt": "be kind"}, "one string literal argument"),
-    ("attachment.read(name='policy.txt')", {"policy.txt": "be kind"}, "one string literal argument"),
-    ("attachment.read(env.reminder_days)", {"policy.txt": "be kind"}, "one string literal argument"),
-    ("attachment.read('missing.txt')", None, "not found"),
-    ("attachment.read('policy.txt')", {"a/policy.txt": "be kind", "b/policy.txt": "also be kind"}, "ambiguous"),
-    ("attachment.read('logo.png')", {"logo.png": b"\x89PNG"}, "binary file"),
-    ("attachment.read('big.txt')", {"big.txt": "x" * (MAX_ATTACHMENT_READ_BYTES + 1)}, f"over the {MAX_ATTACHMENT_READ_BYTES}-byte limit"),
+    ("attachment.policy.read()", {"policy.txt": "be kind"}, r"undefined name\(s\): attachment.policy"),
+    ("attachment.policy.read()", {"behaviour/sub/policy.txt": "be kind"}, r"undefined name\(s\): attachment.policy"),
+    ("attachment._2024_plan.read()", {"behaviour/2024 plan.md": "x"}, r"undefined name\(s\): attachment._2024_plan"),
+    ("attachment.policy.read()", {"behaviour/Policy.md": "a", "behaviour/policy.txt": "b"}, "rename all but one"),
+    ("attachment.logo.read()", {"behaviour/logo.png": b"\x89PNG"}, "binary file"),
+    ("attachment.big.read()", {"behaviour/big.txt": "x" * (MAX_ATTACHMENT_READ_BYTES + 1)}, f"over the {MAX_ATTACHMENT_READ_BYTES}-byte limit"),
+    ("attachment.policy.read('policy.txt')", {"behaviour/policy.txt": "be kind"}, "too many positional arguments"),
+    ("attachment.policy.open()", {"behaviour/policy.txt": "be kind"}, r"undefined name\(s\): attachment.policy.open"),
 ], ids=[
-    "no-argument", "two-arguments", "keyword-argument", "non-literal",
-    "undeclared", "ambiguous-basename", "binary", "oversized",
+    "outside-behaviour", "nested-under-behaviour", "starts-with-a-digit", "two-files-one-name",
+    "binary", "oversized", "an-argument", "unknown-method",
 ])
-def test_attachment_read_rejects_anything_but_a_string_literal_naming_one_readable_text_archive(call, archives, match):
+def test_an_attachment_reference_is_refused_unless_it_names_one_readable_text_file_directly_under_behaviour(call, archives, match):
     with pytest.raises(ValueError, match=match):
         _build_task(call, archives)
 
 
 @pytest.mark.parametrize("field_yaml", [
-    '        trigger: "attachment.read(\'policy.txt\') != \'\'"',
-    "        env:\n          notes: attachment.read('policy.txt')",
+    '        trigger: "attachment.policy.read() != \'\'"',
+    "        env:\n          notes: attachment.policy.read()",
 ], ids=["trigger", "env-expression"])
-def test_attachment_may_only_be_referenced_from_task(field_yaml):
+def test_attachment_may_only_be_referenced_from_a_script(field_yaml):
     content = f"""
 project:
   id: p
@@ -94,5 +88,21 @@ states:
     input-processor: ai
     contextual-prompt: there
 """
-    with pytest.raises(ValueError, match=r"undefined name\(s\).*attachment.read"):
-        AutomatonBuilder().build({"index.yml": content, "policy.txt": "be kind"})
+    with pytest.raises(ValueError, match=r"undefined name\(s\).*attachment.policy"):
+        AutomatonBuilder().build({"index.yml": content, "behaviour/policy.txt": "be kind"})
+
+
+def test_attachment_render_builds_when_every_expression_in_the_file_is_one_the_script_could_write():
+    automaton = _build_task(
+        "attachment.report.render()", {"behaviour/report.md": "{{ env.reminder_days }} days — 100% {x}"},
+    )
+    assert automaton.states["a"].actions[0].task.strip() == "attachment.report.render()"
+
+
+@pytest.mark.parametrize(("template", "match"), [
+    ("{{ env.nope }}", "nope"),
+    ("{{ 1 + }}", "not a valid expression"),
+], ids=["undeclared-env-key-in-file", "malformed-expression-in-file"])
+def test_attachment_render_refuses_any_expression_in_the_file_that_would_fail(template, match):
+    with pytest.raises(ValueError, match=match):
+        _build_task("attachment.report.render()", {"behaviour/report.md": template})

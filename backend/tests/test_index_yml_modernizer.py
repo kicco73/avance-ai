@@ -336,3 +336,38 @@ def test_every_stored_revision_is_settled_at_boot_not_at_the_first_visit(db):
     assert "input-processor: ai" in stored
     assert "whatever: true" in db.get_archive(broken, "index.yml").decode("utf-8")
     assert modernize_stored_revisions(db) == set()
+
+
+OLD_FILE_NAMES_YML = """\
+project:
+  id: legacy_talk
+init-action:
+  target: a
+states:
+  a:
+    input-processor: ai
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: a
+        on-exit: |
+          chat.show_media(media.Manuel_neutro.url())
+          chat.show(attachment.read('Template informe.md'))
+"""
+OLD_FILE_NAMES_FILES = {"media/Manuel_neutro.png": b"\x89PNG", "behaviour/Template informe.md": b"Hola"}
+
+
+def test_a_stored_revision_naming_files_the_old_way_is_repaired_where_it_is(db):
+    db.ensure_project(PROJECT_ID)
+    db.save_project_files(
+        PROJECT_ID, {"index.yml": OLD_FILE_NAMES_YML.encode("utf-8"), **OLD_FILE_NAMES_FILES},
+        {"index.yml": "text/yaml", "media/Manuel_neutro.png": "image/png", "behaviour/Template informe.md": "text/markdown"},
+    )
+    db.publish_project(PROJECT_ID)
+    revision = db.get_project_published_revision(PROJECT_ID)
+
+    AutomatonLoader(db).load_at_revision(PROJECT_ID, revision)
+
+    stored = db.get_archive(PROJECT_ID, "index.yml", revision=revision).decode("utf-8")
+    assert "media.manuel_neutro.url()" in stored
+    assert "attachment.template_informe.read()" in stored

@@ -5,6 +5,7 @@ from collections.abc import MutableMapping, Sequence
 from typing import ClassVar, Self
 
 from automaton.builder.build_cursor import BuildCursor
+from automaton.file_types import BEHAVIOUR_DIR, MEDIA_DIR, doc_id_for
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.project_services import DISABLED, REQUIRED
 
@@ -624,13 +625,78 @@ class RemovedEnvUiLabel(EnvKeyDeprecation, RemovedKey):
     )
 
 
+class LegacyScriptSpelling(ActionDeprecation):
+    """A call a script may still spell the old way, rewritten in place
+    wherever it can be: the subclass says what the old spelling looks
+    like and what it reads as now, or None where no new spelling reaches
+    the same file — that one is left for the build to refuse."""
+
+    PATTERN: ClassVar[re.Pattern]
+
+    def __init__(self, name: str, spelling: str, respelling: str, line: int | None) -> None:
+        super().__init__(name, line)
+        self.spelling = spelling
+        self.respelling = respelling
+
+    @property
+    def fix(self) -> str:
+        return f"{self.name}: {self.spelling} → {self.respelling}"
+
+    @classmethod
+    def respelled(cls, match: re.Match) -> str | None:
+        raise NotImplementedError
+
+    @classmethod
+    def found_in(cls, raw) -> Sequence[Self]:
+        return [
+            cls(name, match.group(0), cls.respelled(match), BuildCursor.own_line(action))
+            for name, action in cls.entries(raw)
+            for field in SCRIPT_FIELDS
+            for match in cls.PATTERN.finditer(own_field(action, field) if isinstance(own_field(action, field), str) else "")
+            if cls.respelled(match) not in (None, match.group(0))
+        ]
+
+    def rewrite(self, editor) -> None:
+        for name, action in self.entries(editor.document()):
+            for field in SCRIPT_FIELDS:
+                script = own_field(action, field)
+                if name == self.name and isinstance(script, str):
+                    _store(editor, action, field, self.PATTERN.sub(lambda match: self.respelled(match) or match.group(0), script))
+
+
+class LegacyMediaDocId(LegacyScriptSpelling):
+    """`media.<doc_id>` is the file's name lowercased now (see
+    automaton.file_types.doc_id_for)."""
+
+    PATTERN = re.compile(r"\bmedia\.([A-Za-z_][A-Za-z0-9_]*)(?=\.)")
+
+    @classmethod
+    def respelled(cls, match: re.Match) -> str | None:
+        doc_id = doc_id_for(f"{MEDIA_DIR}/{match.group(1)}", MEDIA_DIR)
+        return f"media.{doc_id}" if doc_id is not None else None
+
+
+class LegacyAttachmentRead(LegacyScriptSpelling):
+    """`attachment.read('<file>')` is `attachment.<doc_id>.read()` now,
+    for a file directly under `behaviour/` — the only ones the new
+    spelling reaches."""
+
+    PATTERN = re.compile(r"""\battachment\.read\(\s*(['"])([^'"]+)\1\s*\)""")
+
+    @classmethod
+    def respelled(cls, match: re.Match) -> str | None:
+        path = match.group(2) if "/" in match.group(2) else f"{BEHAVIOUR_DIR}/{match.group(2)}"
+        doc_id = doc_id_for(path, BEHAVIOUR_DIR)
+        return f"attachment.{doc_id}.read()" if doc_id is not None else None
+
+
 PROJECT_KINDS = (LegacyTalkEnabled,)
 FIELD_KINDS = (
     LegacyOnEnter, LegacyActuatorField, LegacyActionPrompt, LegacyStateScript, LegacyFixedMessage,
     LegacyStateChat, LegacyAiMemoryStrategy, MissingInputProcessor, RemovedEnvAiAccess, RemovedEnvUiLabel,
     RemovedEnvValue, LegacyChoiceEnvType, LegacyEnvUiDescription,
 )
-KINDS = PROJECT_KINDS + FIELD_KINDS + (LegacyActuatorCall,)
+KINDS = PROJECT_KINDS + FIELD_KINDS + (LegacyActuatorCall, LegacyMediaDocId, LegacyAttachmentRead)
 
 
 def found_in(raw) -> list[Deprecation]:

@@ -163,26 +163,26 @@ def test_a_declared_source_is_readable_from_an_env_expression_end_to_end(db):
 
 
 def test_attachment_read_resolves_a_text_archive_from_both_scope_views_and_raises_for_anything_else(db):
-    """attachment.read(name), like a source read, goes straight to Db at
+    """attachment.<doc_id>.read(), like a source read, goes straight to Db at
     the automaton's own pinned (project_id, revision) — never automaton.
     attachments' in-memory copy — and stays present in the task view
     a task line actually runs against, which drops only `session`/`chat`."""
     db.ensure_project(PROJECT_ID)
     db.save_project_files(
-        PROJECT_ID, {"behaviour/policy.txt": b"be kind", "logo.png": b"\x89PNG"},
-        {"behaviour/policy.txt": "text/plain", "logo.png": "image/png"},
+        PROJECT_ID, {"behaviour/policy.txt": b"be kind", "behaviour/logo.png": b"\x89PNG"},
+        {"behaviour/policy.txt": "text/plain", "behaviour/logo.png": "image/png"},
     )
     automaton = _pinned(db, _automaton_with_trigger("signal.mood >= 1"))
 
     scope = _builder(db).build(automaton, "a", {}, ChoiceSelection.NONE)
     task_scope = scope.for_task()
 
-    assert scope["attachment"].read("policy.txt") == "be kind"
-    assert task_scope["attachment"].read("policy.txt") == "be kind"
-    with pytest.raises(ValueError, match="not found"):
-        scope["attachment"].read("nope.txt")
+    assert scope["attachment"].policy.read() == "be kind"
+    assert task_scope["attachment"].policy.read() == "be kind"
+    with pytest.raises(ValueError, match="no single file"):
+        scope["attachment"].nope.read()
     with pytest.raises(ValueError, match="binary file"):
-        scope["attachment"].read("logo.png")
+        scope["attachment"].logo.read()
 
     assert "session" in scope
     assert "chat" in scope

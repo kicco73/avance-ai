@@ -918,6 +918,17 @@ the same build-time checks — a string-literal name, an existing text
 file, under the size limit — so an action can store a file in an env
 key or show one, e.g. `chat.show(attachment.read('rules.md'))`.
 
+`attachment.render(name)` is `attachment.read(name)` for a template: every
+`{{ expression }}` in the file is replaced by that expression's value,
+evaluated where the script runs — the same names a line of the script
+could read, its own earlier locals included — and everything outside
+`{{ }}` stays exactly as written, so `%`, single braces and underscores in
+the Markdown need no escaping. A file holding
+`Hola {{ user.name }}, paciente {{ env.paciente }}` is shown with
+`chat.show(attachment.render('informe.md'))`. On top of `attachment.read`'s
+own build-time checks, every expression in the file is checked when the
+project is built, like any other expression in the script.
+
 `media.<doc_id>.url()` is available the same way, on-exit only — one
 attribute per file uploaded under this project's own `media/` folder,
 `doc_id` its basename without extension (a file whose basename doesn't

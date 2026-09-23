@@ -38,22 +38,31 @@ ICON_FILE_RE = re.compile(r'^media/icon\.(png|jpe?g|gif|webp|svg)$', re.IGNORECA
 SNAPSHOT_FILE_RE = re.compile(r'^media/snapshot-(?P<aspect>[a-z][a-z-]*)-(?P<index>\d+)\.jpg$', re.IGNORECASE)
 
 
-def media_doc_id_for(path: str) -> str | None:
-    """The `media.<doc_id>` name `path` (a stored archive path) is
-    reachable as in an on-exit script, or None if it doesn't live
-    directly under MEDIA_DIR or its basename-without-extension isn't a
-    valid, non-reserved Python identifier. The same derivation backs the
-    build-time reference check (automaton_validator.py), the runtime
-    `media` namespace (tracking.actuators.media_namespace), and the
-    autocomplete registry (project.inspector.ProjectInspector.
-    get_identifier_registry) — a file whose name doesn't parse as one is
-    simply not reachable that way; it is still listed, exported, and
-    downloadable like any other file."""
+def doc_id_for(path: str, folder: str) -> str | None:
+    """The `<folder namespace>.<doc_id>` name `path` (a stored archive
+    path) is reachable as in a script: its basename without extension,
+    lowercased, every character that can't be part of a Python identifier
+    turned into `_` — `template informe.md` is `template_informe`. None if
+    `path` doesn't live directly under `folder`, or the result still isn't
+    a usable identifier (it starts with a digit, or is a Python keyword):
+    such a file is simply not reachable that way, and is still listed,
+    exported and downloadable like any other. The same derivation backs
+    the build-time reference check (automaton_validator.py), the runtime
+    namespaces (tracking.actuators) and the autocomplete registry
+    (project.inspector.ProjectInspector.get_identifier_registry)."""
     parts = Path(path).parts
-    if len(parts) != 2 or parts[0] != MEDIA_DIR:
+    if len(parts) != 2 or parts[0] != folder:
         return None
-    stem = Path(parts[1]).stem
-    return stem if stem.isidentifier() and not keyword.iskeyword(stem) else None
+    doc_id = re.sub(r"\W", "_", Path(parts[1]).stem.lower())
+    return doc_id if doc_id.isidentifier() and not keyword.iskeyword(doc_id) else None
+
+
+def media_doc_id_for(path: str) -> str | None:
+    return doc_id_for(path, MEDIA_DIR)
+
+
+def attachment_doc_id_for(path: str) -> str | None:
+    return doc_id_for(path, BEHAVIOUR_DIR)
 
 
 @dataclass(frozen=True)

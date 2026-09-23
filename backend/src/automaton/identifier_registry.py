@@ -66,8 +66,9 @@ class IdentifierRegistry:
         "downloads": "How many times this project's own person has downloaded the file at path, from the PDF preview dialog's Download button — e.g. drive.downloads('reports/last.md'). 0 before the first download. Only available in a task script.",
     }
 
-    ATTACHMENT: dict[str, str] = {
-        "read": "Returns one of this project's own archive files' whole text content — e.g. attachment.read('policy.txt'). Reachable from an action's on-exit and task scripts, never from a trigger. `name` must be a string literal (exact archive path, or a unique basename under behaviour/); the file must exist, be text, and be under the size limit — all checked when the project is built, not when this runs.",
+    ATTACHMENT_DOC: dict[str, str] = {
+        "read": "Returns '{name}' whole, as text — e.g. chat.show(attachment.{doc_id}.read()). Reachable from an action's on-exit and task scripts, never from a trigger.",
+        "render": "Returns '{name}' as text with every {{{{ expression }}}} in it replaced by that expression's value, evaluated where the script runs — e.g. chat.show(attachment.{doc_id}.render()) with 'Hola {{{{ user.name }}}}' in the file. Everything outside {{{{ }}}} — %, single braces, underscores — stays exactly as written, and every expression is checked when the project is built.",
     }
 
     DATETIME: dict[str, str] = {
@@ -136,7 +137,6 @@ class IdentifierRegistry:
             "user": dict(cls.USER),
             "task": dict(cls.TASK),
             "chat": dict(cls.CHAT),
-            "attachment": dict(cls.ATTACHMENT),
             "drive": dict(cls.DRIVE),
             "metric": dict(cls.METRIC),
             "datetime": dict(cls.DATETIME),

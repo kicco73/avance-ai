@@ -17,7 +17,9 @@ top, and automaton.py for the composition itself."""
 from __future__ import annotations
 
 import ast
+import copy
 import inspect
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -114,6 +116,35 @@ class LambdaFunction(object):
         return f"LambdaFunction({self.source!r})"
 
 
+TEMPLATE_PLACEHOLDER = re.compile(r"\{\{(.+?)\}\}", re.DOTALL)
+
+
+class ScopedNamespace(object):
+    _names: EvaluationScope | None = None
+
+    def within(self, names: EvaluationScope) -> "ScopedNamespace":
+        bound = copy.copy(self)
+        bound._names = names
+        return bound
+
+
+def scoped_name(names: EvaluationScope, key: str) -> Any:
+    value = names[key]
+    return value.within(names) if isinstance(value, ScopedNamespace) else value
+
+
+class AttachmentTemplate(object):
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def expressions(self) -> list[str]:
+        return [match.group(1).strip() for match in TEMPLATE_PLACEHOLDER.finditer(self._text)]
+
+    def rendered(self, names: EvaluationScope) -> str:
+        return TEMPLATE_PLACEHOLDER.sub(lambda match: str(_TaskEval(names=names).eval(match.group(1).strip())), self._text)
+
+
 _TASK_EXTRA_FUNCTIONS: dict[str, Any] = {"zip": zip, "len": len, "range": range}
 _TRIGGER_EXTRA_FUNCTIONS: dict[str, Any] = {"len": len}
 
@@ -136,6 +167,10 @@ class _TaskEval(simpleeval.EvalWithCompoundTypes):
         self.functions.update(_TASK_EXTRA_FUNCTIONS)
         assert self.nodes is not None
         self.nodes[ast.Lambda] = self._eval_lambda
+
+    def _eval_name(self, node: ast.Name) -> Any:
+        value = super()._eval_name(node)
+        return value.within(self.names) if isinstance(value, ScopedNamespace) else value
 
     def _eval_lambda(self, node: ast.Lambda):
         if node.args.vararg or node.args.kwonlyargs or node.args.kwarg or node.args.posonlyargs:

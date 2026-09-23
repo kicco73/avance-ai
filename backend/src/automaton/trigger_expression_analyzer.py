@@ -154,6 +154,18 @@ class TriggerExpressionAnalyzer:
         (doc_id, method, positional_count, keyword_names, unpacks)."""
         return cls._dynamic_namespace_calls(expression, "media")
 
+    @classmethod
+    def attachment_refs(cls, expression: str) -> dict[str, set[str]]:
+        """Every `attachment.<doc_id>.<method>` reference in `expression`,
+        grouped by doc id — one entry per file directly under this
+        project's own `behaviour/` folder (see
+        automaton.file_types.attachment_doc_id_for)."""
+        return cls._dynamic_namespace_refs(expression, "attachment")
+
+    @classmethod
+    def attachment_calls(cls, expression: str) -> list[tuple[str, str, int, tuple[str, ...], bool]]:
+        return cls._dynamic_namespace_calls(expression, "attachment")
+
     @staticmethod
     def merged_string_arguments(expression: str) -> list[str]:
         """Every call argument written as two or more adjacent string
@@ -537,41 +549,6 @@ class TriggerExpressionAnalyzer:
                                 f"'{ast.unparse(argument)}'"
                             )
         return violations
-
-    @classmethod
-    def attachment_read_violations(cls, expression: str) -> list[str]:
-        """Every `attachment.read(...)` call in `expression` whose single
-        argument isn't a string literal — the only shape
-        AutomatonBuilder._validate_attachment_read can resolve against
-        this project's own archives at build time (name must be known
-        without evaluating anything). Returns messages, never raises."""
-        tree = ast.parse(expression, mode="eval")
-        violations: list[str] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or cls._dotted_chain(node.func) != ("attachment", "read"):
-                continue
-            if len(node.args) != 1 or node.keywords or not (
-                isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
-            ):
-                violations.append(
-                    f"attachment.read(...): takes exactly one string literal argument, "
-                    f"got '{ast.unparse(node)}'"
-                )
-        return violations
-
-    @classmethod
-    def attachment_read_names(cls, expression: str) -> set[str]:
-        """Every literal `name` passed to a well-shaped `attachment.read(name)`
-        call in `expression` — only call after attachment_read_violations(expression)
-        is empty, since a malformed call is silently skipped here rather than raised."""
-        tree = ast.parse(expression, mode="eval")
-        names: set[str] = set()
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or cls._dotted_chain(node.func) != ("attachment", "read"):
-                continue
-            if len(node.args) == 1 and not node.keywords and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                names.add(node.args[0].value)
-        return names
 
     @classmethod
     def expression_kind(cls, expression: str) -> str | None:

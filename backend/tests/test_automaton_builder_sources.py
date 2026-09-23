@@ -108,7 +108,7 @@ def test_a_websearch_url_builds_on_the_user_scope_alone_and_supports_the_same_re
 @pytest.mark.parametrize(("sources_yaml", "trigger", "match"), [
     ("", "source.pino.select_rows_containing('x') == 'x'", r"undefined name\(s\).*source.pino"),
     (_PINO_FLIGHTS, "source.pino.create('k', 'v') == None", r"undefined name\(s\).*source.pino.create"),
-    (_PINO_FLIGHTS, "source.pino.read() == ''", r"attachment.read\(name\)'s job"),
+    (_PINO_FLIGHTS, "source.pino.read() == ''", r"attachment.<name>.read\(\)'s job"),
 ], ids=["undeclared-source", "unsupported-method", "read-points-to-attachment-read"])
 def test_a_trigger_may_only_call_a_supported_method_on_a_declared_source(sources_yaml, trigger, match):
     with pytest.raises(ValueError, match=match):

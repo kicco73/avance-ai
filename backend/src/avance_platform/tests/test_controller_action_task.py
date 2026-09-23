@@ -170,7 +170,7 @@ NOTES_YML = (
     "    actions:\n"
     "      - name: show-notes\n"
     "        target: a\n"
-    "        on-exit: chat.show(attachment.read('notes.md'))\n"
+    "        on-exit: chat.show(attachment.notes.read())\n"
 )
 
 
@@ -203,5 +203,5 @@ def test_on_exit_reads_an_attachment_and_shows_it(client, app_db):
 def test_on_exit_attachment_read_of_a_missing_file_is_refused_at_build_time():
     from automaton.automaton_builder import AutomatonBuilder
 
-    with pytest.raises(ValueError, match="attachment named 'notes.md' not found"):
+    with pytest.raises(ValueError, match=r"undefined name\(s\): attachment.notes"):
         AutomatonBuilder().build({"index.yml": NOTES_YML})
