@@ -363,7 +363,7 @@ class CoreAutomaton(object):
                 continue
             bound_key = TriggerExpressionAnalyzer.env_binding(statement)
             if bound_key is not None:
-                snippets.append(scope["chat"].bind_env(EnvBinding(bound_key, scope["env"].get(bound_key))))
+                scope["chat"].bind_env(EnvBinding(bound_key, scope["env"].get(bound_key)))
                 continue
             try:
                 value = self._evaluate_statement(statement, scope)

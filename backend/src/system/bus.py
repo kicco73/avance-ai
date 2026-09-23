@@ -72,6 +72,8 @@ STATE_CHANGED = "state.changed"
 STATE_SIGNALS = "state.signals"
 ENV_CHANGED = "env.changed"
 ENV_MEMORY_CHANGED = "env.memory_changed"
+ENV_BOUND = "env.bound"
+ENV_UNBOUND = "env.unbound"
 OUTPUT_ERROR = "output.error"
 
 TASK_STARTED = "task.started"

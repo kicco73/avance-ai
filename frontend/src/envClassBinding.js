@@ -8,27 +8,16 @@ function classToken(value) {
 export class EnvClassBinding {
   constructor(sessionId) {
     this._sessionId = sessionId
-    this._values = ref({})
-    this._unsubscribe = null
-    this.classes = computed(() => Object.entries(this._values.value)
+    this._bound = ref({ sessionId: null, values: {} })
+    this.classes = computed(() => Object.entries(this._values())
       .filter(([, value]) => value != null && value !== '')
       .map(([key, value]) => `env-${classToken(key)}-${classToken(value)}`))
+    busChannel.subscribe('env.bindings', (frame) => {
+      this._bound.value = { sessionId: frame.session_id, values: frame.values ?? {} }
+    })
   }
 
-  bind(key, value) {
-    this._values.value = { ...this._values.value, [key]: value }
-    this._unsubscribe ??= busChannel.subscribe('env.changed', (frame) => this._changed(frame))
-  }
-
-  unbindAll() {
-    this._unsubscribe?.()
-    this._unsubscribe = null
-    this._values.value = {}
-  }
-
-  _changed(frame) {
-    if (frame.session_id !== this._sessionId.value) return
-    if (!(frame.key in this._values.value)) return
-    this._values.value = { ...this._values.value, [frame.key]: frame.value }
+  _values() {
+    return this._bound.value.sessionId === this._sessionId.value ? this._bound.value.values : {}
   }
 }

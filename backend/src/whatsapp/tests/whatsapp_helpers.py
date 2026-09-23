@@ -296,6 +296,10 @@ class _FakeSpeaker:
             OUTPUT_AUDIO_STREAM, {"stream": _SpokenText(self, str(message.body["text"]))}, mime="audio/wav",
         ))
 
+    async def talk(self, text):
+        async for chunk in self.generate(text):
+            yield chunk
+
     async def generate(self, text):
         self.spoken.append(text)
         self.requested_during_turn.append(self.turns.in_turn if self.turns is not None else False)
@@ -359,11 +363,12 @@ class Env:
         for registered in filter(None, [decoder]):
             registered.register()
         for registered in filter(None, [speaker]):
-            registered.register()
             registered.turns = self.turns
             bus.contribute(POINT_SPOKEN_REPLY, lambda spoken: spoken.ask())
         self.config = config or _config()
-        self.service = WhatsAppService(self.config, self.turns, self.db, self.auth, client=self.api)
+        self.service = WhatsAppService(
+            self.config, self.turns, self.db, self.auth, client=self.api, ai_talker=speaker,
+        )
         self.controllers: list = []
         self.service.listen(self.controllers)
         TurnInput(self.turns, self.db).register()

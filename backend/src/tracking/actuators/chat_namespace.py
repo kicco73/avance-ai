@@ -9,7 +9,7 @@ from automaton.automaton import JsSnippet
 from automaton.core import EnvBinding
 from system.logging_factory import LoggerFactory
 from system import bus
-from system.bus import OUTPUT_CHART, OUTPUT_PROGRESS, SESSION_TAKEN_OVER, UI_NOTIFICATION, Message
+from system.bus import ENV_BOUND, ENV_UNBOUND, OUTPUT_CHART, OUTPUT_PROGRESS, SESSION_TAKEN_OVER, UI_NOTIFICATION, Message
 from system.web_session import WebSession
 
 from .actuator_set import _run_sync
@@ -100,11 +100,19 @@ class ChatNamespace(ABC):
     def clear(self) -> JsSnippet | None:
         return JsSnippet("clear()")
 
-    def bind_env(self, variable: EnvBinding) -> JsSnippet | None:
-        return JsSnippet(f"bind_env({json.dumps(variable.key)}, {json.dumps(variable.value, default=str)})")
+    def bind_env(self, variable: EnvBinding) -> None:
+        self._publish(ENV_BOUND, {"key": variable.key, "value": variable.value})
 
-    def unbind_env_all(self) -> JsSnippet | None:
-        return JsSnippet("unbind_env_all()")
+    def unbind_env_all(self) -> None:
+        self._publish(ENV_UNBOUND, {})
+
+    def _publish(self, message_type: str, body: dict) -> None:
+        if self._factory is None or self._session_id is None:
+            return
+        _run_sync(bus.publish(Message(
+            type=message_type, username=WebSession().user, session_id=self._session_id,
+            project_id=self._project_id, body=body,
+        )))
 
     def switch_to_ai(self) -> None:
         """Hands the session back to the AI after switch_to_human — a

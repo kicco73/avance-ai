@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from conftest import chat_action_frames, enter_chat, parse_sse_result, session_of
+from conftest import chat_socket, parse_sse_result, session_of
 
 pytestmark = pytest.mark.contract
 
@@ -33,20 +33,60 @@ def _yml(on_exit: str) -> str:
     )
 
 
-def test_bind_env_reaches_the_browser_with_the_key_and_its_current_value(client):
-    yml = _yml("env.mood = 'happy'\nchat.bind_env(env.mood)\nchat.unbind_env_all()")
-    resp = client.post("/api/skills/platform/projects/upload", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
+def _published(client, on_exit: str) -> str:
+    resp = client.post("/api/skills/platform/projects/upload", content=_yml(on_exit).encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
     project_id = parse_sse_result(resp)["project_id"]
     assert client.post(f"/api/core/projects/{project_id}/activate").status_code == 200
     assert client.post(f"/api/skills/platform/projects/{project_id}/publish", json={}).status_code == 200
-    session_id = session_of(enter_chat(client, project_id))
+    return project_id
 
-    frames = chat_action_frames(client, session_id, "go")
 
-    assert [frame["task"] for frame in frames if frame["type"] == "ui.notification"] == [
-        'bind_env("mood", "happy")\nunbind_env_all()',
-    ]
+def _until_buttons(ws, after: str = "state.buttons") -> list[dict]:
+    frames = []
+    while not frames or frames[-1]["type"] != "state.buttons" or after not in [frame["type"] for frame in frames]:
+        frames.append(ws.receive_json())
+    return frames
+
+
+def _entered_and_pressed(client, project_id: str, action_name: str) -> tuple[int, list[dict]]:
+    with chat_socket(client) as ws:
+        ws.send_json({"type": "unsubscribe", "events": ["env.changed"]})
+        ws.send_json({"type": "session.enter", "project_id": project_id, "session_type": "live"})
+        session_id = session_of(_until_buttons(ws))
+        ws.send_json({"type": "input.button", "session_id": session_id, "id": action_name})
+        return session_id, _until_buttons(ws, after="state.changed")
+
+
+def _bindings(frames: list[dict]) -> list[dict]:
+    return [frame["values"] for frame in frames if frame["type"] == "env.bindings"]
+
+
+def test_a_key_bound_and_then_written_by_the_same_script_reaches_the_chat_with_its_new_value(client):
+    project_id = _published(client, "chat.bind_env(env.mood)\nenv.mood = 'happy'\nenv.slot = ['x']")
+
+    _, frames = _entered_and_pressed(client, project_id, "go")
+
+    assert _bindings(frames)[-1] == {"mood": "happy"}
+
+
+def test_a_chat_entering_a_session_is_told_the_values_bound_there(client):
+    project_id = _published(client, "env.mood = 'happy'\nchat.bind_env(env.mood)")
+    _entered_and_pressed(client, project_id, "go")
+
+    with chat_socket(client) as ws:
+        ws.send_json({"type": "session.enter", "project_id": project_id, "session_type": "live"})
+        frames = _until_buttons(ws)
+
+    assert _bindings(frames) == [{"mood": "happy"}]
+
+
+def test_unbinding_tells_the_chat_nothing_is_bound_any_more(client):
+    project_id = _published(client, "env.mood = 'happy'\nchat.bind_env(env.mood)\nchat.unbind_env_all()")
+
+    _, frames = _entered_and_pressed(client, project_id, "go")
+
+    assert _bindings(frames)[-1] == {}
 
 
 @pytest.mark.parametrize(("on_exit", "refusal"), [

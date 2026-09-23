@@ -39,6 +39,7 @@ class _Channel:
         self.project_id = project_id
         self.service = WhatsAppService(
             _config(), core["turn_service"], core["db"], core["auth_service"], client=api,
+            ai_talker=core.get("ai_talker"),
         )
         self.service.listen([])
 

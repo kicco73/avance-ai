@@ -21,28 +21,31 @@ describe("an on-exit's chat.bind_env()", () => {
 
   const classes = () => chatStore.liveStore.envClasses.value
 
-  it('puts env-<key>-<value> on the window and follows every later change of that key', () => {
-    bus.deliver({ type: 'ui.notification', session_id: 1, task: 'bind_env("mood", "happy")\nbind_env("level", 2)' })
+  it('puts env-<key>-<value> on the window for every value the server says is bound', () => {
+    bus.deliver({ type: 'env.bindings', session_id: 1, values: { mood: 'happy', level: 2 } })
 
     expect(classes()).toEqual(['env-mood-happy', 'env-level-2'])
 
-    bus.deliver({ type: 'env.changed', session_id: 1, key: 'mood', value: 'very sad' })
-    bus.deliver({ type: 'env.changed', session_id: 1, key: 'other', value: 'x' })
-    bus.deliver({ type: 'env.changed', session_id: 2, key: 'level', value: 9 })
+    bus.deliver({ type: 'env.bindings', session_id: 1, values: { mood: 'very sad', level: 2 } })
 
     expect(classes()).toEqual(['env-mood-very_sad', 'env-level-2'])
   })
 
-  it('drops every binding on unbind_env_all, and stops following', () => {
-    bus.deliver({ type: 'ui.notification', session_id: 1, task: 'bind_env("mood", "happy")' })
-    bus.deliver({ type: 'ui.notification', session_id: 1, task: 'unbind_env_all()' })
-    bus.deliver({ type: 'env.changed', session_id: 1, key: 'mood', value: 'sad' })
+  it('shows no class for a key bound while still empty', () => {
+    bus.deliver({ type: 'env.bindings', session_id: 1, values: { mood: '' } })
 
     expect(classes()).toEqual([])
   })
 
-  it('drops every binding when the window moves to another conversation', async () => {
-    bus.deliver({ type: 'ui.notification', session_id: 1, task: 'bind_env("mood", "happy")' })
+  it('drops every class when the server says nothing is bound any more', () => {
+    bus.deliver({ type: 'env.bindings', session_id: 1, values: { mood: 'happy' } })
+    bus.deliver({ type: 'env.bindings', session_id: 1, values: {} })
+
+    expect(classes()).toEqual([])
+  })
+
+  it("never shows another conversation's bindings", async () => {
+    bus.deliver({ type: 'env.bindings', session_id: 1, values: { mood: 'happy' } })
 
     chatStore.currentSessionId.value = 2
     await Promise.resolve()

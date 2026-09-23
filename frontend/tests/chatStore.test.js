@@ -55,14 +55,14 @@ describe('a pushed task script runs once, in the chat whose conversation it is a
     bus.deliver({ type: 'ui.notification', session_id: 7, project_id: 'proj', task: "notify('Nice!', 'Done.')" })
 
     expect(taskActions.runTaskScript).toHaveBeenCalledTimes(1)
-    expect(taskActions.runTaskScript).toHaveBeenCalledWith("notify('Nice!', 'Done.')", { playBackgroundAudio: expect.any(Function), clearTranscript: expect.any(Function), envClassBinding: expect.anything() })
+    expect(taskActions.runTaskScript).toHaveBeenCalledWith("notify('Nice!', 'Done.')", { playBackgroundAudio: expect.any(Function), clearTranscript: expect.any(Function) })
   })
 
   it('runs the script of a frame about the test conversation too — the "Run" chat is a chat like any other', () => {
     bus.deliver({ type: 'ui.notification', session_id: 8, project_id: 'proj', task: 'celebrate()' })
 
     expect(taskActions.runTaskScript).toHaveBeenCalledTimes(1)
-    expect(taskActions.runTaskScript).toHaveBeenCalledWith('celebrate()', { playBackgroundAudio: expect.any(Function), clearTranscript: expect.any(Function), envClassBinding: expect.anything() })
+    expect(taskActions.runTaskScript).toHaveBeenCalledWith('celebrate()', { playBackgroundAudio: expect.any(Function), clearTranscript: expect.any(Function) })
   })
 
   it('says nothing for a script about a conversation nobody has open', () => {
@@ -76,7 +76,7 @@ describe('a pushed task script runs once, in the chat whose conversation it is a
     expect(taskActions.runTaskScript).not.toHaveBeenCalled()
 
     bus.deliver({ type: 'ui.notification', project_id: 'proj', task: 'show("hi")' })
-    expect(taskActions.runTaskScript).toHaveBeenCalledWith('show("hi")', { playBackgroundAudio: expect.any(Function), clearTranscript: expect.any(Function), envClassBinding: expect.anything() })
+    expect(taskActions.runTaskScript).toHaveBeenCalledWith('show("hi")', { playBackgroundAudio: expect.any(Function), clearTranscript: expect.any(Function) })
   })
 
   it('has nothing to say about a frame carrying no task', () => {

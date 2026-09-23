@@ -59,7 +59,6 @@ export function createChatStore({
   watch(currentSessionId, (now, before) => watchSession(now, before))
   const envClassBinding = new EnvClassBinding(currentSessionId)
   const envClasses = envClassBinding.classes
-  watch(currentSessionId, () => envClassBinding.unbindAll())
   const {
     backgroundAudioUrl, backgroundAudioPlaying,
     playBackgroundAudio, stopBackgroundAudio, pauseBackgroundAudio, toggleBackgroundAudio,
@@ -244,7 +243,6 @@ export function createChatStore({
         rememberBackgroundAudio(kind, frame.session_id ?? currentSessionId.value, url)
       },
       clearTranscript: () => { messages.value = [] },
-      envClassBinding,
     })
   })
 

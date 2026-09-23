@@ -118,20 +118,18 @@ starts when the person writes again.
 ## The choices a state offers
 
 WhatsApp interactive messages need a body, so the choices ride on the
-last message of the exchange: `state.buttons` is held, and the
-`output.text` published after it — the reply, and the end of the exchange
-— carries them. 1–3 become reply buttons, 4–10 a list (only the first 10,
+last message of the exchange: each `output.text` is held until the next
+frame, and `state.buttons` — always the last frame of an exchange — sends
+the held reply with the choices on it. A reply followed by another reply,
+an `output.error` or a `session.blocked` goes out plain first. 1–3 become reply buttons, 4–10 a list (only the first 10,
 with a warning), titles truncated to 20/24 characters and
 `ui_description` to 72; a body over 1024 characters is sent as text and
 the choices follow on a short prompt.
 
 An exchange that produces **no** message — a manual action whose
-transition says nothing — would leave those choices with nothing to ride
-on, so they go out on their own "What would you like to do?" prompt
-instead. That flush is deferred by one event-loop turn
-(`_flush_when_quiet`), which is what tells "no reply is coming" from "the
-reply is next in the same queue": frames of one exchange are drained in
-order by a single task and nothing yields between them.
+transition says nothing — has nothing held when `state.buttons` arrives,
+so the choices go out on their own "What would you like to do?" prompt
+instead.
 
 ## What each failure sounds like
 

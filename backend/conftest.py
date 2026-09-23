@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from ai import turn_kit
 from ai.ai_input_processor import AiInputProcessor
+from ai.ai_talker import AiTalker
 from auth.auth_provider import AuthenticatedUser
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from turn.turn_service import TurnService
@@ -641,6 +642,7 @@ def app(
         "scheduler_service": scheduler_service,
         "ai_test_service": fake_ai_service,
         "ai_live_service": fake_ai_service,
+        "ai_talker": AiTalker(ai_service=fake_ai_service),
         "namespace_factory": namespace_factory,
         "progress_broadcaster": progress_broadcaster,
         "bus_channel": bus_channel,

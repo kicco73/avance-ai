@@ -28,7 +28,7 @@ _ACCEPT_TERMS_BUTTON = {"name": ACCEPT_TERMS, "ui_button": notices.ACCEPT_TERMS_
 class _Entering(object):
 
     async def offered(self, conversation, actions: list[dict]) -> None:
-        pass
+        await conversation.release()
 
 
 class _Answering(object):
@@ -58,10 +58,9 @@ class Conversation(object):
         self._session_channel: str | None = None
         self._stage: _Entering | _Answering = _ENTERING
         self._choices: list[dict] = []
-        self._pending: list[dict] | None = None
+        self._held: Reply | None = None
         self._reply: TextReply | VoiceReply = TextReply()
         self._lock = asyncio.Lock()
-        self._flushes: set[asyncio.Task] = set()
 
     async def receive(self, incoming: IncomingMessage) -> None:
         async with self._lock:
@@ -122,6 +121,7 @@ class Conversation(object):
         self._session_channel = body.get("channel")
 
     async def refused(self, body: dict) -> None:
+        await self.release()
         await notices.for_reason(body.get("reason")).delivered(self)
 
     async def ended(self) -> None:
@@ -129,7 +129,7 @@ class Conversation(object):
         self._session_channel = None
 
     async def failed(self, body: dict) -> None:
-        self._pending = None
+        await self.release()
         await notices.for_code(body.get("code")).delivered(self)
 
     async def announced(self, body: dict) -> None:
@@ -140,29 +140,34 @@ class Conversation(object):
         await self._stage.offered(self, self._choices)
 
     async def hold(self, actions: list[dict]) -> None:
-        self._pending = actions
-        self._flush_when_quiet()
+        held, self._held = self._held, None
+        for reply in filter(None, [held]):
+            await self._outbound.answer(self.id, reply, actions, self._reply)
+            return
+        for choices in filter(None, [actions]):
+            await self._outbound.offer(self.id, notices.OPTIONS_PROMPT, choices)
+
+    async def release(self) -> None:
+        held, self._held = self._held, None
+        for reply in filter(None, [held]):
+            await self._outbound.say(self.id, reply, self._reply)
 
     async def said_back(self, body: dict) -> None:
-        await self._answer(Reply(
-            to_whatsapp_markdown(str(body.get("text") or "")), self._audio_text(body),
-        ))
+        await self.release()
+        self._held = Reply(to_whatsapp_markdown(str(body.get("text") or "")), self._audio_text(body))
 
     def spoken_reply(self, spoken) -> None:
         self._reply.spoken_reply(spoken)
 
     async def notify(self, text: str) -> None:
-        self._pending = None
         await self._outbound.say(self.id, Reply(text), TextReply())
 
     async def notify_keeping_choices(self, text: str) -> None:
-        self._pending = None
         await self._outbound.answer(self.id, Reply(text), self._choices, TextReply())
 
     async def ask_to_accept_terms(self) -> None:
         with self._as_the_sender():
             status = self._turn_service.get_legal_terms_status(self._project_id())
-        self._pending = None
         await self._outbound.answer(
             self.id, Reply(to_whatsapp_markdown(status["content"] or "")),
             [_ACCEPT_TERMS_BUTTON], TextReply(),
@@ -172,21 +177,6 @@ class Conversation(object):
         with self._as_the_sender():
             self._turn_service.accept_legal_terms(self._project_id())
         await self.notify(notices.TERMS_ACCEPTED)
-
-    async def _answer(self, reply: Reply) -> None:
-        choices, self._pending = self._pending, None
-        await self._outbound.answer(self.id, reply, choices, self._reply)
-
-    def _flush_when_quiet(self) -> None:
-        task = asyncio.create_task(self._flush())
-        self._flushes.add(task)
-        task.add_done_callback(self._flushes.discard)
-
-    async def _flush(self) -> None:
-        await asyncio.sleep(0)
-        for choices in filter(None, [self._pending]):
-            self._pending = None
-            await self._outbound.offer(self.id, notices.OPTIONS_PROMPT, choices)
 
     def _audio_text(self, body: dict) -> str | None:
         for message_id in filter(None, [body.get("assistant_message_id")]):

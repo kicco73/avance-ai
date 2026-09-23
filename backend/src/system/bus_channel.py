@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import uuid
+from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -11,7 +12,7 @@ from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from system import bus
 
 from system.bus import (
-    CLIENT_INJECTABLE, ENV_CHANGED, ENV_MEMORY_CHANGED, OUTPUT_DRIVE, SESSION_EXIT, SESSION_TAKEN_OVER, UI_NOTIFICATION,
+    CLIENT_INJECTABLE, ENV_BOUND, ENV_CHANGED, ENV_MEMORY_CHANGED, ENV_UNBOUND, OUTPUT_DRIVE, SESSION_EXIT, SESSION_TAKEN_OVER, UI_NOTIFICATION,
     UI_PROGRESS, Message,
 )
 from auth.roles import role_satisfies
@@ -26,6 +27,7 @@ PRIVILEGED_ROLE_FLOOR = "customer"
 HUMAN_REPLY_TIMEOUT_SECONDS = 300.0
 WEB_FORWARDED = (UI_NOTIFICATION, SESSION_TAKEN_OVER, UI_PROGRESS, OUTPUT_DRIVE, ENV_CHANGED, ENV_MEMORY_CHANGED)
 HUMAN_PROMPT = "human_prompt"
+ENV_BINDINGS = "env.bindings"
 _ENVELOPE = frozenset({"type", "session_id", "project_id"})
 CLIENT_REGISTRABLE = WEB_FORWARDED + (HUMAN_PROMPT,)
 
@@ -200,6 +202,10 @@ class BusChannel(object):
         self.__channel: str | None = None
         for message_type in WEB_FORWARDED:
             bus.subscribe(message_type, self.__forward_to_web)
+        bus.subscribe(ENV_BOUND, self.__bound)
+        bus.subscribe(ENV_UNBOUND, self.__unbound)
+        bus.subscribe(ENV_CHANGED, self.__bound_value_changed)
+        self.__env_bindings: dict[int, dict[str, Any]] = {}
         self._connections: dict[str, list[WsConnection]] = {}
         self.__by_id: dict[str, WsConnection] = {}
         self.__watchers: dict[int, set[WsConnection]] = {}
@@ -403,10 +409,35 @@ class BusChannel(object):
         session a request resolved to."""
         for connection in filter(None, [self.__by_id.get(connection_id)]):
             self.__watch(connection, session_id)
+            for values in filter(None, [self.__env_bindings.get(session_id)]):
+                connection.send(self.__bindings_frame(session_id, values))
 
     def unwatch_session(self, session_id: int) -> None:
+        self.__env_bindings.pop(session_id, None)
         for connection in self.__watchers.pop(session_id, ()):
             connection.unwatch(session_id)
+
+    async def __bound(self, message: Message) -> None:
+        body = message.body or {}
+        for session_id in filter(None, [message.session_id]):
+            self.__env_bindings.setdefault(session_id, {})[body["key"]] = body.get("value")
+            self.send_to_watchers(session_id, self.__bindings_frame(session_id, self.__env_bindings[session_id]))
+
+    async def __unbound(self, message: Message) -> None:
+        for session_id in filter(None, [message.session_id]):
+            self.__env_bindings.pop(session_id, None)
+            self.send_to_watchers(session_id, self.__bindings_frame(session_id, {}))
+
+    async def __bound_value_changed(self, message: Message) -> None:
+        body = message.body or {}
+        bindings = self.__env_bindings.get(message.session_id, {})
+        for key in filter(bindings.__contains__, [body.get("key")]):
+            bindings[key] = body.get("value")
+            self.send_to_watchers(message.session_id, self.__bindings_frame(message.session_id, bindings))
+
+    @staticmethod
+    def __bindings_frame(session_id: int, values: dict[str, Any]) -> dict:
+        return {"type": ENV_BINDINGS, "session_id": session_id, "values": dict(values)}
 
     def __watch(self, connection: WsConnection, session_id: int) -> None:
         connection.watch(session_id)

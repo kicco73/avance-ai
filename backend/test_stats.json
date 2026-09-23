@@ -2122,15 +2122,35 @@
     "seconds": 0.264,
     "skips": 0
   },
+  "src/avance_platform/tests/test_chat_bind_env.py::test_a_chat_entering_a_session_is_told_the_values_bound_there": {
+    "failures": 0,
+    "first_run": "2026-09-23T16:23:57+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T16:25:08+00:00",
+    "runs": 4,
+    "seconds": 3.577,
+    "skips": 0
+  },
+  "src/avance_platform/tests/test_chat_bind_env.py::test_a_key_bound_and_then_written_by_the_same_script_reaches_the_chat_with_its_new_value": {
+    "failures": 4,
+    "first_run": "2026-09-23T16:23:57+00:00",
+    "last_failed": "2026-09-23T16:25:08+00:00",
+    "last_outcome": "failed",
+    "last_run": "2026-09-23T16:25:08+00:00",
+    "runs": 5,
+    "seconds": 7.131,
+    "skips": 0
+  },
   "src/avance_platform/tests/test_chat_bind_env.py::test_bind_env_is_refused_at_build_time_unless_its_argument_is_a_declared_non_list_env_key[chat.bind_env('mood')-chat.bind_env takes exactly one env.<key>]": {
     "failures": 0,
     "first_run": "2026-09-23T08:14:48+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:34:00+00:00",
+    "last_run": "2026-09-23T16:25:08+00:00",
     "last_seconds": 0.006,
-    "runs": 4,
-    "seconds": 0.023,
+    "runs": 8,
+    "seconds": 0.047,
     "skips": 0
   },
   "src/avance_platform/tests/test_chat_bind_env.py::test_bind_env_is_refused_at_build_time_unless_its_argument_is_a_declared_non_list_env_key[chat.bind_env(env.nope)-env key 'nope' is not declared]": {
@@ -2138,10 +2158,10 @@
     "first_run": "2026-09-23T08:14:48+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:34:00+00:00",
+    "last_run": "2026-09-23T16:25:08+00:00",
     "last_seconds": 0.006,
-    "runs": 4,
-    "seconds": 0.024,
+    "runs": 8,
+    "seconds": 0.049,
     "skips": 0
   },
   "src/avance_platform/tests/test_chat_bind_env.py::test_bind_env_is_refused_at_build_time_unless_its_argument_is_a_declared_non_list_env_key[chat.bind_env(env.slot)-'slot' is a list]": {
@@ -2149,10 +2169,10 @@
     "first_run": "2026-09-23T08:14:48+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:34:00+00:00",
+    "last_run": "2026-09-23T16:25:08+00:00",
     "last_seconds": 0.006,
-    "runs": 4,
-    "seconds": 0.025,
+    "runs": 8,
+    "seconds": 0.05,
     "skips": 0
   },
   "src/avance_platform/tests/test_chat_bind_env.py::test_bind_env_reaches_the_browser_with_the_key_and_its_current_value": {
@@ -2164,6 +2184,16 @@
     "last_seconds": 0.742,
     "runs": 5,
     "seconds": 5.359,
+    "skips": 0
+  },
+  "src/avance_platform/tests/test_chat_bind_env.py::test_unbinding_tells_the_chat_nothing_is_bound_any_more": {
+    "failures": 2,
+    "first_run": "2026-09-23T16:23:57+00:00",
+    "last_failed": "2026-09-23T16:24:09+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T16:25:08+00:00",
+    "runs": 4,
+    "seconds": 3.26,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_action_task.py::test_get_state_has_no_task_since_nothing_just_fired": {
@@ -8320,10 +8350,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.005,
-    "runs": 21,
-    "seconds": 0.084,
+    "runs": 24,
+    "seconds": 0.092,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_conversation_closed_from_elsewhere_is_forgotten_rather_than_still_watched": {
@@ -8331,10 +8361,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.007,
-    "runs": 21,
-    "seconds": 0.084,
+    "runs": 24,
+    "seconds": 0.096,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_list_row_is_a_choice_too_and_an_unsupported_interactive_reply_is_ignored": {
@@ -8342,10 +8372,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.008,
-    "runs": 21,
-    "seconds": 0.082,
+    "runs": 24,
+    "seconds": 0.096,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_long_button_title_is_truncated_and_no_choices_means_plain_text": {
@@ -8353,10 +8383,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:22:53+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.008,
-    "runs": 21,
-    "seconds": 0.078,
+    "runs": 24,
+    "seconds": 0.092,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_paused_project_is_a_refusal_not_a_turn": {
@@ -8364,10 +8394,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.064,
+    "runs": 24,
+    "seconds": 0.073,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_refused_turn_becomes_this_channels_own_sentence_for_that_code[session_channel_mismatch-This conversation continued somewhere else. Send another message to keep chatting here.]": {
@@ -8375,10 +8405,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.004,
-    "runs": 21,
-    "seconds": 0.078,
+    "runs": 24,
+    "seconds": 0.088,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_refused_turn_becomes_this_channels_own_sentence_for_that_code[session_closed-We apologize for the inconvenience \\u2014 a technical problem occurred. Please try again in a moment.]": {
@@ -8386,10 +8416,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.084,
+    "runs": 24,
+    "seconds": 0.094,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_refused_turn_becomes_this_channels_own_sentence_for_that_code[session_not_found-We apologize for the inconvenience \\u2014 a technical problem occurred. Please try again in a moment.]": {
@@ -8397,10 +8427,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.005,
-    "runs": 21,
-    "seconds": 0.076,
+    "runs": 24,
+    "seconds": 0.085,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_refused_turn_becomes_this_channels_own_sentence_for_that_code[session_superseded-This conversation continued somewhere else. Send another message to keep chatting here.]": {
@@ -8408,10 +8438,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.078,
+    "runs": 24,
+    "seconds": 0.09,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_session_open_on_another_channel_is_taken_over_before_the_turn": {
@@ -8419,10 +8449,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:22:53+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.084,
+    "runs": 24,
+    "seconds": 0.097,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_stale_choice_gets_a_notice_with_the_choices_that_are_current": {
@@ -8430,10 +8460,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.005,
-    "runs": 21,
-    "seconds": 0.078,
+    "runs": 24,
+    "seconds": 0.091,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_state_that_takes_no_messages_says_so_and_offers_what_it_does_take": {
@@ -8441,21 +8471,21 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.005,
-    "runs": 21,
-    "seconds": 0.076,
+    "runs": 24,
+    "seconds": 0.088,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_tapped_button_applies_the_action_and_the_new_choices_ride_on_its_message": {
     "failures": 23,
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:38:19+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-23T15:38:19+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.008,
-    "runs": 23,
-    "seconds": 0.095,
+    "runs": 26,
+    "seconds": 0.107,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_transition_with_nothing_to_say_still_leaves_the_conversation_with_its_choices": {
@@ -8463,10 +8493,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.076,
+    "runs": 24,
+    "seconds": 0.084,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_typed_message_enters_the_conversation_and_its_reply_comes_back_as_text": {
@@ -8474,10 +8504,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:22:53+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 22,
-    "seconds": 0.13,
+    "runs": 25,
+    "seconds": 0.15,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_a_valid_invite_code_registers_and_says_so_without_starting_the_conversation": {
@@ -8485,10 +8515,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.071,
+    "runs": 24,
+    "seconds": 0.083,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_accepting_the_terms_confirms_and_leaves_the_next_word_to_the_person": {
@@ -8496,10 +8526,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.008,
-    "runs": 21,
-    "seconds": 0.073,
+    "runs": 24,
+    "seconds": 0.085,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_an_unexpected_failure_gets_an_apology_not_silence": {
@@ -8507,10 +8537,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.096,
+    "runs": 24,
+    "seconds": 0.109,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_an_unlinked_number_an_unregistered_account_and_an_unreadable_message_each_get_a_notice": {
@@ -8518,10 +8548,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.011,
-    "runs": 21,
-    "seconds": 0.093,
+    "runs": 24,
+    "seconds": 0.102,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_no_typing_indicator_when_mark_read_is_off": {
@@ -8529,10 +8559,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.076,
+    "runs": 24,
+    "seconds": 0.089,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_pending_terms_send_the_content_with_an_accept_button_instead_of_a_turn": {
@@ -8540,10 +8570,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.005,
-    "runs": 21,
-    "seconds": 0.071,
+    "runs": 24,
+    "seconds": 0.079,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_task_whatsapp_sends_to_a_linked_number_and_refuses_an_unknown_one": {
@@ -8551,32 +8581,32 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.003,
-    "runs": 21,
-    "seconds": 0.063,
+    "runs": 24,
+    "seconds": 0.071,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_the_choices_offered_while_entering_are_never_sent_on_their_own": {
     "failures": 22,
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:38:19+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-23T15:38:19+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.008,
-    "runs": 22,
-    "seconds": 0.089,
+    "runs": 25,
+    "seconds": 0.1,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_the_choices_ride_on_the_reply_as_buttons_or_as_a_list": {
     "failures": 22,
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:38:19+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-23T15:38:19+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.007,
-    "runs": 22,
-    "seconds": 0.091,
+    "runs": 25,
+    "seconds": 0.106,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_the_next_message_after_a_takeover_opens_a_conversation_of_its_own": {
@@ -8584,10 +8614,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:22:53+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.008,
-    "runs": 21,
-    "seconds": 0.11,
+    "runs": 24,
+    "seconds": 0.127,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_this_channel_never_writes_the_first_message": {
@@ -8595,10 +8625,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:22:53+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.007,
-    "runs": 23,
-    "seconds": 0.091,
+    "runs": 26,
+    "seconds": 0.103,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_two_messages_one_after_the_other_each_get_their_own_answer": {
@@ -8606,10 +8636,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:22:53+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.014,
-    "runs": 21,
-    "seconds": 0.107,
+    "runs": 24,
+    "seconds": 0.119,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_channel.py::test_what_the_state_owed_arrives_before_the_answer": {
@@ -8617,21 +8647,21 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:22:53+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.007,
-    "runs": 21,
-    "seconds": 0.086,
+    "runs": 24,
+    "seconds": 0.097,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_flow.py::test_a_voice_note_is_decoded_runs_the_same_turn_and_comes_back_spoken": {
-    "failures": 11,
+    "failures": 15,
     "first_run": "2026-09-21T17:51:02+00:00",
-    "last_failed": "2026-09-23T15:37:56+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_failed": "2026-09-23T15:41:06+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.612,
-    "runs": 17,
-    "seconds": 11.853,
+    "runs": 22,
+    "seconds": 16.623,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_flow.py::test_a_whatsapp_native_account_gets_its_reply_once": {
@@ -8639,10 +8669,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.638,
-    "runs": 17,
-    "seconds": 12.652,
+    "runs": 22,
+    "seconds": 17.088,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_flow.py::test_nothing_is_sent_until_the_person_writes": {
@@ -8650,10 +8680,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.622,
-    "runs": 17,
-    "seconds": 15.906,
+    "runs": 22,
+    "seconds": 23.445,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_flow.py::test_the_second_message_continues_the_same_conversation_and_is_answered_once": {
@@ -8661,10 +8691,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 1.167,
-    "runs": 17,
-    "seconds": 12.769,
+    "runs": 22,
+    "seconds": 18.335,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_an_absent_section_or_enabled_false_leaves_the_channel_disabled": {
@@ -8672,10 +8702,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.022,
+    "runs": 20,
+    "seconds": 0.028,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_enabled_parses_with_or_without_a_phone_number_normalized_to_digits_and_a_default_graph_version": {
@@ -8683,10 +8713,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.022,
+    "runs": 20,
+    "seconds": 0.028,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_public_fields_say_it_is_off_without_inventing_values": {
@@ -8694,10 +8724,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.018,
+    "runs": 20,
+    "seconds": 0.022,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_rejects_what_it_cannot_use[raw0-phone-number]": {
@@ -8705,10 +8735,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.032,
+    "runs": 20,
+    "seconds": 0.038,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_rejects_what_it_cannot_use[raw1-verify-token]": {
@@ -8716,10 +8746,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.002,
-    "runs": 17,
-    "seconds": 0.031,
+    "runs": 20,
+    "seconds": 0.036,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_rejects_what_it_cannot_use[raw2-voice-replies]": {
@@ -8727,10 +8757,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.025,
+    "runs": 20,
+    "seconds": 0.034,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_skill.py::test_the_phone_number_id_may_arrive_as_the_int_yaml_reads_it_as": {
@@ -8738,10 +8768,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.02,
+    "runs": 20,
+    "seconds": 0.027,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_a_build_that_cannot_listen_says_so_and_one_that_heard_nothing_says_something_else": {
@@ -8749,10 +8779,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.084,
+    "runs": 25,
+    "seconds": 0.102,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_a_notice_is_never_spoken": {
@@ -8760,10 +8790,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.003,
-    "runs": 21,
-    "seconds": 0.06,
+    "runs": 25,
+    "seconds": 0.073,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_a_voice_note_is_decoded_and_runs_the_very_same_turn": {
@@ -8771,10 +8801,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:22:53+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.005,
-    "runs": 21,
-    "seconds": 0.084,
+    "runs": 25,
+    "seconds": 0.105,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_a_voice_note_that_cannot_be_fetched_is_a_notice_too_and_an_unlinked_one_is_never_fetched": {
@@ -8782,32 +8812,32 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-23T15:17:59+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.004,
-    "runs": 21,
-    "seconds": 0.086,
+    "runs": 25,
+    "seconds": 0.106,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_always_speaks_a_typed_reply_too_and_never_keeps_every_reply_written": {
-    "failures": 21,
+    "failures": 23,
     "first_run": "2026-09-21T17:51:02+00:00",
-    "last_failed": "2026-09-23T15:38:07+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_failed": "2026-09-23T15:39:29+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.004,
-    "runs": 21,
-    "seconds": 0.082,
+    "runs": 25,
+    "seconds": 0.205,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_every_way_a_voice_note_can_fail_falls_back_to_the_written_reply": {
-    "failures": 21,
+    "failures": 23,
     "first_run": "2026-09-21T17:51:02+00:00",
-    "last_failed": "2026-09-23T15:38:07+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_failed": "2026-09-23T15:39:29+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.008,
-    "runs": 21,
-    "seconds": 0.094,
+    "runs": 25,
+    "seconds": 0.436,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_incremental_encoder_matches_whole_file_encoding_and_finishes_empty_with_no_audio": {
@@ -8815,10 +8845,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.266,
-    "runs": 21,
-    "seconds": 7.403,
+    "runs": 25,
+    "seconds": 8.846,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_split_wav_handles_streaming_header_and_complete_file": {
@@ -8826,43 +8856,43 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.006,
-    "runs": 21,
-    "seconds": 0.188,
+    "runs": 25,
+    "seconds": 0.227,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_synthesis_starts_the_moment_the_turn_announces_the_spoken_text": {
-    "failures": 21,
+    "failures": 23,
     "first_run": "2026-09-21T17:51:02+00:00",
-    "last_failed": "2026-09-23T15:38:07+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_failed": "2026-09-23T15:39:29+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.004,
-    "runs": 21,
-    "seconds": 0.077,
+    "runs": 25,
+    "seconds": 0.405,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_the_choices_follow_a_spoken_reply_and_stay_on_the_written_fallback": {
-    "failures": 21,
+    "failures": 23,
     "first_run": "2026-09-21T17:51:02+00:00",
-    "last_failed": "2026-09-23T15:38:07+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_failed": "2026-09-23T15:39:29+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.004,
-    "runs": 21,
-    "seconds": 0.081,
+    "runs": 25,
+    "seconds": 0.313,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_the_default_policy_answers_in_kind": {
-    "failures": 22,
+    "failures": 24,
     "first_run": "2026-09-21T17:51:02+00:00",
-    "last_failed": "2026-09-23T15:38:07+00:00",
-    "last_outcome": "failed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_failed": "2026-09-23T15:39:29+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.005,
-    "runs": 22,
-    "seconds": 0.085,
+    "runs": 26,
+    "seconds": 0.208,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_voice.py::test_wav_to_mp3_produces_mono_48k_mp3_and_rejects_empty_audio": {
@@ -8870,10 +8900,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:38:07+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.038,
-    "runs": 21,
-    "seconds": 1.499,
+    "runs": 25,
+    "seconds": 1.816,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_a_body_over_the_api_limit_is_split_on_a_boundary": {
@@ -8881,10 +8911,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.026,
+    "runs": 20,
+    "seconds": 0.03,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_a_redelivery_is_handed_over_once": {
@@ -8892,10 +8922,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.017,
-    "runs": 17,
-    "seconds": 0.268,
+    "runs": 20,
+    "seconds": 0.33,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_an_invite_code_is_the_last_word_of_a_typed_message_and_nothing_else": {
@@ -8903,10 +8933,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.02,
+    "runs": 20,
+    "seconds": 0.024,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_an_unsigned_post_never_reaches_the_channel": {
@@ -8914,10 +8944,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.009,
-    "runs": 17,
-    "seconds": 0.157,
+    "runs": 20,
+    "seconds": 0.195,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_each_kind_of_message_arrives_as_the_thing_it_is": {
@@ -8925,10 +8955,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.019,
+    "runs": 20,
+    "seconds": 0.024,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_markdown_is_flattened_to_what_whatsapp_renders": {
@@ -8936,10 +8966,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.025,
+    "runs": 20,
+    "seconds": 0.029,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_seen_messages_forgets_what_is_older_than_its_window": {
@@ -8947,10 +8977,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.019,
+    "runs": 20,
+    "seconds": 0.023,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_status_updates_are_not_messages": {
@@ -8958,10 +8988,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.001,
-    "runs": 17,
-    "seconds": 0.019,
+    "runs": 20,
+    "seconds": 0.024,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_the_read_receipt_carries_the_typing_indicator_and_a_failure_is_swallowed": {
@@ -8969,10 +8999,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.029,
-    "runs": 17,
-    "seconds": 1.019,
+    "runs": 20,
+    "seconds": 1.311,
     "skips": 0
   },
   "src/whatsapp/tests/test_whatsapp_webhook.py::test_the_verification_handshake_echoes_the_challenge_and_rejects_a_wrong_token": {
@@ -8980,10 +9010,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:37:56+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.014,
-    "runs": 17,
-    "seconds": 0.267,
+    "runs": 20,
+    "seconds": 0.322,
     "skips": 0
   },
   "tests/test_action_task.py::test_a_deferred_call_runs_after_a_restart_against_the_frozen_scope": {
@@ -19980,10 +20010,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-22T06:16:29+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:34:00+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.902,
-    "runs": 14,
-    "seconds": 13.417,
+    "runs": 15,
+    "seconds": 14.718,
     "skips": 0
   },
   "tests/test_skill_boundaries.py::test_no_skill_imports_another_skill": {
@@ -19991,10 +20021,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-22T06:23:20+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:34:00+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.186,
-    "runs": 15,
-    "seconds": 31.845,
+    "runs": 16,
+    "seconds": 32.815,
     "skips": 0
   },
   "tests/test_skill_boundaries.py::test_nothing_outside_a_skill_imports_one": {
@@ -20002,10 +20032,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-22T06:16:41+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-23T15:34:00+00:00",
+    "last_run": "2026-09-23T15:41:52+00:00",
     "last_seconds": 0.4,
-    "runs": 15,
-    "seconds": 10.254,
+    "runs": 16,
+    "seconds": 11.284,
     "skips": 0
   },
   "tests/test_skill_owned_requirements.py::test_a_dependency_only_one_skill_imports_is_claimed_by_that_skill": {
