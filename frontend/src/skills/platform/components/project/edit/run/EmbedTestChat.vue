@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import html2canvas from 'html2canvas'
 import ChatView from '../../../../../../components/chat/ChatView.vue'
 import RestartFromHereButton from '../../../../../../components/chat/RestartFromHereButton.vue'
@@ -13,6 +13,7 @@ import { activeChatMode } from '../../../../../../chatSkin.js'
 import { useAppBoot } from '../../../../../../composables/useAppBoot.js'
 import { useViewStack } from '../../../../../../composables/useViewStack.js'
 import { testStore } from '../../../../testChatStore.js'
+import { transcriptOf } from './runTranscript.js'
 import { deleteSession } from '../../../../api.js'
 
 const props = defineProps({
@@ -38,26 +39,20 @@ function onSelectMessage(message) {
 }
 
 function reportAdvanced() {
-  window.parent.postMessage({
-    source: 'run-chat-embed',
-    type: 'run-advanced',
-    sessionId: testStore.currentSessionId.value,
-    state: toRaw(testStore.state.value) ?? null,
-    messages: testStore.messages.value.map((m) => ({
-      id: m.id,
-      messageId: m.messageId ?? null,
-      role: m.role,
-      content: m.content,
-      timestamp: m.timestamp,
-      audioText: m.audioText ?? null
-    }))
-  }, window.location.origin)
+  window.parent.postMessage({ source: 'run-chat-embed', type: 'run-advanced' }, window.location.origin)
+}
+
+function reportTranscript() {
+  window.parent.postMessage(
+    { source: 'run-chat-embed', type: 'run-transcript', ...transcriptOf(testStore) },
+    window.location.origin
+  )
 }
 
 watch(testStore.turnCount, reportAdvanced)
 watch(testStore.signalValues, reportAdvanced)
-watch(testStore.state, reportAdvanced)
-watch(() => testStore.messages.value.length, reportAdvanced)
+watch(testStore.state, reportTranscript)
+watch(testStore.messages, reportTranscript, { deep: true })
 
 function backgroundImageUrl(el) {
   const match = getComputedStyle(el).backgroundImage.match(/url\(["']?(.*?)["']?\)/)

@@ -222,8 +222,8 @@ const inspectorActiveTab = ref('states')
 
 const { stateTabTokens } = useStateTabTokens(props.projectId, selectedStateKey)
 
-async function onRunAdvanced(run) {
-  await applyRun(run)
+async function onRunAdvanced() {
+  await refreshSignalsLog()
 }
 
 async function ensureDraftChatSession() {
@@ -534,6 +534,7 @@ async function handleSetSessionComment(sessionId, comment) {
           @restart-prefill="restartAndPrefill"
           @restart-resend="restartAndResend"
           @run-advanced="onRunAdvanced"
+          @run-transcript="applyRun"
           @media-saved="loadFiles"
         />
 

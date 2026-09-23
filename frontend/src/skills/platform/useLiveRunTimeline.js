@@ -44,12 +44,11 @@ export function useLiveRunTimeline(projectId, mode, validStateKeys) {
     }
   }
 
-  async function applyRun({ state, messages }) {
+  function applyRun({ state, messages }) {
     const incoming = messages ?? []
     if (incoming.length !== runMessages.value.length) selected.value = null
     runState.value = state ?? null
     runMessages.value = incoming
-    await refreshSignalsLog()
   }
 
   function forgetRun() {

@@ -56,19 +56,22 @@ describe('the Run chat', () => {
     expect(assistantBubbles()[0]).toMatchObject({ content: 'Hola', awaitingReply: false })
   })
 
-  it('puts the bubble being written into the timeline, before it has an id', async () => {
+  it('puts the bubble being written into the editor timeline, before it has an id', async () => {
     const { useLiveRunTimeline } = await import('../useLiveRunTimeline.js')
+    const { transcriptOf } = await import('../components/project/edit/run/runTranscript.js')
     const { ref } = await import('vue')
-    const { timeline } = useLiveRunTimeline('proj', ref('live'), ref(new Set()))
+    const { timeline, applyRun } = useLiveRunTimeline('proj', ref('live'), ref(new Set()))
 
     await testStore.handleSend('ciao')
     deliver({ type: 'output.text_stream', session_id: 5, text: '' })
+    applyRun(transcriptOf(testStore))
 
     const drawn = timeline.value.filter((entry) => entry.kind === 'message').map((entry) => entry.message)
     expect(drawn.filter((m) => m.role === 'assistant')).toHaveLength(1)
     expect(drawn.at(-1)).toMatchObject({ role: 'assistant', awaitingReply: true })
 
     deliver({ type: 'output.text_stream', session_id: 5, text: 'Hola' })
+    applyRun(transcriptOf(testStore))
     const written = timeline.value.filter((entry) => entry.kind === 'message').map((entry) => entry.message)
     expect(written.at(-1)).toMatchObject({ content: 'Hola', awaitingReply: false })
   })

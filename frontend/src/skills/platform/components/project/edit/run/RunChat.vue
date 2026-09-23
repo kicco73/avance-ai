@@ -45,7 +45,7 @@ const props = defineProps({
   isStateGone: { type: Function, required: true }
 })
 
-const emit = defineEmits(['select-message', 'restart-prefill', 'restart-resend', 'media-saved', 'run-advanced'])
+const emit = defineEmits(['select-message', 'restart-prefill', 'restart-resend', 'media-saved', 'run-advanced', 'run-transcript'])
 
 function timelineMessageFor(messageId) {
   return props.timeline.find((entry) => entry.kind === 'message' && entry.message.id === messageId)?.message ?? null
@@ -69,7 +69,11 @@ function onEmbedMessage(event) {
     return
   }
   if (data.type === 'run-advanced') {
-    emit('run-advanced', { state: data.state, messages: data.messages })
+    emit('run-advanced')
+    return
+  }
+  if (data.type === 'run-transcript') {
+    emit('run-transcript', { state: data.state, messages: data.messages })
     return
   }
   const message = timelineMessageFor(data.messageId)
