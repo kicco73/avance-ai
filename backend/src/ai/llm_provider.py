@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -96,6 +97,10 @@ class AIServiceProviderPermanentError(AIServiceError):
 
 class AIServiceRequestError(AIServiceError):
 	message = "The AI service rejected the request as malformed."
+
+
+class AIServiceProviderMalformedReplyError(TryAgainError, AIServiceError):
+	message = "The AI service returned a reply without its text."
 
 
 @dataclass(frozen=True)
@@ -204,6 +209,16 @@ class StructuredReply:
 			last = next(reversed(parsed))
 			self._emit(last, parsed[last])
 
+	def has_text(self) -> bool:
+		try:
+			parsed = json.loads(self._raw)
+		except json.JSONDecodeError:
+			return False
+		return isinstance(parsed, dict) and "text" in parsed
+
+	def raw(self) -> str:
+		return self._raw
+
 	def _emit(self, name: str, value: Any) -> None:
 		if name in self._emitted:
 			return
@@ -232,6 +247,9 @@ class LLMProvider(TokenCounter, ABC):
 			if "text" in schema:
 				raise
 			return
+		if "text" in schema and not reply.has_text():
+			logger.error(f"reply ended without a complete JSON object carrying text -- raw: {reply.raw()!r}")
+			raise AIServiceProviderMalformedReplyError("the reply ended without a complete JSON object carrying text")
 		reply.finish()
 
 	@abstractmethod

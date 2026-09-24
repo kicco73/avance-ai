@@ -70,7 +70,9 @@ onBeforeUnmount(() => {
   top: calc(var(--chat-header-height, 70px) + 0.75rem);
   left: 50%;
   z-index: 20;
-  width: min(22rem, calc(100% - 2rem));
+  --progress-toast-shadow-blur: 16px;
+  box-sizing: border-box;
+  width: min(22rem, calc(95vw - 2 *var(--progress-toast-shadow-blur)));
   transform: translateX(-50%);
   padding: 0.85rem 1rem 0.95rem;
   border-radius: 1rem;
@@ -78,7 +80,7 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(14px) saturate(160%);
   -webkit-backdrop-filter: blur(14px) saturate(160%);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 6px var(--progress-toast-shadow-blur) rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.18);
   color: #fff;
   pointer-events: none;
 }

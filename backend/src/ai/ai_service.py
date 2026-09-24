@@ -13,6 +13,7 @@ from turn.errors import TurnServiceError
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceError,
+	AIServiceProviderMalformedReplyError,
 	AIServiceProviderOutputTruncatedError,
 	AIServiceProviderPermanentError,
 	AIServiceProviderRateLimitedError,
@@ -525,6 +526,7 @@ _OUTCOME_BY_ERROR: tuple[tuple[type[Exception], str], ...] = (
 	(AIServiceProviderRateLimitedError, "rate_limited"),
 	(AIServiceProviderPermanentError, "permanent"),
 	(AIServiceRequestError, "request_error"),
+	(AIServiceProviderMalformedReplyError, "malformed"),
 	(AIServiceProviderUnavailableError, "unavailable"),
 	(AIServiceProviderOutputTruncatedError, "truncated"),
 )

@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 
 from ai import AiService
-from ai.llm_provider import AIServiceProviderOutputTruncatedError, LLMProvider
+from ai.llm_provider import AIServiceProviderMalformedReplyError, AIServiceProviderOutputTruncatedError, LLMProvider
 from ai.response_schema import StringField
 from ai.turn.tracking_processor_ai import TrackingProcessorAfterAiMessage
 from automaton.automaton import Action, Automaton, EnvKey, State
@@ -31,9 +31,9 @@ SUGGESTIONS = (
 
 
 class StreamingProvider(LLMProvider):
-    def __init__(self, reply: dict, chunk_size: int = 7, truncated: bool = False) -> None:
+    def __init__(self, reply: dict | str, chunk_size: int = 7, truncated: bool = False) -> None:
         super().__init__()
-        self._raw = json.dumps(reply, ensure_ascii=False)
+        self._raw = reply if isinstance(reply, str) else json.dumps(reply, ensure_ascii=False)
         self._chunk_size = chunk_size
         self._truncated = truncated
         self.schemas: list[dict] = []
@@ -155,6 +155,24 @@ async def test_a_truncated_reply_with_text_is_an_error():
 
     with pytest.raises(AIServiceProviderOutputTruncatedError):
         async for _ in provider.generate_stream_with_schema("", [], {"text": StringField()}):
+            pass
+
+
+async def test_a_reply_that_ends_without_its_text_is_an_error_and_saves_nothing(db):
+    provider = StreamingProvider('{"output": {"sugerencias": "- **Pedir permiso** antes de profundizar en ')
+    processor, env = _processor(db, provider)
+
+    with pytest.raises(AIServiceProviderMalformedReplyError):
+        await processor.process("Buenos días")
+
+    assert env.action_set() == {}
+
+
+async def test_a_complete_reply_without_text_is_an_error():
+    provider = StreamingProvider({"output": {"sugerencias": SUGGESTIONS}})
+
+    with pytest.raises(AIServiceProviderMalformedReplyError):
+        async for _ in provider.generate_stream_with_schema("", [], {"text": StringField(), "output": StringField()}):
             pass
 
 
