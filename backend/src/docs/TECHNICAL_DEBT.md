@@ -135,7 +135,7 @@ enough to size the gain: a day and a half of dev traffic, one model,
 failures in bursts, and no count of how many fell on a state change.
 Parked until there is production data.
 
-## A provider that stalls ends the turn, so the first-chunk deadline cannot be tightened
+## A provider that stalls ends the turn
 
 `AutoLiveLLMProvider` (`ai/_providers/cascading_llm_provider.py`) makes one
 attempt. A stall is detected above it, in `AiService._within_deadline`
@@ -165,30 +165,39 @@ stalls counted from 2026-09-22:
   in the 10 s before any of them), nor with concurrent AI calls.
 - On 2026-09-24 the live provider tests got explicit 503s ("high
   demand") from both Gemini models, so part of it is Google's.
-- How much of the tail is the model thinking is unknown: `thoughts_tokens`
-  is recorded from 2026-09-24 on (Gemini's `thoughts_token_count`), for
-  successful calls only — a stalled call is cancelled and never reports
-  its usage. No `ThinkingConfig` is sent, so thinking runs at the
-  model's default.
+- How much of the tail was the model thinking is not known for those
+  rows: until 2026-09-24 no thinking was streamed, so a model reasoning
+  and a dead connection looked the same.
 
-With Gemini 3.5 first and Mistral behind it, the expected time to the
-first chunk *if the same turn moved to the next provider* would be:
+Since 2026-09-24 the two are told apart. Gemini is asked for its thought
+summaries (`include_thoughts`), which stream as `Thought` and never reach
+the user, and the deadline is split (`ai/stream_deadline.py`):
+`first-thought-seconds` (3 s) bounds a provider that has sent nothing at
+all, `first-chunk-seconds` (10 s, from the request) bounds a model that
+is thinking but has not started writing. A provider that does not stream
+its thinking has to write within the 3 s; Mistral's p99 is 2.16 s.
+`AiUsage` records `time_to_first_thought` and `thoughts_tokens`, the
+first also on a stalled call, so a stall row now says which of the two
+it was. The 3 s was chosen, not derived: nothing measured the first
+thought before it existed, and it is to be checked against these rows.
+
+Still open, and what it would cost: the stall still ends the turn. The
+candidate, not built, lives in `AutoLiveLLMProvider`: past the first
+deadline with nothing yielded, it starts the same call on the next
+provider in parallel, keeps whichever yields first and cancels the
+other — nothing has reached the user, so nothing can be spliced; after
+the first chunk it stays fail fast. The shared pointer then moves only
+on a real fault (an explicit 503 or rate limit, or the long deadline),
+never for a call the backup covered — today one slow call moves every
+user to the next provider, and nothing moves them back. With Gemini 3.5
+first and Mistral behind it, the expected time to the first chunk if the
+same turn moved on:
 
 | deadline | moved to Mistral | expected first chunk |
 | --- | --- | --- |
 | 10 s | 14% | 2.43 s |
 | 2 s | 19% | 1.14 s |
 
-Today the 19% at 2 s would be errors instead, which is why the default
-stays at 10.
-
-The candidate, not built: one exception to `AutoLiveLLMProvider`'s fail
-fast. A provider that has yielded nothing within the first-chunk
-deadline — nothing has reached the user, so nothing can be spliced —
-is abandoned and the same call moves to the next provider; after the
-first chunk it stays fail fast. For that the first-chunk deadline has
-to bound each provider inside the cascade rather than the cascade as a
-whole from `AiService`, where the cascade never sees the stall. Then the
-deadline drops to 2 s. Thinking is left at the model's default until `thoughts_tokens`
-says how much it weighs; the criterion then is interactivity, a minimal
-level for the live chat turn, not a per-app setting.
+Thinking stays at the model's default until `thoughts_tokens` says how
+much it weighs; the criterion then is interactivity — a minimal level
+for the live chat turn — not a per-app setting.

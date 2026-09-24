@@ -69,7 +69,8 @@ class FakeToolSet:
 async def drain(stream) -> str:
     out = ""
     async for chunk in stream:
-        out += chunk
+        if isinstance(chunk, str):
+            out += chunk
     return out
 
 
@@ -350,10 +351,14 @@ class GeminiFunctionCall:
 
 
 class GeminiPart:
-    def __init__(self, function_call: GeminiFunctionCall | None = None, thought_signature: bytes | None = None, text: str = "") -> None:
+    def __init__(
+        self, function_call: GeminiFunctionCall | None = None, thought_signature: bytes | None = None, text: str = "",
+        thought: bool | None = None,
+    ) -> None:
         self.function_call = function_call
         self.thought_signature = thought_signature
         self.text = text
+        self.thought = thought
 
 
 class GeminiContent:

@@ -65,18 +65,20 @@ turn-service:
   # shared by every project, bounded in bytes rather than in files (see
   # tracking/project_files.py's ProjectFileCache).
   project-file-cache-bytes: 8388608
-  # The four deadlines of a reply, all optional, all in seconds. The
-  # first three bound the model (see ai/stream_deadline.py): a provider
+  # The five deadlines of a reply, all optional, all in seconds. The
+  # first four bound the model (see ai/stream_deadline.py): a provider
   # that stays silent past one is given up, the cascade moves on, and the
-  # exchange ends with output.error — never in silence. The fourth is
+  # exchange ends with output.error — never in silence. The last is
   # what the browser is told (session.info), and must exceed
   # silent-round-seconds or the browser gives up on a reply the server
   # is still allowed to be writing.
   #
-  # Defaults to 10: a provider that has not sent its first byte. The
-  # eight complete replies of one production session took 1.1–2.9 s; a
-  # provider that has not started after 10 s is not going to, and a
-  # slow start under load still fits.
+  # Defaults to 3: a provider that has sent nothing at all, not even a
+  # token of its thinking. Mistral's p99 to its first byte is 2.16 s
+  # (docs/TECHNICAL_DEBT.md).
+  first-thought-seconds: 3
+  # Defaults to 10: counted from the request, when a model that is
+  # thinking must have written its first byte of reply.
   first-chunk-seconds: 10
   # Defaults to 10: silence between two bytes of a reply already under
   # way. Reset on every byte, so the length of a reply never matters,

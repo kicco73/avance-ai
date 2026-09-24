@@ -22,6 +22,7 @@ from ai.llm_provider import (
 	LLMProvider,
 	MetadataCallback,
 	SystemPrompt,
+	Thought,
 	ToolCallsRequested,
 	content_to_text,
 )
@@ -503,10 +504,13 @@ class AiService(object):
 			raise
 
 	async def _within_deadline(
-		self, stream: AsyncIterator[str], tap: "_UsageTap | _UntappedMetadata",
+		self, stream: AsyncIterator[str | Thought], tap: "_UsageTap | _UntappedMetadata",
 	) -> AsyncIterator[str]:
 		try:
 			async for chunk in stream:
+				if isinstance(chunk, Thought):
+					tap.first_thought_received()
+					continue
 				tap.first_chunk_received()
 				yield chunk
 		except StreamStalled:
@@ -514,7 +518,7 @@ class AiService(object):
 			raise
 
 	async def _text_of(
-		self, response_stream: AsyncIterator[str], tap: "_UsageTap | _UntappedMetadata", provider_label: str,
+		self, response_stream: AsyncIterator[str | Thought], tap: "_UsageTap | _UntappedMetadata", provider_label: str,
 	) -> AsyncIterator[str]:
 		async for chunk in self._within_deadline(response_stream, tap):
 			if chunk:
@@ -600,6 +604,9 @@ class _UntappedMetadata:
 	def first_chunk_received(self) -> None:
 		pass
 
+	def first_thought_received(self) -> None:
+		pass
+
 	def record_failure(self, exc: Exception) -> None:
 		pass
 
@@ -615,11 +622,22 @@ class _UsageTap:
 		self._captured: dict[str, int] = {}
 		self._started = 0.0
 		self._first_chunk_at: float | None = None
+		self._first_thought_at: float | None = None
 
 	def round_started(self) -> None:
 		self._started = asyncio.get_running_loop().time()
 		self._captured.clear()
 		self._first_chunk_at = None
+		self._first_thought_at = None
+
+	def first_thought_received(self) -> None:
+		if self._first_thought_at is None:
+			self._first_thought_at = asyncio.get_running_loop().time()
+
+	def _time_to_first_thought(self) -> float | None:
+		if self._first_thought_at is None:
+			return None
+		return self._first_thought_at - self._started
 
 	def first_chunk_received(self) -> None:
 		"""Marks the first byte this round's stream ever produced — a no-op
@@ -641,6 +659,7 @@ class _UsageTap:
 			self._provider_label, 0, 0, 0, 0,
 			asyncio.get_running_loop().time() - self._started,
 			time_to_first_chunk=self._time_to_first_chunk(), outcome=_outcome_for(exc),
+			time_to_first_thought=self._time_to_first_thought(),
 		)
 
 	def __call__(self, name: str, value: Any) -> None:
@@ -653,6 +672,7 @@ class _UsageTap:
 					asyncio.get_running_loop().time() - self._started,
 					time_to_first_chunk=self._time_to_first_chunk(),
 					thoughts_tokens=self._captured.get("thoughts_tokens", 0),
+					time_to_first_thought=self._time_to_first_thought(),
 				)
 				self._captured.clear()
 		self._on_metadata(name, value)

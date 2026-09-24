@@ -12,7 +12,7 @@ import pytest
 from google.genai import types
 
 from ai.ai_service import AiService
-from ai.llm_provider import SystemPrompt, ToolCall, ToolCallsRequested
+from ai.llm_provider import SystemPrompt, Thought, ToolCall, ToolCallsRequested
 from ai.response_schema import StringField
 from provider_tools_helpers import (
     SELECT_SPEC, FakeToolSet, GeminiCandidate, GeminiChunk, GeminiContent, GeminiFunctionCall, GeminiHarness, GeminiPart,
@@ -211,3 +211,32 @@ async def test_the_tokens_a_model_spent_thinking_are_reported_and_default_to_zer
     assert ("thoughts_tokens", 700) in thought
 
     assert ("thoughts_tokens", 0) in await _events(harness.text_response('{"text": "hi"}'))
+
+
+async def test_the_model_s_thinking_is_asked_for_announced_as_it_streams_and_never_written_as_text():
+    thinking = GeminiChunk(candidates=[GeminiCandidate(GeminiContent([GeminiPart(text="weighing the options", thought=True)]))])
+    answer = GeminiChunk(
+        candidates=[GeminiCandidate(GeminiContent([GeminiPart(text='{"text": "hi"}')]), finish_reason=types.FinishReason.STOP)],
+        usage_metadata=GeminiUsage(), text='{"text": "hi"}',
+    )
+    provider, client = harness.provider([[thinking, answer]])
+
+    received = [chunk async for chunk in provider.generate_stream_with_schema("sys", [], {"text": StringField("t")})]
+
+    assert isinstance(received[0], Thought)
+    assert "".join(chunk for chunk in received if isinstance(chunk, str)) == "hi"
+    assert harness.calls(client)[0]["config"].thinking_config.include_thoughts is True
+
+
+async def test_a_thought_streamed_before_a_tool_call_is_not_replayed_as_the_model_s_text():
+    requested = await _raise_tool_calls([
+        GeminiChunk(candidates=[GeminiCandidate(content=GeminiContent(parts=[GeminiPart(text="which flight?", thought=True)]))]),
+        GeminiChunk(candidates=[GeminiCandidate(
+            content=GeminiContent(parts=[GeminiPart(function_call=GeminiFunctionCall(name="source_flights_select", args={"value": "VY1"}), thought_signature=b"s")]),
+            finish_reason=types.FinishReason.STOP,
+        )], usage_metadata=GeminiUsage()),
+    ])
+
+    parts = requested.assistant_content["gemini_parts"]
+    assert [part.text for part in parts] == [None]
+    assert parts[0].function_call.name == "source_flights_select"

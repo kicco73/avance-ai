@@ -27,7 +27,7 @@ import pytest
 
 from ai import AiService
 from ai.response_schema import StringField
-from ai.llm_provider import AIServiceProviderUnavailableError, LLMProvider, ToolCall, ToolCallsRequested, ToolSpec
+from ai.llm_provider import AIServiceProviderUnavailableError, LLMProvider, Thought, ToolCall, ToolCallsRequested, ToolSpec
 from ai.stream_deadline import StreamDeadline
 from provider_tools_helpers import FakeToolSet
 
@@ -146,3 +146,60 @@ async def test_a_tool_round_silent_past_the_round_deadline_is_given_up():
 
 	assert tool_set.calls == []
 	assert provider.advanced == 1
+
+
+class _ThinkingProvider(_Provider):
+	def __init__(self, thoughts_at: list[float], text_at: float) -> None:
+		super().__init__(0.0, [])
+		self._thoughts_at = thoughts_at
+		self._text_at = text_at
+
+	async def stream_json(
+		self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
+	):
+		try:
+			elapsed = 0.0
+			for at in self._thoughts_at:
+				await asyncio.sleep(at - elapsed)
+				elapsed = at
+				yield Thought()
+			await asyncio.sleep(self._text_at - elapsed)
+			yield '{"text": "pondered"}'
+		finally:
+			self.torn_down = True
+
+
+def _thinking_deadline() -> StreamDeadline:
+	return StreamDeadline(first_thought_seconds=0.1, first_chunk_seconds=0.5, next_chunk_seconds=1.0)
+
+
+async def test_a_provider_that_sends_not_even_a_thought_is_given_up_at_the_first_thought_deadline():
+	provider = _Provider(first_delay=60.0, chunks=['{"text": "late"}'])
+	service = AiService(provider, deadline=_thinking_deadline())
+
+	started = time.monotonic()
+	with pytest.raises(AIServiceProviderUnavailableError, match="sent nothing for 0.1s"):
+		await _reply(service)
+
+	assert time.monotonic() - started < 0.4
+	assert provider.torn_down
+
+
+async def test_a_provider_that_is_thinking_may_write_its_first_text_up_to_the_first_chunk_deadline():
+	provider = _ThinkingProvider(thoughts_at=[0.05, 0.25], text_at=0.4)
+	service = AiService(provider, deadline=_thinking_deadline())
+
+	assert await _reply(service) == "pondered"
+	assert provider.advanced == 0
+
+
+async def test_a_provider_thinking_past_the_first_chunk_deadline_is_given_up_there():
+	provider = _ThinkingProvider(thoughts_at=[0.05, 0.3, 0.45], text_at=60.0)
+	service = AiService(provider, deadline=_thinking_deadline())
+
+	started = time.monotonic()
+	with pytest.raises(AIServiceProviderUnavailableError, match="was thinking but wrote nothing for 0.5s"):
+		await _reply(service)
+
+	assert time.monotonic() - started < 0.9
+	assert provider.torn_down

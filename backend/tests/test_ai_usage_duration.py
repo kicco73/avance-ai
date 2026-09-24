@@ -11,7 +11,7 @@ from typing import AsyncIterator, cast
 import pytest
 
 from ai.ai_service import AiService
-from ai.llm_provider import LLMProvider, MetadataCallback
+from ai.llm_provider import LLMProvider, MetadataCallback, Thought
 from ai.response_schema import StringField
 from db.models import AiUsage
 from virtual_clock import VirtualClockLoop
@@ -38,18 +38,18 @@ class _RepliesAfterWithUsage(LLMProvider):
 
 
 def test_the_usage_row_records_the_call_s_duration_in_seconds(db):
-    ai_service = AiService(_RepliesAfterWithUsage(3.5), db=db)
+    ai_service = AiService(_RepliesAfterWithUsage(2.5), db=db)
 
     async def scenario(clock):
         stream = ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")})
         drained = asyncio.ensure_future(_drain(stream))
-        await clock.advance(3.5)
+        await clock.advance(2.5)
         await drained
 
     with asyncio.Runner(loop_factory=VirtualClockLoop) as runner:
         runner.run(scenario(cast(VirtualClockLoop, runner.get_loop()).clock))
 
-    assert AiUsage.get().duration == 3.5
+    assert AiUsage.get().duration == 2.5
 
 
 class _ThinksThenReplies(LLMProvider):
@@ -156,3 +156,49 @@ def test_time_to_first_chunk_is_measured_separately_from_the_call_s_total_durati
 
     row = AiUsage.get()
     assert (row.time_to_first_chunk, row.duration) == (1.5, 4.0)
+
+
+class _ThinksBeforeWriting(LLMProvider):
+    def __init__(self, thought_at: float, text_at: float) -> None:
+        super().__init__()
+        self._thought_at = thought_at
+        self._text_at = text_at
+
+    async def stream_json(
+        self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
+    ) -> AsyncIterator[str | Thought]:
+        report = cast(MetadataCallback, on_metadata)
+        await asyncio.sleep(self._thought_at)
+        yield Thought()
+        await asyncio.sleep(self._text_at - self._thought_at)
+        yield '{"text": "hi"}'
+        report("input_tokens", 10)
+        report("output_tokens", 5)
+
+    def get_input_tokens(self, prompt: str) -> int:
+        return 0
+
+
+def _run_for(ai_service: AiService, seconds: float) -> None:
+    async def scenario(clock):
+        stream = ai_service.generate_stream_with_metadata("sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")})
+        drained = asyncio.ensure_future(_drain(stream))
+        await clock.advance(seconds)
+        await asyncio.gather(drained, return_exceptions=True)
+
+    with asyncio.Runner(loop_factory=VirtualClockLoop) as runner:
+        runner.run(scenario(cast(VirtualClockLoop, runner.get_loop()).clock))
+
+
+def test_time_to_first_thought_is_recorded_apart_from_time_to_first_chunk(db):
+    _run_for(AiService(_ThinksBeforeWriting(1.0, 6.0), db=db), 6.0)
+
+    row = AiUsage.get()
+    assert (row.outcome, row.time_to_first_thought, row.time_to_first_chunk) == ("success", 1.0, 6.0)
+
+
+def test_a_call_that_thought_but_never_wrote_is_recorded_as_a_stall_with_its_time_to_first_thought(db):
+    _run_for(AiService(_ThinksBeforeWriting(1.0, 60.0), db=db), 10.0)
+
+    row = AiUsage.get()
+    assert (row.outcome, row.time_to_first_thought, row.time_to_first_chunk) == ("unavailable", 1.0, None)

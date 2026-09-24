@@ -114,6 +114,10 @@ class ToolCall:
 	arguments: dict
 
 
+class Thought:
+	pass
+
+
 class ToolCallsRequested(Exception):
 	"""Raised by stream_json in place of completing the
 	stream: the model ended its turn asking for one or more tools instead
@@ -235,13 +239,13 @@ class LLMProvider(TokenCounter, ABC):
 		self, system_prompt: "str | SystemPrompt", history: list[dict], schema: dict[str, Field],
 		on_metadata: MetadataCallback | None = None,
 		tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
-	) -> AsyncIterator[str]:
+	) -> AsyncIterator[str | Thought]:
 		reply = StructuredReply(schema, on_metadata or _ignore_metadata)
 		try:
 			async for chunk in self.stream_json(
 				system_prompt, history, schema, **forward_kwargs(on_metadata, tools, tool_round, required_tools),
 			):
-				yield reply.feed(chunk)
+				yield chunk if isinstance(chunk, Thought) else reply.feed(chunk)
 		except AIServiceProviderOutputTruncatedError as exc:
 			logger.critical(f"{exc} -- discarding unterminated trailing field")
 			if "text" in schema:
@@ -256,7 +260,7 @@ class LLMProvider(TokenCounter, ABC):
 	async def stream_json(
 		self, system_prompt: "str | SystemPrompt", history: list[dict], schema: dict[str, Field], on_metadata: MetadataCallback | None = None,
 		tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
-	) -> AsyncIterator[str]:
+	) -> AsyncIterator[str | Thought]:
 		"""`system_prompt`: a plain str, or a SystemPrompt(stable, volatile)
 		— see its own docstring. Anthropic caches `stable` alone (a plain
 		str behaves as SystemPrompt(stable=str, volatile="")); Gemini/

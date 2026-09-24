@@ -138,11 +138,15 @@ class TestReplyDeadlines:
         assert _load(monkeypatch, tmp_path, MINIMAL_CONFIG).stream_deadline == ReplyDeadline()
 
     def test_each_model_deadline_is_read_from_turn_service(self, monkeypatch, tmp_path):
-        config = _load(monkeypatch, tmp_path, _deadlines(first_chunk_seconds=2, next_chunk_seconds=4.5, silent_round_seconds=20))
+        config = _load(monkeypatch, tmp_path, _deadlines(
+            first_chunk_seconds=2, next_chunk_seconds=4.5, silent_round_seconds=20, first_thought_seconds=1.5,
+        ))
 
-        assert config.stream_deadline == ReplyDeadline(first_chunk_seconds=2.0, next_chunk_seconds=4.5, silent_round_seconds=20.0)
+        assert config.stream_deadline == ReplyDeadline(
+            first_chunk_seconds=2.0, next_chunk_seconds=4.5, silent_round_seconds=20.0, first_thought_seconds=1.5,
+        )
 
-    @pytest.mark.parametrize("field", ["first-chunk-seconds", "next-chunk-seconds", "silent-round-seconds"])
+    @pytest.mark.parametrize("field", ["first-chunk-seconds", "next-chunk-seconds", "silent-round-seconds", "first-thought-seconds"])
     def test_a_model_deadline_must_be_a_positive_number(self, monkeypatch, tmp_path, field):
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, _chat(field, 0))
@@ -157,12 +161,16 @@ class TestReplyDeadlines:
 
         assert config.reply_silence_seconds == 61.0
 
-    def test_manage_services_shows_all_four(self, monkeypatch, tmp_path):
+    def test_manage_services_shows_all_five(self, monkeypatch, tmp_path):
         chat = _load(monkeypatch, tmp_path, MINIMAL_CONFIG).public_services_snapshot()["chat"]
 
         assert {key: chat[key] for key in (
-            "first-chunk-seconds", "next-chunk-seconds", "silent-round-seconds", "reply-silence-seconds",
-        )} == {"first-chunk-seconds": 10.0, "next-chunk-seconds": 10.0, "silent-round-seconds": 30.0, "reply-silence-seconds": 45.0}
+            "first-thought-seconds", "first-chunk-seconds", "next-chunk-seconds", "silent-round-seconds",
+            "reply-silence-seconds",
+        )} == {
+            "first-thought-seconds": 3.0, "first-chunk-seconds": 10.0, "next-chunk-seconds": 10.0,
+            "silent-round-seconds": 30.0, "reply-silence-seconds": 45.0,
+        }
 
 
 class TestOptionalSettingsEndToEnd:

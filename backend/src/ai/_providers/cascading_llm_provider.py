@@ -19,6 +19,7 @@ from ai.llm_provider import (
     MetadataCallback,
     forward_kwargs,
     SystemPrompt,
+    Thought,
     ToolSpec,
 )
 from system.logging_factory import LoggerFactory
@@ -58,7 +59,7 @@ class AutoLiveLLMProvider(LLMProvider):
     async def stream_json(
         self, system_prompt: "str | SystemPrompt", history: list[dict], schema: dict[str, Field], on_metadata: MetadataCallback | None = None,
         tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | Thought]:
         provider = self._cascade.current
         try:
             async for chunk in provider.stream_json(system_prompt, history, schema, **forward_kwargs(on_metadata, tools, tool_round, required_tools)):  # type: ignore
@@ -94,7 +95,7 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
         tools: list[ToolSpec] | None = None,
         tool_round: int = 1,
         required_tools: list[ToolSpec] | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | Thought]:
         last_error: BaseException | None = None
         for _ in range(len(self._cascade)):
             provider = self._cascade.current

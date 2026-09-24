@@ -55,6 +55,7 @@ class ReplyDeadline:
     first_chunk_seconds: float = 10.0
     next_chunk_seconds: float = 10.0
     silent_round_seconds: float = 30.0
+    first_thought_seconds: float = 3.0
 
 
 @dataclass(frozen=True)
@@ -224,6 +225,9 @@ class AppConfig:
             silent_round_seconds=cls._get_optional_positive_float(
                 raw, "turn-service", "silent-round-seconds", path, default.silent_round_seconds,
             ),
+            first_thought_seconds=cls._get_optional_positive_float(
+                raw, "turn-service", "first-thought-seconds", path, default.first_thought_seconds,
+            ),
         )
 
     @classmethod
@@ -340,6 +344,7 @@ class AppConfig:
                 "input-token-budget-per-turn": self.input_token_budget_per_turn,
                 "total-token-budget-per-session": self.total_token_budget_per_session,
                 "project-file-cache-bytes": self.project_file_cache_bytes,
+                "first-thought-seconds": self.stream_deadline.first_thought_seconds,
                 "first-chunk-seconds": self.stream_deadline.first_chunk_seconds,
                 "next-chunk-seconds": self.stream_deadline.next_chunk_seconds,
                 "silent-round-seconds": self.stream_deadline.silent_round_seconds,

@@ -317,6 +317,7 @@ class AiUsage(BaseModel):
     thoughts_tokens = IntegerField(default=0)
     duration = FloatField(default=0.0)
     time_to_first_chunk = FloatField(null=True)
+    time_to_first_thought = FloatField(null=True)
     outcome = CharField(index=True, default='success')
 
     class Meta:

@@ -193,18 +193,22 @@ secrets). Top-level sections:
   than the whole bound is served without being kept. Entries are dropped
   by the bound, and explicitly whenever a project is saved, renamed or
   deleted.
-- **`turn-service.first-chunk-seconds`**, **`next-chunk-seconds`**,
-  **`silent-round-seconds`** — optional, default to `10`, `10` and `30`.
+- **`turn-service.first-thought-seconds`**, **`first-chunk-seconds`**,
+  **`next-chunk-seconds`**, **`silent-round-seconds`** — optional, default
+  to `3`, `10`, `10` and `30`.
   How long the model may stay silent before the call is given up (see
   `ai/stream_deadline.py`): a stall is an `AIServiceProviderUnavailableError`,
   so the cascade moves to the next provider for the next request, the
   call is cancelled so nothing lands late, and the exchange ends with
   `output.error` — never in silence (production session 55, 2026-09-21,
-  waited 13 minutes on a provider that never sent a byte). The three
-  bound three different silences. *First chunk*: nothing has arrived
-  since the request was sent; the eight complete replies of that session
-  took 1.1–2.9 s, so a provider that has not started after 10 s is not
-  going to, and a slow start under load still fits. *Next chunk*: nothing has arrived since the last byte of a
+  waited 13 minutes on a provider that never sent a byte). The four
+  bound four different silences. *First thought*: nothing at all has
+  arrived since the request was sent, not even a token of the model's
+  thinking (Gemini streams it with `include_thoughts`; a provider that
+  does not stream its thinking has to write within this); Mistral's p99
+  to its first byte is 2.16 s (`docs/TECHNICAL_DEBT.md`). *First chunk*:
+  a model that is thinking has until then, counted from the request, to
+  write its first byte of reply. *Next chunk*: nothing has arrived since the last byte of a
   reply under way — reset on every byte, so a long reply is never cut for
   its length. *Silent round*: a round the model spends deciding on a
   tool call, which arrives whole and yields nothing until it ends, so the

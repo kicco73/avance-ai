@@ -25,6 +25,7 @@ from ai.llm_provider import (
 	LLMProvider,
 	MetadataCallback,
 	SystemPrompt,
+	Thought,
 	ToolCall,
 	ToolCallsRequested,
 	ToolSpec,
@@ -39,20 +40,26 @@ _REPLAY_PARTS_KEY = "gemini_parts"
 _RESPOND_TOOL_NAME = "respond"
 
 
+def _parts_of(chunk: Any) -> list[Any]:
+	content = chunk.candidates[0].content if chunk.candidates else None
+	return (content.parts if content else None) or []
+
+
 def _copy_model_part(part: Any) -> types.Part:
 	"""A real types.Part rebuilt from one streamed part of the model's
 	turn — text, functionCall and, above all, its `thought_signature`
 	(also kept on a part that carries nothing else: in streaming Gemini
 	can deliver the signature on its own chunk, see _consolidate_model_parts)."""
 	function_call = getattr(part, "function_call", None)
+	thought = getattr(part, "thought", None) or None
 	return types.Part(
-		text=getattr(part, "text", None) or None,
+		text=None if thought else getattr(part, "text", None) or None,
 		function_call=types.FunctionCall(
 			id=getattr(function_call, "id", None),
 			name=function_call.name,
 			args=dict(function_call.args or {}),
 		) if function_call is not None else None,
-		thought=getattr(part, "thought", None) or None,
+		thought=thought,
 		thought_signature=getattr(part, "thought_signature", None),
 	)
 
@@ -285,7 +292,7 @@ class GeminiProvider(LLMProvider):
 		tools: list[ToolSpec] | None = None,
 		tool_round: int = 1,
 		required_tools: list[ToolSpec] | None = None,
-	) -> AsyncIterator[str]:
+	) -> AsyncIterator[str | Thought]:
 		contents = self.__build_contents(with_opening_turn(history))
 		schema = schema or {}
 		system_instruction = SystemPrompt.coerce(system_prompt).full_text()
@@ -300,6 +307,7 @@ class GeminiProvider(LLMProvider):
 				max_output_tokens=self.__max_output_tokens,
 				tools=[types.Tool(function_declarations=self.__tool_declarations(tools, schema))],
 				tool_config=types.ToolConfig(function_calling_config=function_calling_config),
+				thinking_config=types.ThinkingConfig(include_thoughts=True),
 			)
 		else:
 			config = types.GenerateContentConfig(
@@ -307,6 +315,7 @@ class GeminiProvider(LLMProvider):
 				max_output_tokens=self.__max_output_tokens,
 				response_mime_type="application/json",
 				response_schema=self.build_schema(schema),
+				thinking_config=types.ThinkingConfig(include_thoughts=True),
 			)
 
 		total_tokens = 0
@@ -339,9 +348,10 @@ class GeminiProvider(LLMProvider):
 						thoughts_tokens = usage.thoughts_token_count
 				if chunk.candidates and chunk.candidates[0].finish_reason is not None:
 					finish_reason = chunk.candidates[0].finish_reason
+				if any(getattr(part, "thought", None) for part in _parts_of(chunk)):
+					yield Thought()
 				if tools:
-					content = chunk.candidates[0].content if chunk.candidates else None
-					for part in (content.parts if content else None) or []:
+					for part in _parts_of(chunk):
 						if part.function_call is not None:
 							function_call = part.function_call
 						replay_parts.append(_copy_model_part(part))
