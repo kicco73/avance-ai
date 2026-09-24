@@ -470,7 +470,10 @@ export function createChatStore({
       silenceSeconds: replySilenceSeconds,
       bubble: {
         writing: () => {
-          if (mine()) patchBubble(assistantMsgId, { pending: false, awaitingReply: true })
+          if (!mine()) return
+          const current = messages.value.find((m) => m.id === assistantMsgId)
+          if (current?.progressPercentage != null) return
+          patchBubble(assistantMsgId, { pending: false, awaitingReply: true })
         },
         append: (text) => {
           if (!mine()) return
