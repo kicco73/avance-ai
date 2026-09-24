@@ -195,7 +195,7 @@ secrets). Top-level sections:
   deleted.
 - **`turn-service.first-thought-seconds`**, **`first-chunk-seconds`**,
   **`next-chunk-seconds`**, **`silent-round-seconds`** — optional, default
-  to `3`, `10`, `10` and `30`.
+  to `5`, `10`, `10` and `30`.
   How long the model may stay silent before the call is given up (see
   `ai/stream_deadline.py`): a stall is an `AIServiceProviderUnavailableError`,
   so the cascade moves to the next provider for the next request, the
@@ -205,8 +205,9 @@ secrets). Top-level sections:
   bound four different silences. *First thought*: nothing at all has
   arrived since the request was sent, not even a token of the model's
   thinking (Gemini streams it with `include_thoughts`; a provider that
-  does not stream its thinking has to write within this); Mistral's p99
-  to its first byte is 2.16 s (`docs/TECHNICAL_DEBT.md`). *First chunk*:
+  does not stream its thinking has to write within this). At 3 s every
+  local turn timed out; 5 s is to be checked against
+  `AiUsage.time_to_first_thought` (`docs/TECHNICAL_DEBT.md`). *First chunk*:
   a model that is thinking has until then, counted from the request, to
   write its first byte of reply. *Next chunk*: nothing has arrived since the last byte of a
   reply under way — reset on every byte, so a long reply is never cut for

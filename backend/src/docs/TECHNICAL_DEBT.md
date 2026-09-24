@@ -172,14 +172,15 @@ stalls counted from 2026-09-22:
 Since 2026-09-24 the two are told apart. Gemini is asked for its thought
 summaries (`include_thoughts`), which stream as `Thought` and never reach
 the user, and the deadline is split (`ai/stream_deadline.py`):
-`first-thought-seconds` (3 s) bounds a provider that has sent nothing at
-all, `first-chunk-seconds` (10 s, from the request) bounds a model that
-is thinking but has not started writing. A provider that does not stream
-its thinking has to write within the 3 s; Mistral's p99 is 2.16 s.
+`first-thought-seconds` bounds a provider that has sent nothing at all,
+`first-chunk-seconds` (10 s, from the request) bounds a model that is
+thinking but has not started writing. A provider that does not stream
+its thinking has to write within the first.
 `AiUsage` records `time_to_first_thought` and `thoughts_tokens`, the
 first also on a stalled call, so a stall row now says which of the two
-it was. The 3 s was chosen, not derived: nothing measured the first
-thought before it existed, and it is to be checked against these rows.
+it was. A first-thought deadline of 3 s, chosen rather than derived,
+timed out every local turn on 2026-09-24; it defaults to 5 s, also
+chosen, to be checked against these rows.
 
 Still open, and what it would cost: the stall still ends the turn. The
 candidate, not built, lives in `AutoLiveLLMProvider`: past the first

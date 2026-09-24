@@ -168,7 +168,7 @@ class TestReplyDeadlines:
             "first-thought-seconds", "first-chunk-seconds", "next-chunk-seconds", "silent-round-seconds",
             "reply-silence-seconds",
         )} == {
-            "first-thought-seconds": 3.0, "first-chunk-seconds": 10.0, "next-chunk-seconds": 10.0,
+            "first-thought-seconds": 5.0, "first-chunk-seconds": 10.0, "next-chunk-seconds": 10.0,
             "silent-round-seconds": 30.0, "reply-silence-seconds": 45.0,
         }
 

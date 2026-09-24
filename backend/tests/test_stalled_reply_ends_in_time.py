@@ -1,4 +1,4 @@
-"""A provider that goes quiet costs the person ten seconds, not thirteen minutes.
+"""A provider that goes quiet costs the person five seconds, not thirteen minutes.
 
 Session 55 in production (2026-09-21, backend/src/stuck.db): Derek
 answered question 8, the transition to step 9 was persisted, Gemini
@@ -6,7 +6,7 @@ never sent a byte, and the exchange ended in silence — the person waited
 13 minutes for an answer that had already been discarded. Replayed here
 with a scripted provider on a clock the test moves (virtual_clock.py):
 the same choice, the same silence, and the answer arriving 13 minutes
-late. The exchange must end with `output.error` at 10.0 s and nothing
+late. The exchange must end with `output.error` at 5.0 s and nothing
 may land after it.
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ from virtual_clock import VirtualClockLoop
 
 pytestmark = pytest.mark.regression
 
-FIRST_BYTE_SECONDS = 10.0
+FIRST_BYTE_SECONDS = 5.0
 NEXT_BYTE_SECONDS = 10.0
 DEREK_WAITED_SECONDS = 13 * 60
 
@@ -108,7 +108,7 @@ def _run(clocked, scenario) -> None:
     clocked.run(scenario(clocked.get_loop().clock))
 
 
-def test_derek_is_told_at_ten_seconds_and_nothing_lands_thirteen_minutes_later(clocked, turn_service_for):
+def test_derek_is_told_at_five_seconds_and_nothing_lands_thirteen_minutes_later(clocked, turn_service_for):
     provider = ScriptedProvider(RepliesAfter(DEREK_WAITED_SECONDS, "Question 9: ..."))
 
     async def scenario(clock):

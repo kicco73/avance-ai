@@ -73,10 +73,10 @@ turn-service:
   # silent-round-seconds or the browser gives up on a reply the server
   # is still allowed to be writing.
   #
-  # Defaults to 3: a provider that has sent nothing at all, not even a
-  # token of its thinking. Mistral's p99 to its first byte is 2.16 s
-  # (docs/TECHNICAL_DEBT.md).
-  first-thought-seconds: 3
+  # Defaults to 5: a provider that has sent nothing at all, not even a
+  # token of its thinking. At 3 every local turn timed out; 5 is to be
+  # checked against AiUsage.time_to_first_thought (docs/TECHNICAL_DEBT.md).
+  first-thought-seconds: 5
   # Defaults to 10: counted from the request, when a model that is
   # thinking must have written its first byte of reply.
   first-chunk-seconds: 10

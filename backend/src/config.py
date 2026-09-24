@@ -55,7 +55,7 @@ class ReplyDeadline:
     first_chunk_seconds: float = 10.0
     next_chunk_seconds: float = 10.0
     silent_round_seconds: float = 30.0
-    first_thought_seconds: float = 3.0
+    first_thought_seconds: float = 5.0
 
 
 @dataclass(frozen=True)
