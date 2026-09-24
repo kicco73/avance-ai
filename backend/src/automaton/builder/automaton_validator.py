@@ -411,7 +411,9 @@ class AutomatonValidator:
                     f"State '{state.key}', action '{action.name}': "
                     f"target '{action.target}' is not a valid state"
                 )
-            target_kind = INPUT_PROCESSOR_KINDS[states[action.target].input_processor]
+            target_kind = INPUT_PROCESSOR_KINDS.get(
+                action.override_target_processor, INPUT_PROCESSOR_KINDS[states[action.target].input_processor],
+            )
             registry_for_on_exit = IdentifierRegistry.for_on_exit(target_kind.on_exit_registry(registry))
             namespaces.check_action(state, action, env_keys)
             if action.trigger:
@@ -429,7 +431,6 @@ class AutomatonValidator:
     def validate_state_io(
         self, state: State, env_keys: dict[str, EnvKey], io: tuple[tuple[str, tuple[str, ...]], ...],
     ) -> None:
-        list_keys = list_key_names(env_keys)
         for field_name, names in io:
             for name in names:
                 env_key = env_keys.get(name)
@@ -437,10 +438,6 @@ class AutomatonValidator:
                     raise ValueError(
                         f"State '{state.key}': {field_name} '{name}' — 'env.{name}' is not "
                         "declared in the project's own 'env' section."
-                    )
-                if name in list_keys:
-                    raise ValueError(
-                        f"State '{state.key}': {field_name} '{name}' — a list key never reaches the model."
                     )
                 if not env_key.ai_definition:
                     raise ValueError(

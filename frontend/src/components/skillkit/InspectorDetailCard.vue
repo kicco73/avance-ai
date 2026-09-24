@@ -159,7 +159,7 @@ const hasSelectedElementBadges = computed(() => {
   }
   if (showEditForm.value) return true
   const d = props.selectedElement.data
-  return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge || !!d.trigger || !!d.task || !!d.onExit
+  return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge || !!d.trigger || !!d.task || !!d.onExit || !!d.quiet
 })
 
 function selectAttachment(fileName) {
@@ -289,6 +289,15 @@ function selectAttachment(fileName) {
             title="Task"
             @click.stop="openScriptDialog('task')"
           >Task</button>
+          <button
+            v-if="!selectedElement.data.isInitEdge && (showEditForm || selectedElement.data.quiet)"
+            type="button"
+            class="inspector-detail-badge inspector-detail-badge-toggle inspector-detail-badge-quiet-btn"
+            :class="selectedElement.data.quiet ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+            :disabled="!editable"
+            title="The target state's reply is what on-exit writes with chat.write, not the model's"
+            @click.stop="emit('set-field', 'override-target-processor', selectedElement.data.quiet ? 'none' : 'system')"
+          >Quiet</button>
           <template v-if="!showEditForm">
             <span v-if="selectedElement.data.isInitEdge" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
             <span v-if="isSelectedActionFired" class="inspector-detail-badge inspector-detail-badge-fired">Fired</span>
@@ -448,6 +457,8 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-task-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
 .inspector-detail-badge-task-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .inspector-detail-badge-task.inspector-detail-badge-toggle-on { background: #7c4dff; }
+.inspector-detail-badge-quiet-btn { appearance: none; border: none; margin: 0; font-family: inherit; cursor: pointer; }
+.inspector-detail-badge-quiet-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }

@@ -32,7 +32,7 @@ states:
     actions:
       - name: go
         target: b
-        on-exit: |
+{go_extra}        on-exit: |
           {a_on_exit}
   b:
 {b}
@@ -52,7 +52,7 @@ SYSTEM_B = "    input-processor: system\n    contextual-prompt: ignored"
 def _build(**parts):
     filled = {
         "init_on_exit": "env.step = 0", "a_on_exit": "env.step = 1", "b": SYSTEM_B, "b_trigger": "env.step > 0",
-        "b_on_exit": "env.step = env.step", "b_task": "task.send_mail(user.email, 'x')",
+        "b_on_exit": "env.step = env.step", "b_task": "task.send_mail(user.email, 'x')", "go_extra": "",
         **parts,
     }
     return AutomatonBuilder().build({"index.yml": BASE.format(**filled)})
@@ -129,6 +129,22 @@ def test_chat_write_table_reaches_a_system_state():
     automaton = _build(a_on_exit="chat.write_table({'n': ['x', 1, True]})")
 
     assert automaton.get_state("a").actions[0].on_exit.strip() == "chat.write_table({'n': ['x', 1, True]})"
+
+
+def test_chat_write_reaches_an_ai_state_through_an_action_the_system_answers():
+    automaton = _build(
+        b="    input-processor: ai\n    contextual-prompt: hi", a_on_exit="chat.write('Quiet')",
+        go_extra="        override-target-processor: system\n",
+    )
+
+    assert automaton.get_state("a").actions[0].override_target_processor == "system"
+    assert _build().get_state("a").actions[0].override_target_processor == "none"
+
+
+def test_an_action_overrides_its_target_s_processor_only_with_system():
+    message = _refused(go_extra="        override-target-processor: ai\n")
+
+    assert "'override-target-processor' 'ai' must be one of ['none', 'system']" in message
 
 
 @pytest.mark.parametrize("slot", ["init_on_exit", "b_on_exit"])

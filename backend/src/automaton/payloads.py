@@ -36,6 +36,7 @@ class PayloadsMixin(object):
             "has_trigger": action.trigger is not None,
             "task": action.task,
             "on-exit": action.on_exit,
+            "override-target-processor": action.override_target_processor,
         }
 
     @staticmethod

@@ -669,6 +669,7 @@ class TurnService(object):
 				"has_trigger": False,
 				"task": None,
 				"on-exit": None,
+				"override-target-processor": "none",
 			}
 			for key in automaton.states[state_key].choice_keys
 			for index, option in enumerate(options_by_key.get(key, []))

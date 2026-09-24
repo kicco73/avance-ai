@@ -46,20 +46,26 @@ class TestAddState:
 
 
 class TestDuplicateState:
-    def test_copies_every_field_under_a_new_id_and_label_without_the_actions_and_still_builds(self):
+    def test_copies_every_field_under_a_new_id_and_label_and_still_builds(self):
         editor = make_editor()
         payload = editor.duplicate_state("a")
         assert payload["key"] == "state-0"
         assert payload["ui_label"] == "State A 2"
         assert payload["input_processor"] == "ai"
-        assert payload["actions"] == []
 
         assert editor.duplicate_state("a")["ui_label"] == "State A 3"
         automaton = builds(editor.serialize())
-        assert {a.name for a in automaton.states["a"].actions} == {"go-b", "go-c"}
         assert automaton.states["state-0"].contextual_prompt == "hi"
-        assert automaton.states["state-0"].actions == []
-        assert all(a.target != "state-0" for s in automaton.states.values() for a in s.actions)
+
+    def test_copies_every_action_as_a_self_loop_of_the_duplicate(self):
+        editor = make_editor()
+        editor.add_action("a")
+        payload = editor.duplicate_state("a")
+
+        assert [(a["name"], a["target"]) for a in payload["actions"]] == [("go-b", "state-0"), ("go-c", "state-0"), ("action-0", "state-0")]
+        automaton = builds(editor.serialize())
+        assert {(a.name, a.target) for a in automaton.states["a"].actions} == {("go-b", "b"), ("go-c", "c"), ("action-0", "a")}
+        assert _action(automaton, "state-0", "go-b").trigger == _action(automaton, "a", "go-b").trigger
 
     def test_refuses_a_state_that_does_not_exist(self):
         with pytest.raises(ValueError):
@@ -165,6 +171,14 @@ class TestSetActionField:
 
         assert editor.set_action_field("a", "go-b", "trigger", "")["has_trigger"] is False
         assert _action(builds(editor.serialize()), "a", "go-b").trigger is None
+
+    def test_a_quiet_action_stores_its_override_and_turning_it_off_removes_the_key(self):
+        editor = make_editor()
+        assert editor.set_action_field("a", "go-b", "override-target-processor", "system")["override-target-processor"] == "system"
+        assert _action(builds(editor.serialize()), "a", "go-b").override_target_processor == "system"
+
+        assert editor.set_action_field("a", "go-b", "override-target-processor", "none")["override-target-processor"] == "none"
+        assert "override-target-processor" not in editor.serialize()
 
 
 class TestSetInitActionField:

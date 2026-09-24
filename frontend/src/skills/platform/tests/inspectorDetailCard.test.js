@@ -80,3 +80,22 @@ describe('the card menu', () => {
     expect((await openMenu(host)).map((el) => el.textContent.trim())).toEqual(['Delete'])
   })
 })
+
+describe('the quiet badge on an action card', () => {
+  const action = (overrides = {}) => ({ matchStateKey: 's', actionName: 'go', uiLabel: 'Go', hasTrigger: false, ...overrides })
+
+  it('shows only when on, read-only', async () => {
+    expect(badges((await mount(action({ quiet: true }), { kind: 'action' })).host)).toContain('Quiet')
+    expect(badges((await mount(action(), { kind: 'action' })).host)).not.toContain('Quiet')
+  })
+
+  it('turns the override on and off, in edit', async () => {
+    const off = await mount(action(), { editable: true, open: true, kind: 'action' })
+    off.host.querySelector('.inspector-detail-badge-quiet-btn').click()
+    expect(off.setField).toHaveBeenCalledWith('override-target-processor', 'system')
+
+    const on = await mount(action({ quiet: true }), { editable: true, open: true, kind: 'action' })
+    on.host.querySelector('.inspector-detail-badge-quiet-btn').click()
+    expect(on.setField).toHaveBeenCalledWith('override-target-processor', 'none')
+  })
+})

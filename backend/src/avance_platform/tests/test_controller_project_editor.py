@@ -45,12 +45,12 @@ class TestAdd:
 
         assert client.post(f"/api/skills/platform/projects/does-not-exist/states").status_code == 404
 
-    def test_state_is_duplicated_without_its_actions_and_persisted_and_an_unknown_state_is_400(self, client, hello_project):
+    def test_state_is_duplicated_with_its_actions_as_self_loops_and_persisted_and_an_unknown_state_is_400(self, client, hello_project):
         response = client.post(f"/api/skills/platform/projects/{hello_project}/states/Hello/duplicate")
         assert response.status_code == 200
         payload = response.json()
         assert payload["key"] == "state-0"
-        assert payload["actions"] == []
+        assert payload["actions"] and {action["target"] for action in payload["actions"]} == {"state-0"}
         assert "state-0:" in _index_yml(client, hello_project)
 
         assert client.post(f"/api/skills/platform/projects/{hello_project}/states/does-not-exist/duplicate").status_code == 400

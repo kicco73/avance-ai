@@ -430,6 +430,7 @@ actions:
 | `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
 | `task` | no | string | `None` | One or more `task.<name>(...)` calls, one per line — side effect of firing, run in the background off the request (§5.4). Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
 | `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, `name = expression` locals and/or bare `chat.<method>(...)` calls, one per line, optionally inside `if`/`elif`/`else` — run synchronously, in this same request. §5.3bis. |
+| `override-target-processor` | no | `none` \| `system` | `none` | `system`: fired manually (a button, a choice), the destination answers as a `system` state would — no model call, the reply is what this action's `on-exit` wrote with `chat.write(...)` (§4.1), which is therefore allowed even when `target` is an `ai` state. The destination keeps its own processor for every later turn. The editor shows it as the action's **Quiet** badge. Not an init-action field. |
 | `ui-label` | no | string | `name` | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, then `name` | Manual-action button text. |
 | `ui-description` | no | string | `None` | Shown in the frontend. |
@@ -715,9 +716,9 @@ key is decided entirely per state, by that state's own `input`/`output`
 **List keys.** A `list` key holds a list of strings a script writes (an
 action's `on-exit`) — the options on offer when a trigger
 reads it through `choice.<key>`, or any list a script keeps for its own
-use. A list never reaches the model: a `list` key in a state's
-`input`/`output` fails the build. Its `ai-definition` is read only by
-the editor and as an option button's description.
+use. Like any other key, a state's `input`/`output` exposes it to the
+model (§4.3): as input it is rendered as JSON, as output the model
+answers with a list of strings.
 In any state whose actions' `trigger`s read `choice.<key>`, the current
 options become buttons, one per option, after the state's own pressable
 actions (see BUS.md, `state.buttons`). Pressing one writes nothing: the

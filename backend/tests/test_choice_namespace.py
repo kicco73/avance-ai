@@ -11,6 +11,9 @@ from automaton.automaton import Action, Automaton, EnvKey, State
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.choice import CHOICE_BUTTON_PREFIX, ChoiceSelection, button_name, parse_button_name
 from automaton.choice_namespace import ChoiceNamespace
+from ai.turn.env_prompt_block import EnvPromptBlock
+from ai.turn.prompt import OutputPrompt, build_output_fields
+from tracking.env import Env
 
 pytestmark = pytest.mark.contract
 
@@ -82,13 +85,19 @@ def test_build_rejects_a_chain_that_is_not_exactly_a_declared_choice_key_or_sits
         _build(actions_yaml)
 
 
-@pytest.mark.parametrize("field_name", ["input", "output"])
-def test_a_list_key_is_never_an_input_or_an_output(field_name):
-    index_yml = _project(BOOK, state_extra=f"    {field_name}:\n      - slot\n").replace(
+def test_a_list_key_reaches_the_model_as_input_and_comes_back_as_an_array_of_strings_output():
+    index_yml = _project(BOOK, state_extra="    input:\n      - slot\n    output:\n      - slot\n").replace(
         "  slot:\n    type: list\n", "  slot:\n    type: list\n    ai-definition: The slot.\n",
     )
-    with pytest.raises(ValueError, match=r"a list key never reaches the model"):
-        AutomatonBuilder().build({"index.yml": index_yml})
+    automaton = AutomatonBuilder().build({"index.yml": index_yml})
+    state = automaton.states["a"]
+    env = Env(action_set={"slot": ["morning", "evening"]})
+
+    assert "slot: [\"morning\", \"evening\"]" in EnvPromptBlock.for_state(env, automaton, state).text()
+    output = OutputPrompt(None, build_output_fields(automaton, state.output))
+    assert output.field().json_schema()["properties"]["slot"] == {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
+    assert output.field().coerce({"slot": ["noon", 3]}) == {"slot": ["noon", "3"]}
+    assert output.field().coerce({"slot": "noon"}) == {}
 
 
 def test_a_states_choice_keys_are_the_ones_its_triggers_read_in_order_of_first_occurrence():

@@ -9,7 +9,7 @@ from system.logging_factory import LoggerFactory
 from system.try_again_error import TryAgainError
 
 from ai import SystemPrompt
-from ai.response_schema import BooleanField, Field, NumberField, ObjectField, StringField
+from ai.response_schema import ArrayField, BooleanField, Field, NumberField, ObjectField, StringField
 from automaton.automaton import Automaton
 from tracking.markdown_repairer import MarkdownRepairer
 
@@ -60,7 +60,9 @@ def build_output_definition_for_names(automaton: Automaton, names: Iterable[str]
 	return "- Definition of output fields:\n" + "\n\n".join(render(name) for name in unique_names)
 
 
-_FIELD_BY_ENV_TYPE: dict[str, Field] = {"number": NumberField(), "string": StringField(), "bool": BooleanField()}
+_FIELD_BY_ENV_TYPE: dict[str, Field] = {
+	"number": NumberField(), "string": StringField(), "bool": BooleanField(), "list": ArrayField(StringField()),
+}
 
 
 def build_output_fields(automaton: Automaton, names: Iterable[str]) -> dict[str, Field]:

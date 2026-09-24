@@ -62,6 +62,7 @@ function edgeToCyData(e, id) {
     hasTrigger: e.action.has_trigger,
     task: e.action['task'],
     onExit: e.action['on-exit'],
+    quiet: e.action['override-target-processor'] === 'system',
     isInitEdge
   }
 }

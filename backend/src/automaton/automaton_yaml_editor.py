@@ -20,6 +20,9 @@ from automaton.input_processor_kind import SystemKind, kind_of
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 
+ACTION_FIELD_ABSENT_VALUES = {"trigger": ("", None), "override-target-processor": ("none",)}
+
+
 class InitActionTargetError(Exception):
     """Raised by delete_state when asked to delete the state init-action
     targets — the automaton's required entry point. Lets a caller render
@@ -177,6 +180,7 @@ class AutomatonYamlEditor:
             "has_trigger": raw_action.get("trigger") is not None,
             "task": raw_action.get("task"),
             "on-exit": raw_action.get("on-exit"),
+            "override-target-processor": raw_action.get("override-target-processor", "none"),
         }
 
     def _action_payload(self, state_name: str, action_name: str) -> ActionPayload:
@@ -261,6 +265,11 @@ class AutomatonYamlEditor:
         name = self._next_numbered_name("state", set(states.keys()))
         duplicate = CommentedMap((key, deepcopy(value)) for key, value in source.items() if key != "actions")
         duplicate["ui-label"] = self._unique_ui_label(source.get("ui-label", state_name), self._existing_state_ui_labels())
+        self_loops = [deepcopy(a) for a in source.get("actions") or []]
+        for action in self_loops:
+            action["target"] = name
+        if self_loops:
+            duplicate["actions"] = CommentedSeq(self_loops)
         self._add_entry(states, name, duplicate)
         return self._state_payload(name)
 
@@ -309,7 +318,7 @@ class AutomatonYamlEditor:
 
     def set_action_field(self, state_name: str, action_name: str, field: str, value) -> ActionPayload:
         raw_action = self._find_action(state_name, action_name)
-        if field == "trigger" and not value:
+        if value in ACTION_FIELD_ABSENT_VALUES.get(field, ()):
             raw_action.pop(field, None)
         else:
             raw_action[field] = value

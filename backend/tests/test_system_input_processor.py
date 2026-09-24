@@ -56,6 +56,10 @@ states:
       - name: again
         target: a
         on-exit: env.step = env.step
+      - name: quietly
+        target: other
+        override-target-processor: system
+        on-exit: chat.write('Quiet')
   step:
     input-processor: system
     contextual-prompt: ignored
@@ -77,6 +81,12 @@ states:
           chat.write('Picked ' + choice.frequency)
   done:
     input-processor: system
+  other:
+    input-processor: ai
+    contextual-prompt: other
+    actions:
+      - name: back
+        target: a
 """
 
 
@@ -175,6 +185,17 @@ async def test_a_self_loop_button_in_the_model_s_state_asks_nothing_of_the_model
     assert chat.frames.last().type == "state.buttons"
     assert chat.state() == "a"
     assert chat.transcript() == before
+    assert chat.provider.started == 0
+
+
+async def test_a_quiet_button_into_another_model_s_state_answers_with_what_the_script_wrote(turn_service_for):
+    chat = await _Conversation(turn_service_for, _automaton(), ScriptedProvider(Reply("unwanted"))).open()
+
+    await chat.presses("quietly")
+
+    assert chat.frames.texts() == ["Quiet"]
+    assert chat.state() == "other"
+    assert chat.transcript()[-1] == ("assistant", "Quiet")
     assert chat.provider.started == 0
 
 

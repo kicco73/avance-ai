@@ -36,6 +36,7 @@ class Action:
     trigger: str | None = None
     task: str | None = None
     on_exit: str | None = None
+    override_target_processor: str = "none"
     line: int | None = None
 
 @dataclass(frozen=True)
@@ -141,6 +142,7 @@ ActionPayload = TypedDict("ActionPayload", {
     "has_trigger": bool,
     "task": str | None,
     "on-exit": str | None,
+    "override-target-processor": str,
 })
 
 class ReactionOptionPayload(TypedDict):

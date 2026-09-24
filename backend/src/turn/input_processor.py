@@ -134,8 +134,11 @@ class InputProcessor(object):
             )
 
     def _answering(self, automaton: Automaton, source_state: State, action: Action) -> "InputProcessor":
-        stayed = {source_state.key: self._turns.script_reply_processor()}
-        return stayed.get(action.target, self._turns.processor_for(automaton.get_state(action.target)))
+        quiet = action.target == source_state.key or action.override_target_processor == "system"
+        return {
+            True: self._turns.script_reply_processor(),
+            False: self._turns.processor_for(automaton.get_state(action.target)),
+        }[quiet]
 
     async def turn(
         self, session_id: int, on_metadata: OnMetadata | None, user_messages: list[PendingMessage] | None,

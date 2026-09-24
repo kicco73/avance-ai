@@ -48,6 +48,22 @@ class BooleanField(Field):
 		return value if isinstance(value, bool) else str(value).strip().lower() == "true"
 
 
+class ArrayField(Field):
+	json_type = "array"
+
+	def __init__(self, items: Field, description: str = "") -> None:
+		super().__init__(description)
+		self.items = items
+
+	def json_schema(self) -> dict[str, Any]:
+		return {**super().json_schema(), "items": self.items.json_schema()}
+
+	def coerce(self, value: Any) -> list[Any]:
+		if not isinstance(value, list):
+			raise ValueError("not an array")
+		return [self.items.coerce(item) for item in value]
+
+
 class ObjectField(Field):
 	json_type = "object"
 

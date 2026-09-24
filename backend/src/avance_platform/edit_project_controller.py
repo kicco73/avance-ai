@@ -29,8 +29,8 @@ STATE_EDITABLE_FIELDS = {
     "reactions-enabled", "signal-tracking-strategy", "ai-memory-scope",
     "ai-may-read-sources", "ai-must-read-sources", "input", "output",
 }
-ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit"}
-INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger"}
+ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit", "override-target-processor"}
+INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger", "override-target-processor"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 ENV_KEY_EDITABLE_FIELDS = {"name", "type", "ai-definition"}
 SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description", "ai-definition"}

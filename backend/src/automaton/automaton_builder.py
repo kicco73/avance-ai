@@ -26,13 +26,14 @@ logger = LoggerFactory.get_logger(__name__)
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 VALID_SIGNAL_TRACKING_STRATEGIES = {"relevant", "all"}
 VALID_AI_MEMORY_SCOPES = {"none", "local", "global"}
+VALID_TARGET_PROCESSOR_OVERRIDES = {"none", "system"}
 
 ACTION_FIELDS = {
     "name", "ui-label", "ui-button", "ui-description",
-    "target", "trigger", "task", "on-exit",
+    "target", "trigger", "task", "on-exit", "override-target-processor",
 }
 
-INIT_ACTION_FIELDS = ACTION_FIELDS - {"name", "trigger", "ui-button"}
+INIT_ACTION_FIELDS = ACTION_FIELDS - {"name", "trigger", "ui-button", "override-target-processor"}
 
 LEGACY_STATE_SOURCE_FIELDS = {
     "tools": "ai-may-read-sources",
@@ -158,6 +159,12 @@ class AutomatonBuilder(object):
         line = BuildCursor.own_line(raw_action)
         self._at(line, f"states.{key}.actions.{raw_action.get('name', '?')}")
         self._check_fields(raw_action, ACTION_FIELDS, "Action", raw_action.get("name", "?"))
+        override_target_processor = raw_action.get("override-target-processor", "none")
+        if override_target_processor not in VALID_TARGET_PROCESSOR_OVERRIDES:
+            raise ValueError(
+                f"State '{key}', action '{raw_action.get('name', '?')}': 'override-target-processor' "
+                f"'{override_target_processor}' must be one of {sorted(VALID_TARGET_PROCESSOR_OVERRIDES)}"
+            )
         return Action(
             name=raw_action["name"],
             ui_description=raw_action.get("ui-description"),
@@ -167,6 +174,7 @@ class AutomatonBuilder(object):
             trigger=raw_action.get("trigger"),
             task=task,
             on_exit=on_exit,
+            override_target_processor=override_target_processor,
             line=line,
         )
 
