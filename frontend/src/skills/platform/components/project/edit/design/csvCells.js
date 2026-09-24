@@ -70,7 +70,7 @@ function escapeHtml(raw) {
   return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-export function csvColumn(field, { onDelete } = {}) {
+export function csvColumn(field, { onDelete, onRename } = {}) {
   return {
     title: field,
     field,
@@ -79,11 +79,15 @@ export function csvColumn(field, { onDelete } = {}) {
     editorParams: { editorLookup: (cell) => kindOf(text(cell)).editor },
     titleFormatter: () => (
       '<button type="button" class="csv-column-delete-btn" title="Delete this column">×</button>'
-      + `<span class="csv-column-title">${escapeHtml(field)}</span>`
+      + `<span class="csv-column-title" title="Double click to rename">${escapeHtml(field)}</span>`
     ),
     headerClick: (e, column) => {
       if (!e.target.closest('.csv-column-delete-btn')) return
       onDelete?.(column)
+    },
+    headerDblClick: (e, column) => {
+      if (e.target.closest('.csv-column-delete-btn')) return
+      onRename?.(column)
     }
   }
 }

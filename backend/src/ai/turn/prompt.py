@@ -307,7 +307,7 @@ class OutputPrompt(Prompt):
 		self._fields = fields
 
 	def field(self) -> Field:
-		return ObjectField({name: field.nullable() for name, field in self._fields.items()}, self.schema_description)
+		return ObjectField({name: field.as_output_field() for name, field in self._fields.items()}, self.schema_description)
 
 	def decode(self, raw: dict[str, Any] | None) -> dict[str, Any]:
 		return {name: value for name, value in (raw or {}).items() if value is not None}

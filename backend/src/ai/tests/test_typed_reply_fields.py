@@ -105,20 +105,20 @@ async def test_markdown_with_quotes_and_newlines_reaches_the_env_exactly_as_the_
     assert result["reply"][0]["content"] == "Pues eso, que vengo porque me han dicho."
 
 
-async def test_the_output_is_asked_for_as_an_object_of_typed_nullable_fields(db):
+async def test_the_output_is_asked_for_as_an_object_of_typed_fields_nullable_except_a_flag(db):
     provider = StreamingProvider({"text": "Hola.", "output": {}})
     processor, _ = _processor(db, provider)
 
     await processor.process("Buenos días")
 
     assert provider.schemas[0]["output"]["properties"] == {
-        "conversacion_terminada": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
+        "conversacion_terminada": {"type": "boolean"},
         "sugerencias": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "turnos": {"anyOf": [{"type": "number"}, {"type": "null"}]},
     }
 
 
-async def test_a_field_the_model_sets_to_null_leaves_its_variable_unset(db):
+async def test_a_field_the_model_sets_to_null_leaves_its_variable_unset_but_a_flag_reads_false(db):
     provider = StreamingProvider({
         "text": "Hola.", "output": {"conversacion_terminada": None, "sugerencias": SUGGESTIONS, "turnos": None},
     })
@@ -126,7 +126,7 @@ async def test_a_field_the_model_sets_to_null_leaves_its_variable_unset(db):
 
     await processor.process("Buenos días")
 
-    assert env.action_set() == {"sugerencias": SUGGESTIONS}
+    assert env.action_set() == {"conversacion_terminada": False, "sugerencias": SUGGESTIONS}
 
 
 async def test_a_value_sent_as_text_comes_back_in_the_type_the_field_declares(db):

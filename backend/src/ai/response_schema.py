@@ -23,6 +23,9 @@ class Field:
 	def nullable(self) -> "Field":
 		return NullableField(self)
 
+	def as_output_field(self) -> "Field":
+		return self.nullable()
+
 	def _described(self) -> dict[str, str]:
 		return {"description": self.description} if self.description else {}
 
@@ -46,6 +49,9 @@ class BooleanField(Field):
 
 	def coerce(self, value: Any) -> bool:
 		return value if isinstance(value, bool) else str(value).strip().lower() == "true"
+
+	def as_output_field(self) -> "Field":
+		return self
 
 
 class ArrayField(Field):

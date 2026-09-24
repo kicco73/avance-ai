@@ -1,5 +1,6 @@
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { getProjectSources, postAddSource, postAddSourceFromFile, postAddWebSearchSource, putSourceField, deleteProjectSource } from './api.js'
+import { onProjectChanged } from '../../projectChangeEvents.js'
 
 function sourceNameHint(fileName) {
   return fileName.replace(/\.[^./]+$/, '')
@@ -26,6 +27,10 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
     }
   }
 
+  onBeforeUnmount(onProjectChanged((changedProjectId) => {
+    if (changedProjectId === projectId) return loadSources()
+  }))
+
   function selectSource(name) {
     sourcesRootSelected.value = false
     currentSourceName.value = name
@@ -40,7 +45,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
     guardedAction('add a new source', async () => {
       try {
         const source = await postAddSource(projectId)
-        await loadSources()
         sourcesRootSelected.value = false
         currentSourceName.value = source.name
         flashRecentlyAdded(`source:${source.name}`)
@@ -53,7 +57,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
     guardedAction('add a new web search source', async () => {
       try {
         const source = await postAddWebSearchSource(projectId)
-        await loadSources()
         sourcesRootSelected.value = false
         currentSourceName.value = source.name
         flashRecentlyAdded(`source:${source.name}`)
@@ -67,7 +70,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
       try {
         const text = await file.text()
         const source = await postAddSourceFromFile(projectId, sourceNameHint(file.name), text)
-        await loadSources()
         sourcesRootSelected.value = false
         currentSourceName.value = source.name
         flashRecentlyAdded(`source:${source.name}`)
@@ -82,7 +84,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
     guardedAction(`edit "${field}"`, async () => {
       try {
         const source = await putSourceField(projectId, name, field, value)
-        await loadSources()
         currentSourceName.value = source.name
       } catch {
       }
@@ -94,7 +95,6 @@ export function useProjectSources(projectId, guardedAction, flashRecentlyAdded) 
       deletingSource.value = name
       try {
         await deleteProjectSource(projectId, name)
-        await loadSources()
         if (currentSourceName.value === name) {
           currentSourceName.value = null
           sourcesRootSelected.value = true

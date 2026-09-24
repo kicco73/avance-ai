@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createApp } from 'vue'
 
 vi.mock('../../../api.js', () => ({
   getProjectSources: vi.fn(),
@@ -10,23 +11,42 @@ vi.mock('../../../api.js', () => ({
 
 import { getProjectSources, postAddSource, postAddWebSearchSource, putSourceField, deleteProjectSource } from '../../../api.js'
 import { useProjectSources } from '../useProjectSources.js'
+import { emitProjectChanged } from '../../../projectChangeEvents.js'
 
 const PINO = { name: 'pino', ui_label: 'Flights', ui_description: null, url: 'avance:behaviour/flights.csv' }
 const CITIES = { name: 'cities', ui_label: 'Cities', ui_description: null, url: 'avance:behaviour/cities.csv' }
+
+function announcing(result) {
+  return async () => {
+    await emitProjectChanged('proj')
+    return result
+  }
+}
+
+function mountComposable(setup) {
+  let result
+  const app = createApp({ setup: () => { result = setup(); return () => null } })
+  app.mount(document.createElement('div'))
+  return { result, unmount: () => app.unmount() }
+}
 
 function sourceList(...sources) {
   return { sources: sources.map((source) => ({ source })) }
 }
 
 describe('useProjectSources', () => {
-  let flashRecentlyAdded, guardedAction, s
+  let flashRecentlyAdded, guardedAction, s, unmount
 
   beforeEach(() => {
     vi.clearAllMocks()
     flashRecentlyAdded = vi.fn()
     guardedAction = vi.fn((label, run) => run())
     getProjectSources.mockResolvedValue(sourceList(PINO))
-    s = useProjectSources('proj', guardedAction, flashRecentlyAdded)
+    ;({ result: s, unmount } = mountComposable(() => useProjectSources('proj', guardedAction, flashRecentlyAdded)))
+  })
+
+  afterEach(() => {
+    unmount()
   })
 
   it('loadSources exposes the declared sources, which selectSource then resolves by name (null for none or an unknown one)', async () => {
@@ -45,8 +65,19 @@ describe('useProjectSources', () => {
     expect(s.selectedSource.value).toBeNull()
   })
 
+  it('a change to this project reloads the sources, one to another project does not', async () => {
+    await s.loadSources()
+    getProjectSources.mockResolvedValue(sourceList({ ...PINO, ui_label: 'Renamed' }))
+
+    await emitProjectChanged('other')
+    expect(s.sources.value[0].source.ui_label).toBe('Flights')
+
+    await emitProjectChanged('proj')
+    expect(s.sources.value[0].source.ui_label).toBe('Renamed')
+  })
+
   it('handleAddSource creates, reloads, selects and flashes the new source', async () => {
-    postAddSource.mockResolvedValue({ name: 'behaviour' })
+    postAddSource.mockImplementation(announcing({ name: 'behaviour' }))
     getProjectSources.mockResolvedValueOnce(
       sourceList({ name: 'behaviour', ui_label: 'behaviour', ui_description: null, url: 'avance:sources/behaviour.csv' })
     )
@@ -60,7 +91,7 @@ describe('useProjectSources', () => {
   })
 
   it('handleAddWebSearchSource creates the websearch-driven source, reloads, selects and flashes it', async () => {
-    postAddWebSearchSource.mockResolvedValue({ name: 'websearch' })
+    postAddWebSearchSource.mockImplementation(announcing({ name: 'websearch' }))
     getProjectSources.mockResolvedValueOnce(
       sourceList({ name: 'websearch', ui_label: 'websearch', ui_description: null, url: 'websearch:user' })
     )
@@ -80,16 +111,18 @@ describe('useProjectSources', () => {
 
     await s.loadSources()
     s.selectSource('pino')
-    putSourceField.mockResolvedValue({ name: 'flight_records' })
+    putSourceField.mockImplementation(announcing({ name: 'flight_records' }))
     getProjectSources.mockResolvedValueOnce(sourceList({ ...PINO, name: 'flight_records' }))
 
     s.handleSetSourceField('name', 'Flight Records')
 
     await vi.waitFor(() => expect(s.currentSourceName.value).toBe('flight_records'))
+    expect(s.selectedSource.value.name).toBe('flight_records')
     expect(putSourceField).toHaveBeenCalledWith('proj', 'pino', 'name', 'Flight Records')
   })
 
   it('handleDeleteSource clears the selection only when the deleted source was the selected one', async () => {
+    deleteProjectSource.mockImplementation(announcing())
     getProjectSources.mockResolvedValue(sourceList(PINO, CITIES))
     await s.loadSources()
     s.selectSource('pino')

@@ -36,14 +36,21 @@ let table = null
 let requestToken = 0
 let pendingSave = false
 
+function dataColumnFor(field) {
+  return csvColumn(field, { onDelete: deleteColumn, onRename: renameColumn })
+}
+
 function columnsFor(fields) {
-  return [rowControlColumn(deleteRow), ...fields.map((field) => csvColumn(field, { onDelete: deleteColumn }))]
+  return [rowControlColumn(deleteRow), ...fields.map(dataColumnFor)]
+}
+
+function dataFields() {
+  return table.getColumns().map((col) => col.getField()).filter((field) => field !== ROW_CONTROL_FIELD)
 }
 
 function serializeTable() {
   if (!table) return content.value
-  const columns = table.getColumns().map((col) => col.getField()).filter((field) => field !== ROW_CONTROL_FIELD)
-  return Papa.unparse({ fields: columns, data: table.getData() })
+  return Papa.unparse({ fields: dataFields(), data: table.getData() })
 }
 
 function buildTable(text) {
@@ -78,6 +85,30 @@ async function deleteColumn(column) {
   if (dataColumns.length <= 1) return
   await column.delete()
   content.value = serializeTable()
+  await save()
+}
+
+async function renameColumn(column) {
+  const oldName = column.getField()
+  const otherNames = dataFields().filter((field) => field !== oldName)
+  const name = await promptDialog({
+    title: 'Rename column',
+    body: 'New name of the column.',
+    initialValue: oldName,
+    okLabel: 'Rename',
+    validate: (value) => {
+      const field = value.trim()
+      if (!field) return 'The name cannot be empty.'
+      if (otherNames.includes(field)) return `A column named "${field}" already exists.`
+      return ''
+    }
+  })
+  const newName = name?.trim()
+  if (!newName || newName === oldName) return
+  const fields = dataFields().map((field) => (field === oldName ? newName : field))
+  const data = table.getData().map((row) => ({ ...row, [newName]: row[oldName] }))
+  content.value = Papa.unparse({ fields, data })
+  setTableData(content.value)
   await save()
 }
 
@@ -183,7 +214,7 @@ async function addColumn() {
   const field = name?.trim()
   if (!field) return
   if (table.getColumns().some((col) => col.getField() === field)) return
-  await table.addColumn(csvColumn(field, { onDelete: deleteColumn }))
+  await table.addColumn(dataColumnFor(field))
   content.value = serializeTable()
   await save()
 }

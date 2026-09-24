@@ -96,4 +96,20 @@ describe('csvColumn', () => {
     expect(customDialog).toHaveBeenCalledWith(expect.objectContaining({ props: { title: 'notes', initialValue: 'draft' } }))
     expect(cell.setValue).toHaveBeenCalledWith('final')
   })
+
+  it('a double click on the header renames the column, never on its delete button', () => {
+    const onRename = vi.fn()
+    const onDelete = vi.fn()
+    const named = csvColumn('notes', { onRename, onDelete })
+    const header = document.createElement('div')
+    header.innerHTML = named.titleFormatter()
+    const fakeColumn = {}
+
+    named.headerDblClick({ target: header.querySelector('.csv-column-title') }, fakeColumn)
+    named.headerDblClick({ target: header.querySelector('.csv-column-delete-btn') }, fakeColumn)
+
+    expect(onRename).toHaveBeenCalledTimes(1)
+    expect(onRename).toHaveBeenCalledWith(fakeColumn)
+    expect(onDelete).not.toHaveBeenCalled()
+  })
 })
