@@ -314,6 +314,7 @@ class AiUsage(BaseModel):
     output_tokens = IntegerField(default=0)
     cache_read_tokens = IntegerField(default=0)
     cache_creation_tokens = IntegerField(default=0)
+    thoughts_tokens = IntegerField(default=0)
     duration = FloatField(default=0.0)
     time_to_first_chunk = FloatField(null=True)
     outcome = CharField(index=True, default='success')
@@ -322,26 +323,28 @@ class AiUsage(BaseModel):
         table_name = 'AiUsage'
 
 class DbUsage(BaseModel):
-    """One row per call into a db-layer mixin's public method (see
+    """One row per UTC minute, db-layer method, kind and outcome (see
     db/instrumentation.py's instrument_queries, applied to every mixin
-    class Db is built from) — raw, un-aggregated, the same way AiUsage
-    is. `query_name` is the method that ran (e.g. 'get_chat_session'),
-    `timestamp` when it was called (call start, not completion),
-    `duration` its wall-clock seconds, `outcome` "success" or "failure"
-    (a raised exception still gets a row, with whatever duration elapsed
-    before it propagated), and `kind` "read" or "write" — a method is
-    "write" only if instrumentation.py's own @write decorator marks it,
-    never guessed from its body; everything undecorated defaults to
-    "read"."""
+    class Db is built from). `timestamp` is the minute the calls ended
+    in, `count` how many there were, and the three durations are over
+    their wall-clock seconds. `outcome` is "success" or "failure" (a
+    raised exception still counts, with whatever duration elapsed before
+    it propagated), and `kind` "read" or "write" — a method is "write"
+    only if instrumentation.py's own @write decorator marks it, never
+    guessed from its body; everything undecorated defaults to "read"."""
     id = AutoField()
     query_name = CharField(index=True)
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
-    duration = FloatField(default=0.0)
     outcome = CharField(index=True, default='success')
     kind = CharField(index=True, default='read')
+    count = IntegerField(default=0)
+    average_duration = FloatField(default=0.0)
+    median_duration = FloatField(default=0.0)
+    max_duration = FloatField(default=0.0)
 
     class Meta:
         table_name = 'DbUsage'
+        indexes = ((('timestamp', 'query_name', 'kind', 'outcome'), True),)
 
 class Translation(BaseModel):
     """One label already translated, keyed by its own context (`key`) and

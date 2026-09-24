@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
 import tempfile
 from datetime import datetime
 
@@ -79,7 +80,7 @@ class Db(
             raise ValueError(f"Unknown migration strategy '{migration_strategy}' — expected one of {self.MIGRATION_STRATEGIES}.")
         self._database_url = database_url
         self._migrator = SchemaMigrator(database, self._MODELS)
-        database.initialize(connect(database_url, pragmas={'foreign_keys': 1, 'recursive_triggers': 1}))
+        database.initialize(connect(database_url, pragmas={'foreign_keys': 1, 'recursive_triggers': 1, 'journal_mode': 'wal'}))
         database.connect(reuse_if_open=True)
         self._repair_indexes_if_inconsistent()
         self._drop_file_gc_triggers()
@@ -327,6 +328,7 @@ class Db(
         writing and no transaction open: the callers are the admin
         operations that already hold global exclusive access."""
         database.execute_sql('VACUUM')
+        database.execute_sql('PRAGMA wal_checkpoint(TRUNCATE)')
 
     def backup_now(self, reason: str) -> str | None:
         """Same timestamped-backup-plus-warning dance
@@ -380,12 +382,10 @@ class Db(
         except Exception:
             os.remove(tmp_path)
             raise
+        source = sqlite3.connect(tmp_path)
         try:
-            os.chmod(tmp_path, os.stat(path).st_mode)
-        except OSError:
-            pass
-        database.close()
-        os.replace(tmp_path, path)
-        database.initialize(connect(self._database_url, pragmas={'foreign_keys': 1, 'recursive_triggers': 1}))
-        database.connect(reuse_if_open=True)
+            source.backup(database.connection())
+        finally:
+            source.close()
+            os.remove(tmp_path)
 

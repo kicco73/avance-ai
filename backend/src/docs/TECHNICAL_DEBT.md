@@ -26,8 +26,9 @@ depend on behaviour peewee has no cross-database primitive for:
   (`PRAGMA integrity_check`/`REINDEX`), the two GC trigger groups (File,
   and now Drive — see below), and backup/restore, which treats the
   entire database as one file: `export_backup` is `VACUUM INTO`,
-  `restore_backup` replaces the file outright. "Backup" is a filesystem
-  operation here, not a query.
+  `restore_backup` copies an uploaded file over the live one with
+  SQLite's backup API. "Backup" is a whole-file operation here, not a
+  query.
 - **`db/projects.py` — 2 raw-SQL call sites.** A `PRAGMA foreign_keys`
   toggle around `rename_project_id`, needed because SQLite enforces FKs
   on `UPDATE` too and every FK-bearing table's own `project_id` column
@@ -133,3 +134,61 @@ Enough to say the candidate would have covered every failure seen; not
 enough to size the gain: a day and a half of dev traffic, one model,
 failures in bursts, and no count of how many fell on a state change.
 Parked until there is production data.
+
+## A provider that stalls ends the turn, so the first-chunk deadline cannot be tightened
+
+`AutoLiveLLMProvider` (`ai/_providers/cascading_llm_provider.py`) makes one
+attempt. A stall is detected above it, in `AiService._within_deadline`
+(`ai/ai_service.py`), which advances the cascade and re-raises: the user
+gets `output.error`, and only the *next* message reaches the next
+provider. `AutoTestLLMProvider` retries and cascades within the call, but
+it is the test runner's own and is not a model for the live one.
+
+So `first-chunk-seconds` (default 10, `config.py`'s `ReplyDeadline`)
+trades two costs: too high and a chat waits 10 s on a provider that
+will not answer; too low and a slow-but-healthy call becomes an error on
+screen.
+
+The data, from `AiUsage` in a copy of the working database (x.sqlite,
+2026-09-03 → 2026-09-24), time to first chunk of successful calls and
+stalls counted from 2026-09-22:
+
+| provider | calls | stalls | p50 | p90 | p95 | p99 |
+| --- | --- | --- | --- | --- | --- | --- |
+| gemini-3.5-flash-lite | 210 | 35 | 0.79 s | 1.30 s | 2.68 s | 9.27 s |
+| gemini-3.1-flash-lite | 34 | 5 | 2.87 s | 4.78 s | 5.94 s | 11.43 s |
+| mistral-small-latest | 303 | 0 | 0.42 s | 0.69 s | 0.88 s | 2.16 s |
+
+- The Gemini tail is continuous up to the deadline, not bimodal: 10 s
+  cuts off slow calls, not only dead ones.
+- None of the stalls lines up with a slow database query (none over 1 s
+  in the 10 s before any of them), nor with concurrent AI calls.
+- On 2026-09-24 the live provider tests got explicit 503s ("high
+  demand") from both Gemini models, so part of it is Google's.
+- How much of the tail is the model thinking is unknown: `thoughts_tokens`
+  is recorded from 2026-09-24 on (Gemini's `thoughts_token_count`), for
+  successful calls only — a stalled call is cancelled and never reports
+  its usage. No `ThinkingConfig` is sent, so thinking runs at the
+  model's default.
+
+With Gemini 3.5 first and Mistral behind it, the expected time to the
+first chunk *if the same turn moved to the next provider* would be:
+
+| deadline | moved to Mistral | expected first chunk |
+| --- | --- | --- |
+| 10 s | 14% | 2.43 s |
+| 2 s | 19% | 1.14 s |
+
+Today the 19% at 2 s would be errors instead, which is why the default
+stays at 10.
+
+The candidate, not built: one exception to `AutoLiveLLMProvider`'s fail
+fast. A provider that has yielded nothing within the first-chunk
+deadline — nothing has reached the user, so nothing can be spliced —
+is abandoned and the same call moves to the next provider; after the
+first chunk it stays fail fast. For that the first-chunk deadline has
+to bound each provider inside the cascade rather than the cascade as a
+whole from `AiService`, where the cascade never sees the stall. Then the
+deadline drops to 2 s. Thinking is left at the model's default until `thoughts_tokens`
+says how much it weighs; the criterion then is interactivity, a minimal
+level for the live chat turn, not a per-app setting.

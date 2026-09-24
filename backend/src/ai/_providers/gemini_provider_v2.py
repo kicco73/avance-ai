@@ -313,6 +313,7 @@ class GeminiProvider(LLMProvider):
 		input_tokens = 0
 		output_tokens = 0
 		cache_read_tokens = 0
+		thoughts_tokens = 0
 		finish_reason: types.FinishReason | None = None
 		function_call: types.FunctionCall | None = None
 		replay_parts: list[types.Part] = []
@@ -334,6 +335,8 @@ class GeminiProvider(LLMProvider):
 						output_tokens = usage.candidates_token_count
 					if getattr(usage, "cached_content_token_count", None) is not None:
 						cache_read_tokens = usage.cached_content_token_count
+					if getattr(usage, "thoughts_token_count", None) is not None:
+						thoughts_tokens = usage.thoughts_token_count
 				if chunk.candidates and chunk.candidates[0].finish_reason is not None:
 					finish_reason = chunk.candidates[0].finish_reason
 				if tools:
@@ -351,12 +354,13 @@ class GeminiProvider(LLMProvider):
 		if on_metadata is not None:
 			on_metadata("cache_read_tokens", cache_read_tokens)
 			on_metadata("cache_creation_tokens", 0)
+			on_metadata("thoughts_tokens", thoughts_tokens)
 			on_metadata("input_tokens", input_tokens)
 			on_metadata("output_tokens", output_tokens)
 		logger.info(
 			f"Gemini call finished: model={self.__model_name} finish_reason={finish_reason} "
 			f"input_tokens={input_tokens} output_tokens={output_tokens} cache_read={cache_read_tokens} "
-			f"total_tokens={total_tokens} max_output_tokens={self.__max_output_tokens}"
+			f"thoughts_tokens={thoughts_tokens} total_tokens={total_tokens} max_output_tokens={self.__max_output_tokens}"
 		)
 
 		if tools and function_call is not None:

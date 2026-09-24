@@ -3,7 +3,7 @@
     submit(task, when) ──> INSERT Task row (pending, run_at=when) ──> notify
     thread loop        ──> claim_due_task(now)  [atomic pending -> dispatched]
                             └──> hydrator[type](key, username, payload) ──> JobQueue.submit
-                       ──> else sleep until next_task_due_at (capped by poll_interval)
+                       ──> else sleep until next_task_due_at, or the oldest claim's lease expiry
     task settles       ──> settle_task(key, done|failed)
     cancel(task)       ──> cancel_task(key) if still pending, else JobQueue.cancel
 
@@ -27,8 +27,8 @@ status='pending', so two schedulers over the same database (two
 threads, two backend instances) never claim the same row. A row still
 `dispatched` after `lease_seconds` with no settlement belongs to a
 process that died mid-run: it goes back to pending and runs again
-(at-least-once), logged as such — checked at start and on every poll,
-never by blindly requeueing whatever is dispatched at boot, which
+(at-least-once), logged as such — checked at start and when the lease
+expires, never by blindly requeueing whatever is dispatched at boot, which
 would re-run a task another live instance is executing right now. A
 row whose type has no hydrator, or whose hydrator refuses it, is
 marked failed with the reason, never silently dropped."""
@@ -57,13 +57,11 @@ Hydrator = Callable[[str, str, dict[str, Any]], Task]
 class PersistedScheduler(Scheduler):
 
     def __init__(
-        self, queue: AbstractJobQueue, db: "Db", *,
-        poll_interval_seconds: float = 60.0, lease_seconds: float = 600.0,
+        self, queue: AbstractJobQueue, db: "Db", *, lease_seconds: float = 600.0,
     ) -> None:
         self._queue = queue
         self._db = db
         self._hydrators: dict[str, Hydrator] = {}
-        self._poll_interval = poll_interval_seconds
         self._lease = timedelta(seconds=lease_seconds)
         self._wakeup = threading.Condition(threading.Lock())
         self._thread: threading.Thread | None = None
@@ -167,13 +165,18 @@ class PersistedScheduler(Scheduler):
                 if row is not None:
                     self._dispatch(row)
                     continue
-                due = self._db.next_task_due_at()
-            wait = self._poll_interval
-            if due is not None:
-                wait = max(0.0, min(wait, (due - datetime.now(timezone.utc)).total_seconds()))
+                due = self._next_deadline()
+            wait = None if due is None else max(0.0, (due - datetime.now(timezone.utc)).total_seconds())
             with self._wakeup:
                 if not self._stopping:
                     self._wakeup.wait(wait)
+
+    def _next_deadline(self) -> datetime | None:
+        deadlines = [self._db.next_task_due_at()]
+        dispatched_at = self._db.earliest_task_dispatch_at()
+        if dispatched_at is not None:
+            deadlines.append(dispatched_at + self._lease)
+        return min((d for d in deadlines if d is not None), default=None)
 
     def _dispatch(self, row: dict[str, Any]) -> None:
         key = row["key"]

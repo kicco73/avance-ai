@@ -52,6 +52,31 @@ def test_the_usage_row_records_the_call_s_duration_in_seconds(db):
     assert AiUsage.get().duration == 3.5
 
 
+class _ThinksThenReplies(LLMProvider):
+    async def stream_json(
+        self, system_prompt, history, schema, on_metadata=None, tools=None, tool_round=1, required_tools=None,
+    ) -> AsyncIterator[str]:
+        report = cast(MetadataCallback, on_metadata)
+        yield json.dumps({"text": "hi"})
+        report("thoughts_tokens", 700)
+        report("input_tokens", 10)
+        report("output_tokens", 5)
+
+    def get_input_tokens(self, prompt: str) -> int:
+        return 0
+
+
+def test_the_usage_row_records_the_tokens_the_model_spent_thinking(db):
+    ai_service = AiService(_ThinksThenReplies(), db=db)
+
+    asyncio.run(_drain(ai_service.generate_stream_with_metadata(
+        "sys", [], on_metadata=lambda k, v: None, schema={"text": StringField("t")},
+    )))
+
+    row = AiUsage.get()
+    assert (row.thoughts_tokens, row.input_tokens, row.output_tokens) == (700, 10, 5)
+
+
 async def _drain(stream) -> None:
     async for _ in stream:
         pass

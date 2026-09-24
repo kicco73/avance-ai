@@ -233,6 +233,7 @@ def test_boot_refuses_a_database_corrupted_beyond_its_indexes_and_upgrade_refuse
     corrupted = tmp_path / "corrupted.db"
     Db(_url(corrupted))
     _run_sql(corrupted, [SEED_PROJECT_AND_USER[1]])
+    _run_sql(corrupted, ["PRAGMA wal_checkpoint(TRUNCATE)"])
     rootpage = _query(corrupted, "SELECT rootpage FROM sqlite_master WHERE name='User' AND type='table'")[0][0]
     page_size = _query(corrupted, "PRAGMA page_size")[0][0]
     with open(corrupted, "r+b") as f:

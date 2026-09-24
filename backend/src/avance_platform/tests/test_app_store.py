@@ -172,6 +172,29 @@ def test_a_project_whose_published_revision_no_longer_builds_leaves_the_rest_of_
     assert apps[0]["compiled"] is False
 
 
+def test_the_catalogue_shows_each_apps_icon_and_snapshots_from_its_published_revision_not_its_draft(db):
+    service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
+    _publish_buildable(db, "shop")
+    db.save_project_files(
+        "shop",
+        {"media/icon.png": b"i", "media/snapshot-phone-2.jpg": b"b", "media/snapshot-phone-1.jpg": b"a", "media/snapshot-desktop-1.jpg": b"d"},
+        {"media/icon.png": "image/png", "media/snapshot-phone-2.jpg": "image/jpeg", "media/snapshot-phone-1.jpg": "image/jpeg", "media/snapshot-desktop-1.jpg": "image/jpeg"},
+    )
+    db.publish_project("shop")
+    _publish_buildable(db, "bare")
+    db.save_project_files("shop", {"media/snapshot-phone-3.jpg": b"c"}, {"media/snapshot-phone-3.jpg": "image/jpeg"})
+
+    apps = {app["id"]: app for app in PlatformService(service).list_app_store_apps("user")}
+
+    assert apps["shop"]["icon_file"] == "media/icon.png"
+    assert apps["shop"]["snapshot_files"] == {
+        "phone": ["media/snapshot-phone-1.jpg", "media/snapshot-phone-2.jpg"],
+        "desktop": ["media/snapshot-desktop-1.jpg"],
+    }
+    assert apps["bare"]["icon_file"] is None
+    assert apps["bare"]["snapshot_files"] == {}
+
+
 def test_manage_projects_still_lists_a_project_whose_published_revision_no_longer_builds(db):
     service = ProjectService(db, AutomatonLoader(db), SessionManager(db))
     _publish_buildable(db, "healthy")

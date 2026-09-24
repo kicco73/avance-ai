@@ -8,7 +8,6 @@ from datetime import datetime
 import pytest
 
 from db import Db
-from db.models import database
 
 
 def _make_sqlite_bytes(tmp_path, name, ddl_statements):
@@ -66,7 +65,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
     ddl = [
         "CREATE TABLE Project (id TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
         "is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, "
-        "ui_label TEXT, ui_description TEXT, draft_edit_count INTEGER)",
+        "ui_label TEXT, ui_description TEXT, draft_edit_count INTEGER, published_skills TEXT)",
         "CREATE TABLE CoreSession (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_id TEXT, "
         "type TEXT, title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, "
         "start_state TEXT, end_state TEXT, labeled INTEGER, comment TEXT, labeling_revision INTEGER, channel TEXT, "
@@ -100,8 +99,8 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "settled_at TEXT)",
         "CREATE TABLE AiUsage (id INTEGER PRIMARY KEY, provider_label TEXT, timestamp TEXT, "
         "input_tokens INTEGER, output_tokens INTEGER)",
-        "CREATE TABLE DbUsage (id INTEGER PRIMARY KEY, query_name TEXT, timestamp TEXT, "
-        "duration REAL, outcome TEXT, kind TEXT)",
+        "CREATE TABLE DbUsage (id INTEGER PRIMARY KEY, query_name TEXT, timestamp TEXT, outcome TEXT, kind TEXT, "
+        "count INTEGER, average_duration REAL, median_duration REAL, max_duration REAL)",
         "CREATE TABLE Drive (id INTEGER PRIMARY KEY, project_id TEXT, user_id TEXT, session_id INTEGER, "
         "path TEXT, content BLOB, content_type TEXT, size INTEGER, updated_at TEXT)",
         "CREATE TABLE Translation (id INTEGER PRIMARY KEY, key TEXT, src_lang TEXT, src_text TEXT, "
@@ -126,18 +125,6 @@ def test_restore_backup_accepts_a_schema_matching_backup(file_db):
     backup = file_db.export_backup()
     file_db.restore_backup(backup)
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")
-
-
-@pytest.mark.regression
-def test_restore_backup_rebuilds_the_proxy_target_not_just_reconnects(file_db):
-    """restore_backup() must rebind the shared `database` Proxy to a new
-    Database object rather than closing/reopening the same one, since
-    Peewee's connection state is per-thread."""
-    target_before = database.obj
-
-    file_db.restore_backup(file_db.export_backup())
-
-    assert database.obj is not target_before
 
 
 @pytest.mark.regression
@@ -214,6 +201,11 @@ def _free_pages(content: bytes, tmp_path, name: str) -> int:
         connection.close()
 
 
+def _on_disk(file_db) -> int:
+    path = file_db.backup_file_path()
+    return sum(os.path.getsize(p) for p in (path, f"{path}-wal") if os.path.exists(p))
+
+
 def _fill_and_empty(file_db, rows: int) -> None:
     for index in range(rows):
         file_db.ensure_project(f"proj{index}")
@@ -230,7 +222,7 @@ def test_a_backup_carries_no_free_pages_however_much_the_working_file_deleted(fi
     the largest the database ever was — SQLite keeps deleted pages in
     the file and would copy them too."""
     _fill_and_empty(file_db, 20)
-    assert os.path.getsize(file_db.backup_file_path()) > len(file_db.export_backup())
+    assert _on_disk(file_db) > len(file_db.export_backup())
 
     assert _free_pages(file_db.export_backup(), tmp_path, "backup.db") == 0
 
@@ -238,8 +230,8 @@ def test_a_backup_carries_no_free_pages_however_much_the_working_file_deleted(fi
 @pytest.mark.contract
 def test_reclaiming_gives_the_freed_pages_back_to_the_filesystem(file_db):
     _fill_and_empty(file_db, 20)
-    bloated = os.path.getsize(file_db.backup_file_path())
+    bloated = _on_disk(file_db)
 
     file_db.reclaim_free_space()
 
-    assert os.path.getsize(file_db.backup_file_path()) < bloated
+    assert _on_disk(file_db) < bloated

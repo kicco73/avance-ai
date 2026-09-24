@@ -16,6 +16,10 @@ frontend/dist/
 frontend/node_modules/
 *.db
 *.sqlite
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
 ai/llama.cpp/
 
 # global gitignore excludes package-lock.json everywhere; this project needs it committed

@@ -103,6 +103,12 @@ class TaskMixin:
         row = Task.select(Task.run_at).where(Task.status == 'pending').order_by(Task.run_at, Task.id).first()
         return row.run_at.replace(tzinfo=timezone.utc) if row is not None else None
 
+    def earliest_task_dispatch_at(self) -> datetime | None:
+        row = Task.select(Task.dispatched_at).where(
+            (Task.status == 'dispatched') & Task.dispatched_at.is_null(False)
+        ).order_by(Task.dispatched_at).first()
+        return row.dispatched_at.replace(tzinfo=timezone.utc) if row is not None else None
+
     @write
     def claim_due_task(self, now: datetime) -> dict[str, Any] | None:
         """Atomically moves the earliest pending task due by `now` to

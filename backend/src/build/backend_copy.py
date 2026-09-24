@@ -45,6 +45,7 @@ _TEST_OUTPUT_TAIL_LINES = 40
 
 _BACKEND_COPY_IGNORE = shutil.ignore_patterns(
     ".venv", "__pycache__", "*.pyc", "*.egg-info", "apps", "*.db", "*.sqlite", "*.sqlite3",
+    "*.db-wal", "*.db-shm", "*.sqlite-wal", "*.sqlite-shm", "*.sqlite3-wal", "*.sqlite3-shm",
     *DEV_ONLY_DIRS,
 )
 

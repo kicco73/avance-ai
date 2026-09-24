@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 import sqlite3
 import unicodedata
+from itertools import groupby
+from statistics import fmean, median
 
 from playhouse.migrate import SqliteMigrator, migrate
 
@@ -252,11 +254,32 @@ class SchemaMigrator:
                 self._database.execute_sql('UPDATE "Drive" SET "hash" = ? WHERE "id" = ?', (digest, drive_id))
         actual['Drive'] = (actual['Drive'] - {'content', 'content_type', 'size'}) | {'hash'}
 
+    def migrate_db_usage_to_minutes(self, actual: dict[str, set[str]]) -> None:
+        if 'DbUsage' not in actual or 'duration' not in actual['DbUsage'] or 'count' in actual['DbUsage']:
+            return
+        usage_model = {model._meta.table_name: model for model in self._models}['DbUsage']
+        rows = self._database.execute_sql(
+            'SELECT strftime(\'%Y-%m-%d %H:%M:00\', "timestamp"), "query_name", "kind", "outcome", "duration" '
+            'FROM "DbUsage" ORDER BY 1, 2, 3, 4'
+        ).fetchall()
+        with self._database.atomic():
+            self._database.execute_sql('DROP TABLE "DbUsage"')
+            self._database.create_tables([usage_model], safe=False)
+            for (minute, query_name, kind, outcome), group in groupby(rows, key=lambda row: row[:4]):
+                durations = [row[4] for row in group]
+                self._database.execute_sql(
+                    'INSERT INTO "DbUsage" ("timestamp", "query_name", "kind", "outcome", "count", '
+                    '"average_duration", "median_duration", "max_duration") VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    (minute, query_name, kind, outcome, len(durations), fmean(durations), median(durations), max(durations)),
+                )
+        actual['DbUsage'] = {field.column_name for field in usage_model._meta.sorted_fields}
+
     def migrate(self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str) -> None:
         migrator = SqliteMigrator(self._database)
         models_by_table = {model._meta.table_name: model for model in self._models}
         self.migrate_archive_content_to_file(actual)
         self.migrate_drive_content_to_file(actual)
+        self.migrate_db_usage_to_minutes(actual)
         for old_table, new_table in self._TABLE_RENAMES:
             if old_table in actual and new_table not in actual:
                 self.rename_table(old_table, new_table)

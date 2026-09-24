@@ -99,7 +99,7 @@ def _make(
     file_db: Db, sink: list, *, start: bool = True, hydrators: dict | None = None, lease_seconds: float = 600.0,
 ) -> PersistedScheduler:
     queue = JobQueue(max_concurrent=1, broadcaster=Broadcaster())
-    scheduler = PersistedScheduler(queue, file_db, poll_interval_seconds=0.2, lease_seconds=lease_seconds)
+    scheduler = PersistedScheduler(queue, file_db, lease_seconds=lease_seconds)
     for task_type, hydrator in (hydrators if hydrators is not None else _hydrators(sink)).items():
         scheduler.register_task_type(task_type, hydrator)
     _live_schedulers.append(scheduler)
@@ -244,9 +244,9 @@ class TestTheTableIsTheQueue:
 
     def test_a_stale_claim_is_recovered_by_a_running_scheduler_too_not_only_at_boot(self, file_db):
         sink: list = []
-        _make(file_db, sink, lease_seconds=0.3)
         _due_row(file_db, "stub:1", 7)
         _dispatched("stub:1", datetime.utcnow())
+        _make(file_db, sink, lease_seconds=0.3)
 
         assert _wait_until(lambda: _status(file_db, "stub:1") == "done", timeout=3.0)
         assert sink == [7]

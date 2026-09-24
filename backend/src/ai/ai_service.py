@@ -548,7 +548,7 @@ def _outcome_for(exc: Exception) -> str:
 	return "error"
 
 
-_USAGE_KEYS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens")
+_USAGE_KEYS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "thoughts_tokens")
 
 
 class _Emitted:
@@ -652,6 +652,7 @@ class _UsageTap:
 					self._captured.get("cache_read_tokens", 0), self._captured.get("cache_creation_tokens", 0),
 					asyncio.get_running_loop().time() - self._started,
 					time_to_first_chunk=self._time_to_first_chunk(),
+					thoughts_tokens=self._captured.get("thoughts_tokens", 0),
 				)
 				self._captured.clear()
 		self._on_metadata(name, value)

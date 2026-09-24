@@ -358,6 +358,14 @@ class ProjectMixin:
             )
         ]
 
+    def list_published_archives_by_project(self) -> dict[str, list[str]]:
+        names: dict[str, list[str]] = {}
+        for row in Archive.select(Archive.project, Archive.archive_name).join(
+            Project, on=(Archive.project == Project.id) & (Archive.revision == Project.published_revision),
+        ):
+            names.setdefault(row.project_id, []).append(row.archive_name)
+        return names
+
     @write
     def delete_archive(self, project_id: str, archive_name: str) -> None:
         revision = self._ensure_draft_revision(project_id)

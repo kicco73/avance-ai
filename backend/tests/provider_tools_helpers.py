@@ -333,12 +333,13 @@ class OpenAIHarness:
 class GeminiUsage:
     def __init__(
         self, total_token_count: int = 3, prompt_token_count: int = 2, candidates_token_count: int = 1,
-        cached_content_token_count: int | None = None,
+        cached_content_token_count: int | None = None, thoughts_token_count: int | None = None,
     ) -> None:
         self.total_token_count = total_token_count
         self.prompt_token_count = prompt_token_count
         self.candidates_token_count = candidates_token_count
         self.cached_content_token_count = cached_content_token_count
+        self.thoughts_token_count = thoughts_token_count
 
 
 class GeminiFunctionCall:

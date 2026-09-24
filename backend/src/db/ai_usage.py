@@ -18,12 +18,12 @@ class AiUsageMixin:
     def record_ai_usage(
         self, provider_label: str, input_tokens: int, output_tokens: int,
         cache_read_tokens: int = 0, cache_creation_tokens: int = 0, duration: float = 0.0,
-        time_to_first_chunk: float | None = None, outcome: str = 'success',
+        time_to_first_chunk: float | None = None, outcome: str = 'success', thoughts_tokens: int = 0,
     ) -> None:
         AiUsage.create(
             provider_label=provider_label, input_tokens=input_tokens, output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens, cache_creation_tokens=cache_creation_tokens, duration=duration,
-            time_to_first_chunk=time_to_first_chunk, outcome=outcome,
+            time_to_first_chunk=time_to_first_chunk, outcome=outcome, thoughts_tokens=thoughts_tokens,
         )
 
     def get_ai_usage_snapshot(self, provider_labels: list[str], hours: int = DEFAULT_HISTORY_HOURS) -> dict:

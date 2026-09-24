@@ -42,6 +42,18 @@ def test_restore_a_valid_backup_succeeds(client):
 
 
 @pytest.mark.contract
+def test_after_a_restore_the_server_serves_what_the_backup_held(client, hello_project):
+    backup = client.get("/api/skills/platform/settings/backup").content
+    session_id = session_of(enter_chat(client, hello_project))
+    assert client.get(f"/api/core/sessions/{session_id}/history").status_code == 200
+
+    client.post("/api/skills/platform/settings/backup", content=backup, headers={"Content-Type": "application/octet-stream"})
+
+    assert client.get(f"/api/core/sessions/{session_id}/history").status_code == 404
+    assert client.get(f"/api/skills/platform/projects/{hello_project}").status_code == 200
+
+
+@pytest.mark.contract
 def test_restore_rejects_a_schema_mismatch(client, tmp_path):
     wrong = _make_sqlite_bytes(tmp_path, "wrong.db", ["CREATE TABLE unrelated (id INTEGER PRIMARY KEY)"])
 

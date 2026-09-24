@@ -215,10 +215,11 @@ class PlatformService(object):
     def list_app_store_apps(self, username: str, search: str | None = None) -> list[dict]:
         trials_used = self.db.count_trial_sessions_by_project(username)
         declarable = skills.declarable()
+        archives = self.db.list_published_archives_by_project()
         apps = []
         for app in self.db.list_projects_for_app_store(username, search):
             try:
-                apps.append(self._offered(app, self._published_automaton(app["id"]), trials_used, declarable))
+                apps.append(self._offered(app, self._published_automaton(app["id"]), trials_used, declarable, archives))
             except AutomatonBuildError:
                 continue
         return apps
@@ -226,8 +227,9 @@ class PlatformService(object):
     def list_managed_apps(self, username: str, search: str | None = None) -> list[dict]:
         trials_used = self.db.count_trial_sessions_by_project(username)
         declarable = skills.declarable()
+        archives = self.db.list_published_archives_by_project()
         return [
-            self._offered(app, self._published_automaton_or_unbuildable(app["id"]), trials_used, declarable)
+            self._offered(app, self._published_automaton_or_unbuildable(app["id"]), trials_used, declarable, archives)
             for app in self.db.list_projects_for_app_store(username, search)
         ]
 
@@ -242,6 +244,7 @@ class PlatformService(object):
 
     def _offered(
         self, app: dict, automaton: Automaton | UnbuildableRevision, trials_used: dict[str, int], declarable: list[dict],
+        archives: dict[str, list[str]],
     ) -> dict:
         required = set(app.pop("published_skills"))
         app["skills"] = [
@@ -249,8 +252,9 @@ class PlatformService(object):
             for entry in declarable
             if entry["package"] in required
         ]
-        app["icon_file"] = self._find_app_icon_file(app["id"])
-        app["snapshot_files"] = self._find_app_snapshot_files(app["id"])
+        names = archives.get(app["id"], [])
+        app["icon_file"] = self._find_app_icon_file(names)
+        app["snapshot_files"] = self._find_app_snapshot_files(names)
         app["family"] = automaton.family
         app["reactions_enabled"] = any(automaton.reactions_enabled_for(s) for s in automaton.states.values())
         app["compiled"] = isinstance(automaton, CompiledAutomaton)
@@ -259,22 +263,20 @@ class PlatformService(object):
         app["trials_left"] = max(0, self.TRIAL_SESSIONS_PER_APP - used)
         return app
 
-    def _find_app_icon_file(self, project_id: str) -> str | None:
-        revision = self.project_service.get_published_revision(project_id)
-        for name in self.db.list_archives(project_id, revision=revision):
+    def _find_app_icon_file(self, names: list[str]) -> str | None:
+        for name in names:
             if ICON_FILE_RE.match(name):
                 return name
         return None
 
-    def _find_app_snapshot_files(self, project_id: str) -> dict[str, list[str]]:
+    def _find_app_snapshot_files(self, names: list[str]) -> dict[str, list[str]]:
         """The published revision's media/snapshot-<aspect>-<n>.jpg files,
         grouped by aspect and ordered by <n> — the captures RunChat.vue
         saves from the project editor, one group per entry of its ASPECTS
         list. An app that has none gets an empty dict and the store falls
         back to its imported preview transcript."""
-        revision = self.project_service.get_published_revision(project_id)
         indexed: dict[str, list[tuple[int, str]]] = {}
-        for name in self.db.list_archives(project_id, revision=revision):
+        for name in names:
             match = SNAPSHOT_FILE_RE.match(name)
             if match is None:
                 continue

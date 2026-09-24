@@ -194,3 +194,20 @@ async def test_cache_read_tokens_are_reported_kept_across_chunks_that_omit_them_
     absent = await _events(harness.text_response('{"text": "hi"}'))
     assert ("cache_read_tokens", 0) in absent
     assert ("cache_creation_tokens", 0) in absent
+
+
+async def test_the_tokens_a_model_spent_thinking_are_reported_and_default_to_zero():
+    async def _events(chunks) -> list[tuple[str, object]]:
+        provider, _ = harness.provider([chunks])
+        events: list[tuple[str, object]] = []
+        await drain(provider.generate_stream_with_schema("sys", [], {"text": StringField("t")}, on_metadata=lambda k, v: events.append((k, v))))
+        return events
+
+    thought = await _events([GeminiChunk(
+        candidates=[GeminiCandidate(finish_reason=types.FinishReason.STOP)],
+        usage_metadata=GeminiUsage(prompt_token_count=50, candidates_token_count=5, thoughts_token_count=700),
+        text='{"text": "hi"}',
+    )])
+    assert ("thoughts_tokens", 700) in thought
+
+    assert ("thoughts_tokens", 0) in await _events(harness.text_response('{"text": "hi"}'))
