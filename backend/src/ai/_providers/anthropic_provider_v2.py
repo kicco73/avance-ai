@@ -30,6 +30,7 @@ from ai.llm_provider import (
 	ToolSpec,
 	content_to_text,
 	is_text_fragments,
+	with_opening_turn,
 )
 from ai.response_schema import Field, ObjectField
 from system.logging_factory import LoggerFactory
@@ -278,7 +279,7 @@ class AnthropicProvider(LLMProvider):
 		required_tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
 		messages: list[MessageParam] = self.__build_messages(
-			history
+			with_opening_turn(history)
 		)
 
 		system_blocks: list[TextBlockParam] = self._build_system(

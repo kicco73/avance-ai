@@ -224,7 +224,7 @@ class LLMProvider(TokenCounter, ABC):
 		reply = StructuredReply(schema, on_metadata or _ignore_metadata)
 		try:
 			async for chunk in self.stream_json(
-				system_prompt, with_opening_turn(history), schema, **forward_kwargs(on_metadata, tools, tool_round, required_tools),
+				system_prompt, history, schema, **forward_kwargs(on_metadata, tools, tool_round, required_tools),
 			):
 				yield reply.feed(chunk)
 		except AIServiceProviderOutputTruncatedError as exc:

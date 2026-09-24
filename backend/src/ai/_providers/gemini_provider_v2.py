@@ -30,6 +30,7 @@ from ai.llm_provider import (
 	ToolSpec,
 	content_to_text,
 	is_text_fragments,
+	with_opening_turn,
 )
 
 logger = LoggerFactory.get_logger(__name__)
@@ -285,7 +286,7 @@ class GeminiProvider(LLMProvider):
 		tool_round: int = 1,
 		required_tools: list[ToolSpec] | None = None,
 	) -> AsyncIterator[str]:
-		contents = self.__build_contents(history)
+		contents = self.__build_contents(with_opening_turn(history))
 		schema = schema or {}
 		system_instruction = SystemPrompt.coerce(system_prompt).full_text()
 
