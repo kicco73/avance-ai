@@ -75,3 +75,23 @@ def test_publish_clears_every_users_undo_trail_even_when_the_revision_is_already
     )
     assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
     assert not EditHistory.select().where(EditHistory.project_id == "proj").exists()
+
+
+def test_the_store_lists_the_skills_the_published_revision_requires(client):
+    project_yml = "project:\n  id: proj\n  services:\n    talk: required\n" + MINIMAL_YML
+    response = client.post(
+        "/api/skills/platform/projects/upload",
+        content=_zip_of({"index.yml": project_yml}),
+        headers={"Content-Type": "application/zip"},
+    )
+    assert response.status_code == 200, response.text
+    client.put("/api/skills/platform/projects/proj/files/index.yml", content=project_yml.replace("talk: required", "listen: required").encode())
+
+    def store_skills():
+        apps = client.get("/api/skills/platform/app-store/apps").json()["apps"]
+        return {skill["key"] for skill in next(app for app in apps if app["id"] == "proj")["skills"]}
+
+    assert "talk" in store_skills() and "listen" not in store_skills()
+
+    assert client.post("/api/skills/platform/projects/proj/publish", json={}).status_code == 200
+    assert "listen" in store_skills() and "talk" not in store_skills()

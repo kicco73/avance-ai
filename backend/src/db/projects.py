@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from peewee import Expression
@@ -75,6 +76,10 @@ class ProjectMixin:
     @write
     def set_project_metadata(self, project_id: str, ui_label: str | None, ui_description: str | None) -> None:
         Project.update(ui_label=ui_label, ui_description=ui_description).where(Project.id == project_id).execute()
+
+    @write
+    def set_published_skills(self, project_id: str, packages: list[str]) -> None:
+        Project.update(published_skills=json.dumps(packages)).where(Project.id == project_id).execute()
 
     def _delete_sessions_where(self, condition: Expression) -> None:
         CoreSession.delete().where(condition).execute()
@@ -284,7 +289,9 @@ class ProjectMixin:
             row.project_id: row.ai_summary
             for row in UserProject.select(UserProject.project, UserProject.ai_summary).where(UserProject.user == username)
         }
-        query = Project.select(Project.id, Project.ui_label, Project.ui_description, Project.is_paused).where(
+        query = Project.select(
+            Project.id, Project.ui_label, Project.ui_description, Project.is_paused, Project.published_skills,
+        ).where(
             Project.published_revision.is_null(False)
         )
         if search:
@@ -294,6 +301,7 @@ class ProjectMixin:
                 "id": p.id, "ui_label": p.ui_label, "ui_description": p.ui_description,
                 "is_paused": p.is_paused, "installed": p.id in installed,
                 "ai_summary": installed.get(p.id),
+                "published_skills": json.loads(p.published_skills or "[]"),
             }
             for p in query
         ]

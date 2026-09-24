@@ -5,7 +5,7 @@ What is here: the declared data (states, signals, sources, env keys,
 prompts, project identity), the trivial lookups over it, the answers
 derived from its own expression text (computed once, see analysis.py),
 and the four seams where an expression actually gets evaluated —
-_eval_trigger/evaluate_triggers_action, eval_action_env,
+_eval_trigger/evaluate_triggers_action,
 eval_action_on_exit, render_task/render_task_script.
 
 Those four are the whole of what an automaton compiled to literal Python
@@ -34,6 +34,7 @@ from automaton.scope import EvaluationScope
 from system.logging_factory import LoggerFactory
 
 from . import analysis
+from .on_exit_expression_analyzer import OnExitExpressionAnalyzer
 from .trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 if TYPE_CHECKING:
@@ -305,34 +306,6 @@ class CoreAutomaton(object):
         )
         return False
 
-    def eval_action_env(
-        self, action: "Action", scope: dict[str, Any],
-    ) -> tuple[dict[str, Any], tuple[tuple[str, Exception], ...]]:
-        """`action`'s `env` expressions evaluated against `scope`. Unlike
-        _eval_trigger, a None/missing reference fails and logs rather
-        than being a no-op; only successfully evaluated keys are
-        returned. The second element is every key that failed, in
-        TaskOutcome.failures' own (label, exception) shape, for a caller
-        to surface — an evaluation failure is a write that silently did
-        not happen, never a mere warning."""
-        if not action.env:
-            return {}, ()
-        result: dict[str, Any] = {}
-        failures: list[tuple[str, Exception]] = []
-        for key, expression in action.env.items():
-            try:
-                value = self._evaluate_expression(expression, scope)
-            except Exception as exc:
-                logger.error(
-                    "env expression evaluation failed for action '%s', key '%s' ('%s'): %s",
-                    action.name, key, expression, exc,
-                )
-                failures.append((f"{key}: {expression}", exc))
-                continue
-            if self._accepts_env_value(action, key, value):
-                result[key] = value
-        return result, tuple(failures)
-
     def eval_action_on_exit(
         self, action: "Action", scope: EvaluationScope,
     ) -> tuple[dict[str, Any], str | None, tuple[tuple[str, Exception], ...]]:
@@ -342,9 +315,9 @@ class CoreAutomaton(object):
         exactly like task: one statement per line, a single call may
         span several lines, and a '#' comment just works. Each
         statement is an `env.<key> = expr` assignment
-        (TriggerExpressionAnalyzer.on_exit_assignment — eval_action_env's
-        own contract: only successfully evaluated keys are returned, a
-        bad expression logs and is skipped — written into `scope["env"]`
+        (TriggerExpressionAnalyzer.on_exit_assignment — only successfully
+        evaluated keys are returned, a bad expression logs and is
+        skipped — written into `scope["env"]`
         in place as soon as it's accepted, so a later line's own
         `env.<key>` read sees it, exactly like a local does), a `name = expr` local
         (TriggerExpressionAnalyzer.task_assignment — stored on the
@@ -375,7 +348,18 @@ class CoreAutomaton(object):
         result: dict[str, Any] = {}
         snippets: list[str] = []
         failures: list[tuple[str, Exception]] = []
-        for _line_number, statement in statements:
+        self._run_on_exit_statements(action, statements, scope, result, snippets, failures)
+        return result, ("\n".join(snippets) if snippets else None), tuple(failures)
+
+    def _run_on_exit_statements(
+        self, action: "Action", statements: list[tuple[int, str]], scope: EvaluationScope,
+        result: dict[str, Any], snippets: list[str], failures: list[tuple[str, Exception]],
+    ) -> None:
+        for line_number, statement in statements:
+            branches = OnExitExpressionAnalyzer.if_branches(statement, line_number)
+            if branches is not None:
+                self._run_on_exit_if(action, branches, scope, result, snippets, failures)
+                continue
             assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
             local = TriggerExpressionAnalyzer.task_assignment(statement)
             pair = assignment if assignment is not None else local
@@ -411,7 +395,24 @@ class CoreAutomaton(object):
                 continue
             if isinstance(value, JsSnippet):
                 snippets.append(value)
-        return result, ("\n".join(snippets) if snippets else None), tuple(failures)
+
+    def _run_on_exit_if(
+        self, action: "Action", branches: list[tuple[str | None, list[tuple[int, str]]]], scope: EvaluationScope,
+        result: dict[str, Any], snippets: list[str], failures: list[tuple[str, Exception]],
+    ) -> None:
+        for condition, body in branches:
+            try:
+                taken = condition is None or bool(self._evaluate_statement(condition, scope))
+            except Exception as exc:
+                logger.error(
+                    "on-exit condition evaluation failed for action '%s' ('%s'): %s",
+                    action.name, condition, exc,
+                )
+                failures.append((f"if {condition}", exc))
+                return
+            if taken:
+                self._run_on_exit_statements(action, body, scope, result, snippets, failures)
+                return
 
     @classmethod
     def render_task(cls, action: "Action", scope: EvaluationScope) -> TaskOutcome:

@@ -40,8 +40,6 @@ states:
       - name: next
         target: b
         trigger: "{b_trigger}"
-        env:
-          step: "{b_env}"
         on-exit: |
           {b_on_exit}
         task: |
@@ -54,7 +52,7 @@ SYSTEM_B = "    input-processor: system\n    contextual-prompt: ignored"
 def _build(**parts):
     filled = {
         "init_on_exit": "env.step = 0", "a_on_exit": "env.step = 1", "b": SYSTEM_B, "b_trigger": "env.step > 0",
-        "b_env": "env.step + 1", "b_on_exit": "env.step = env.step", "b_task": "task.send_mail(user.email, 'x')",
+        "b_on_exit": "env.step = env.step", "b_task": "task.send_mail(user.email, 'x')",
         **parts,
     }
     return AutomatonBuilder().build({"index.yml": BASE.format(**filled)})
@@ -110,7 +108,6 @@ def test_fixed_message_is_gone_and_says_what_replaced_it():
 
 @pytest.mark.parametrize("slot,expression", [
     ("b_trigger", "signal.mood > 50"),
-    ("b_env", "signal.mood"),
     ("b_on_exit", "env.step = signal.mood"),
     ("b_task", "task.send_mail(user.email, str(signal.mood))"),
 ])

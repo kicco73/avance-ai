@@ -228,15 +228,12 @@ class TrackingEngine:
         session_id: int | None = None,
         output_values: dict | None = None,
     ) -> dict:
-        """Applies `action`'s own env writes to the current scope — both
-        the legacy declarative `env:` map and its own `on-exit` script
-        (the future replacement for it, same `key = expr` writes, see
-        Automaton.eval_action_on_exit) — shared by both the auto-tracking
-        and manual-action paths (the latter fires with empty
-        signal_values). Returns the keys it actually wrote, so whoever
-        ran the turn can say so on the way out (see turn/outbound.py);
-        on-exit's own value for a key wins over env:'s should an action
-        somehow declare both. A key whose expression raised is never in
+        """Applies `action`'s own `on-exit` env writes to the current
+        scope (see Automaton.eval_action_on_exit) — shared by both the
+        auto-tracking and manual-action paths (the latter fires with
+        empty signal_values). Returns the keys it actually wrote, so
+        whoever ran the turn can say so on the way out (see
+        turn/outbound.py). A key whose expression raised is never in
         that return value, and is not a value silently lost either: it
         is pushed to the interface as a `chat.notify(...)` toast, the
         same "notification" frame chat.* calls already use — a failed
@@ -255,20 +252,16 @@ class TrackingEngine:
         nothing to hibernate. `session_id`: the firing session, for the
         ActionTask itself and for the chat namespace's own push.
         `output_values`: structured output dict from this turn's AI
-        generation, available in env expressions and task/on-exit scripts."""
+        generation, available in task/on-exit scripts."""
         if session_id is not None:
             self._sink.clear_local_memory(session_id)
-        if not action.env and not action.task and not action.on_exit:
+        if not action.task and not action.on_exit:
             return {}
         scope = self._scope_builder.build(
             automaton, state_key, signal_values, selection, session_id=session_id, output_values=output_values,
         )
         updates: dict = {}
         failures: list[tuple[str, Exception]] = []
-        if action.env:
-            env_updates, env_failures = automaton.eval_action_env(action, scope)
-            updates.update(env_updates)
-            failures.extend(env_failures)
         chat_snippets: str | None = None
         if action.on_exit:
             on_exit_updates, chat_snippets, on_exit_failures = automaton.eval_action_on_exit(action, scope)

@@ -328,7 +328,6 @@ class ProjectInspector:
                 "source": state.key,
                 "trigger": action.trigger,
                 "ui_description": action.ui_description,
-                "env": action.env or {},
             }
             for state in automaton.states.values()
             for action in state.actions

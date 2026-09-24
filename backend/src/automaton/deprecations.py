@@ -295,6 +295,30 @@ class LegacyActionPrompt(LegacyScriptField):
             _store(editor, action, self.FIELD, "\n".join(script + call))
 
 
+class LegacyActionEnv(ActionDeprecation):
+
+    KEY = "env"
+    FIELD = "on-exit"
+    MESSAGE = (
+        "Action '{name}': 'env' is deprecated — an env write is an 'env.<key> = <expr>' line in "
+        "'on-exit' now, and what it says is ignored until it is one."
+    )
+
+    @property
+    def fix(self) -> str:
+        return f"{self.name}: {self.KEY} → {self.FIELD}"
+
+    def rewrite(self, editor) -> None:
+        for action in self.mine(editor):
+            writes = [
+                f"env.{key} = {expression if isinstance(expression, str) else repr(expression)}"
+                for key, expression in _mapping(own_field(action, self.KEY)).items()
+            ]
+            script = "\n".join(writes + _lines_of(action, self.FIELD))
+            editor.drop_key_preserving_comments(action, self.KEY)
+            _store(editor, action, self.FIELD, script)
+
+
 class LegacyActuatorCall(ActionDeprecation):
 
     FIELD_PREFIXES = {"chat.": "on-exit", "env.": "on-exit", "task.": "task"}
@@ -694,7 +718,7 @@ PROJECT_KINDS = (LegacyTalkEnabled,)
 FIELD_KINDS = (
     LegacyOnEnter, LegacyActuatorField, LegacyActionPrompt, LegacyStateScript, LegacyFixedMessage,
     LegacyStateChat, LegacyAiMemoryStrategy, MissingInputProcessor, RemovedEnvAiAccess, RemovedEnvUiLabel,
-    RemovedEnvValue, LegacyChoiceEnvType, LegacyEnvUiDescription,
+    RemovedEnvValue, LegacyChoiceEnvType, LegacyEnvUiDescription, LegacyActionEnv,
 )
 KINDS = PROJECT_KINDS + FIELD_KINDS + (LegacyActuatorCall, LegacyMediaDocId, LegacyAttachmentRead)
 

@@ -4,7 +4,6 @@ import asyncio
 import json
 
 from contextlib import asynccontextmanager
-from dataclasses import replace
 from datetime import datetime
 from http import HTTPStatus
 
@@ -12,6 +11,7 @@ from typing import Any
 
 from automaton.automaton import Action, Automaton, SignalPayload, State, pressable_actions
 from automaton.build_error import AutomatonBuildError
+from automaton.model import env_defaults_action
 from automaton.choice import ChoiceSelection, button_name, option_of
 from db import Db, _utc_iso
 from config import REPLY_SILENCE_SECONDS
@@ -731,20 +731,15 @@ class TurnService(object):
 	def _backfill_declared_env_keys(
 		self, automaton: Automaton, project_id: str, session_id: int, username: str
 	) -> None:
-		action = automaton.env_defaults_action
-		if not action.env:
-			return
-		env = self._env_for_session(session_id)
-		current = env.action_set()
-		missing = {key: expression for key, expression in action.env.items() if key not in current}
+		current = self._env_for_session(session_id).action_set()
+		missing = [env_key for env_key in automaton.env_keys if env_key.name not in current]
 		if not missing:
 			return
 		tracking_engine, _ = self._tracking_engine_for_session(session_id, TurnTransaction(self._db, session_id, []))
-		for key, expression in missing.items():
-			tracking_engine.apply_action_env(
-				automaton, replace(action, env={key: expression}), {}, ChoiceSelection.NONE, "",
-				username=username, project_id=project_id, session_id=session_id,
-			)
+		tracking_engine.apply_action_env(
+			automaton, env_defaults_action(missing), {}, ChoiceSelection.NONE, "",
+			username=username, project_id=project_id, session_id=session_id,
+		)
 
 	def start_automaton(self, strategy: SessionTypeStrategy, session: dict, username: str) -> None:
 		project_id = session["project_id"]

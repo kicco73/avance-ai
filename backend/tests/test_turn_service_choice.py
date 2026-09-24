@@ -48,7 +48,7 @@ def _automaton(trigger: str = "choice.slot != ''") -> Automaton:
     auto = Action(name="auto", ui_label="Auto", ui_button="Auto", target="a", trigger="False")
     book = Action(
         name="book", ui_label="Book", ui_button="Book", target="a", trigger=trigger,
-        env={"booked_slot": "choice.slot"}, on_exit="env.note = 'picked ' + choice.slot",
+        on_exit="env.booked_slot = choice.slot\nenv.note = 'picked ' + choice.slot",
     )
     init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a")
     state_a = State(

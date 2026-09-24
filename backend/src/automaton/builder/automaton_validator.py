@@ -11,6 +11,7 @@ from automaton.env_types import STORED_ENV_TYPES
 from automaton.file_types import attachment_doc_id_for, media_doc_id_for
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.input_processor_kind import INPUT_PROCESSOR_KINDS
+from automaton.on_exit_expression_analyzer import OnExitExpressionAnalyzer
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.trigger_namespaces import TriggerNamespaces
 from metrics.metrics_framework import metric_names
@@ -296,9 +297,36 @@ class AutomatonValidator:
         media_doc_ids = frozenset(
             doc_id for name in archives.names() if (doc_id := media_doc_id_for(name)) is not None
         )
-        known_locals: set[str] = set()
+        cls._validate_on_exit_statements(
+            statements, context, registry, sources, env_keys, archives, namespaces, media_doc_ids, set(),
+        )
+
+    @classmethod
+    def _validate_on_exit_statements(
+        cls, statements: list[tuple[int, str]], context: str, registry: dict[str, dict[str, str]],
+        sources: dict[str, Source], env_keys: dict[str, EnvKey], archives: ProjectArchives,
+        namespaces: frozenset[str], media_doc_ids: frozenset[str], known_locals: set[str],
+    ) -> None:
         for line_number, statement in statements:
             line_context = f"{context}, on-exit line {line_number}"
+            branches = OnExitExpressionAnalyzer.if_branches(statement, line_number)
+            if branches is not None:
+                branch_locals: list[set[str]] = []
+                for condition, body in branches:
+                    if condition is not None:
+                        cls.validate_script_expression(
+                            condition, line_context, archives, registry, sources, frozenset(known_locals),
+                            namespaces, media_doc_ids,
+                        )
+                        cls.validate_expression_types(condition, line_context)
+                    scoped = set(known_locals)
+                    cls._validate_on_exit_statements(
+                        body, context, registry, sources, env_keys, archives, namespaces, media_doc_ids, scoped,
+                    )
+                    branch_locals.append(scoped)
+                if branches[-1][0] is None:
+                    known_locals |= set.intersection(*branch_locals)
+                continue
             assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
             if assignment is not None:
                 env_key, expression = assignment
@@ -328,7 +356,7 @@ class AutomatonValidator:
             if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") is None:
                 raise ValueError(
                     f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments, "
-                    "'name = expr' locals, or a bare 'chat.<method>(...)' call."
+                    "'name = expr' locals, a bare 'chat.<method>(...)' call, or an 'if' of them."
                 )
             if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") == "bind_env":
                 cls.validate_env_binding(statement, line_context, env_keys)
@@ -391,19 +419,6 @@ class AutomatonValidator:
                     action.trigger, f"{action_context}: trigger", registry_for_triggers, sources,
                     namespaces=namespaces.names, known_builtins=TRIGGER_FUNCTION_NAMES,
                 )
-            if action.env:
-                for env_key, expression in action.env.items():
-                    if env_key not in registry.get("env", {}):
-                        raise ValueError(
-                            f"{action_context}: env key '{env_key}' is not declared in "
-                            "the project's own 'env' section — declare it there first."
-                        )
-                    self.validate_namespaced_expression(
-                        expression, f"{action_context}: env expression for '{env_key}'",
-                        registry_for_triggers, sources, namespaces=namespaces.names,
-                        known_builtins=TRIGGER_FUNCTION_NAMES,
-                    )
-                    self.validate_env_key_type(env_keys[env_key], expression, action_context)
             if action.task:
                 self.validate_task(action.task, action_context, registry_for_task, sources, archives)
             if action.on_exit:

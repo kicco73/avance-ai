@@ -1,5 +1,5 @@
 """Tests for tracking.evaluation_scope.EvaluationScopeBuilder — the one
-place a trigger/`env:`-expression evaluation scope gets assembled: the
+place a trigger/on-exit evaluation scope gets assembled: the
 `signal`/`env`/`session` namespaces plus any referenced core metric.
 """
 from __future__ import annotations
@@ -34,9 +34,9 @@ def _builder(db) -> EvaluationScopeBuilder:
 
 
 def _automaton_with_trigger(
-    trigger_expr: str, env: dict | None = None, sources: list[Source] | None = None,
+    trigger_expr: str, on_exit: str | None = None, sources: list[Source] | None = None,
 ) -> Automaton:
-    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger_expr, env=env)
+    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger_expr, on_exit=on_exit)
     state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     state_b = State(input_processor="ai", key="b", ui_label="B", final=True, contextual_prompt="bye", actions=[])
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
@@ -151,7 +151,7 @@ def test_a_declared_source_is_readable_from_an_env_expression_end_to_end(db):
     db.save_project_files(PROJECT_ID, {"notes.txt": b"note\nhello from the archive\n"}, {"notes.txt": "text/plain"})
     automaton = _pinned(db, _automaton_with_trigger(
         "signal.mood >= 1",
-        env={"notes": "source.pino.select_rows_containing('hello')"},
+        on_exit="env.notes = source.pino.select_rows_containing('hello')",
         sources=[Source(name="pino", url="avance:notes.txt", ui_label="pino")],
     ))
     action = automaton.states["a"].actions[0]
@@ -159,7 +159,7 @@ def test_a_declared_source_is_readable_from_an_env_expression_end_to_end(db):
     scope = _builder(db).build(automaton, "a", {}, ChoiceSelection.NONE)
 
     assert scope["source"].pino.select_rows_containing("hello") == "note\nhello from the archive\n"
-    assert automaton.eval_action_env(action, scope) == ({"notes": "note\nhello from the archive\n"}, ())
+    assert automaton.eval_action_on_exit(action, scope) == ({"notes": "note\nhello from the archive\n"}, None, ())
 
 
 def test_attachment_read_resolves_a_text_archive_from_both_scope_views_and_raises_for_anything_else(db):

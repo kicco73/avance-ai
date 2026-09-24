@@ -13,7 +13,6 @@ from automaton.identifier_registry import IdentifierRegistry
 from automaton.input_processor_kind import AiKind, kind_of
 from automaton.builder.project_metadata import ProjectMetadata, load_yaml, peek_declared_revision, read_declared_project_id
 from automaton.trigger_namespaces import TriggerNamespaces
-from typing import Any
 from system.logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
 from tracking.sources import SOURCE_DRIVERS
@@ -30,7 +29,7 @@ VALID_AI_MEMORY_SCOPES = {"none", "local", "global"}
 
 ACTION_FIELDS = {
     "name", "ui-label", "ui-button", "ui-description",
-    "target", "trigger", "task", "on-exit", "env",
+    "target", "trigger", "task", "on-exit",
 }
 
 INIT_ACTION_FIELDS = ACTION_FIELDS - {"name", "trigger", "ui-button"}
@@ -153,17 +152,6 @@ class AutomatonBuilder(object):
             ai_definition=raw_ai_definition.strip() if raw_ai_definition else None,
         )
 
-    @staticmethod
-    def _build_action_env(raw_env: Any, action_name: str) -> dict[str, str] | None:
-        if not raw_env:
-            return None
-        if not isinstance(raw_env, dict):
-            raise ValueError(
-                f"Action '{action_name}': 'env' must be a mapping of key -> expression, "
-                f"got {type(raw_env).__name__}."
-            )
-        return {key: value if isinstance(value, str) else str(value) for key, value in raw_env.items()}
-
     def _build_action(self, key: str, raw_action: dict, archives: ProjectArchives) -> Action:
         task = raw_action.get("task")
         on_exit = raw_action.get("on-exit")
@@ -179,7 +167,6 @@ class AutomatonBuilder(object):
             trigger=raw_action.get("trigger"),
             task=task,
             on_exit=on_exit,
-            env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
             line=line,
         )
 
@@ -332,7 +319,6 @@ class AutomatonBuilder(object):
             target=raw_init_action["target"],
             task=raw_init_action.get("task"),
             on_exit=raw_init_action.get("on-exit"),
-            env=self._build_action_env(raw_init_action.get("env"), "init-action"),
             line=line,
         )
 

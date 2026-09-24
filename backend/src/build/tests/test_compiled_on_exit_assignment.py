@@ -56,3 +56,30 @@ def test_a_compiled_on_exit_assignment_evaluates_without_a_table_miss(db: Db, tm
 
     assert failures == ()
     assert updates == {"counter": 7}
+
+
+IF_INDEX = INDEX.replace(
+    "          local = 1 + 1\n          env.counter = local + env.counter\n",
+    "          if env.counter > 3:\n            env.counter = env.counter * 10\n          else:\n            env.counter = 0\n",
+).replace("on_exit_demo", "on_exit_if_demo")
+
+
+def test_a_compiled_on_exit_if_runs_the_branch_its_condition_picks(db: Db, tmp_path):
+    project_id = "on_exit_if_demo"
+    db.ensure_project(project_id)
+    db.save_project_files(project_id, {"index.yml": IF_INDEX.encode()}, {"index.yml": "text/yaml"})
+    db.publish_project(project_id)
+    revision = db.get_project_revision(project_id)
+
+    module_name = module_name_for(project_id)
+    built = compile_contents({"index.yml": IF_INDEX}, module_name, tmp_path, revision)
+    built.rename(package_dir(tmp_path, module_name, revision))
+
+    automaton = CompiledAutomatonLoader(db, tmp_path).load_at_revision(project_id, revision)
+    action = automaton.states["start"].actions[0]
+    outcomes = [
+        automaton.eval_action_on_exit(action, EvaluationScope({"env": {"counter": counter}}, automaton=automaton, state_key="start"))
+        for counter in (5, 1)
+    ]
+
+    assert outcomes == [({"counter": 50}, None, ()), ({"counter": 0}, None, ())]

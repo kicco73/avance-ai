@@ -24,16 +24,12 @@ from ai.llm_provider import (
     ToolSpec,
     content_to_text,
     is_text_fragments,
-    OPENING_USER_TURN,
+    with_opening_turn,
 )
 from ai.response_schema import Field, ObjectField
 from system.logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
-
-
-def _continued(history: list[dict]) -> list[dict]:
-    return history + [dict(OPENING_USER_TURN)] * (bool(history) and history[-1]["role"] == "assistant")
 
 
 def _one_content(parts: list[dict]):
@@ -170,7 +166,7 @@ class OpenAICompatibleProvider(LLMProvider):
         required_tools: Optional[List[ToolSpec]] = None,
     ) -> AsyncIterator[str]:
         messages: List[Dict[str, Any]] = [{"role": "system", "content": SystemPrompt.coerce(system_prompt).full_text()}]
-        messages.extend(self.__build_messages(_continued(history)))
+        messages.extend(self.__build_messages(with_opening_turn(history)))
 
         extra_kwargs: Dict[str, Any] = {}
         if schema:

@@ -6,7 +6,7 @@ call, in the middle of a request.
 Three of them, all pure functions of the declared actions:
 
   - which env keys a project declares or assigns anywhere
-  - which of its signals a given state's triggers/env/on-exit reference
+  - which of its signals a given state's trigger, on-exit and task scripts reference
   - which bare names a given state's triggers mention (metric names, in
     practice)
 
@@ -24,8 +24,10 @@ not), the other two let it raise.
 """
 from __future__ import annotations
 
+import ast
 from typing import TYPE_CHECKING
 
+from .on_exit_expression_analyzer import OnExitExpressionAnalyzer
 from .trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 if TYPE_CHECKING:
@@ -44,7 +46,7 @@ def on_exit_assigned_keys(on_exit: str | None) -> set[str]:
     except SyntaxError:
         return set()
     keys: set[str] = set()
-    for _line_number, statement in statements:
+    for _line_number, statement in OnExitExpressionAnalyzer.flattened_statements(statements):
         assignment = TriggerExpressionAnalyzer.on_exit_assignment(statement)
         if assignment is not None:
             keys.add(assignment[0])
@@ -55,13 +57,9 @@ def declared_env_key_names(
     env_keys: list["EnvKey"], init_action: "Action", states: dict[str, "State"],
 ) -> set[str]:
     names = {env_key.name for env_key in env_keys}
-    if init_action.env:
-        names |= set(init_action.env)
     names |= on_exit_assigned_keys(init_action.on_exit)
     for state in states.values():
         for action in state.actions:
-            if action.env:
-                names |= set(action.env)
             names |= on_exit_assigned_keys(action.on_exit)
     return names
 
@@ -87,24 +85,13 @@ def tracked_signal_names(state: "State", declared_signal_names: set[str]) -> set
 
 
 def referenced_signal_names(state: "State", declared_signal_names: set[str]) -> set[str]:
-    """Which of `declared_signal_names` any action leaving `state`
-    actually reads — from its trigger, its `env:` expressions, or the
-    right-hand side of its on-exit assignments."""
     referenced: set[str] = set()
     for action in state.actions:
         if action.trigger:
             referenced |= TriggerExpressionAnalyzer.signal_names(action.trigger)
-        if action.env:
-            for expression in action.env.values():
-                referenced |= TriggerExpressionAnalyzer.signal_names(expression)
-        if action.on_exit:
-            for _line_number, statement in TriggerExpressionAnalyzer.task_statements(action.on_exit):
-                assignment = (
-                    TriggerExpressionAnalyzer.on_exit_assignment(statement)
-                    or TriggerExpressionAnalyzer.task_assignment(statement)
-                )
-                if assignment is not None:
-                    referenced |= TriggerExpressionAnalyzer.signal_names(assignment[1])
+        for script in (action.on_exit, action.task):
+            if script:
+                referenced |= TriggerExpressionAnalyzer.namespace_attrs(ast.parse(script, mode="exec"), "signal")
     return referenced & declared_signal_names
 
 

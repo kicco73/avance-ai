@@ -1,7 +1,7 @@
 """The `choice` trigger namespace (automaton/choice_namespace.py): a
 `choice` env key's options become buttons, and the option pressed is
 `choice.<key>` for the one trigger evaluation the press starts — read in
-an action's trigger and env only.
+an action's trigger and on-exit only.
 """
 from __future__ import annotations
 
@@ -46,13 +46,7 @@ def _build(actions_yaml: str, state_extra: str = ""):
     return AutomatonBuilder().build({"index.yml": _project(actions_yaml, state_extra)})
 
 
-BOOK = "      - name: book\n        target: b\n        trigger: \"choice.slot != ''\"\n        env:\n          booked_slot: choice.slot\n"
-
-
-def test_a_trigger_and_an_env_expression_may_read_a_declared_choice_key():
-    action = _build(BOOK).states["a"].actions[0]
-    assert action.trigger == "choice.slot != ''"
-    assert action.env == {"booked_slot": "choice.slot"}
+BOOK = "      - name: book\n        target: b\n        trigger: \"choice.slot != ''\"\n        on-exit: env.booked_slot = choice.slot\n"
 
 
 def test_an_on_exit_assignment_may_read_a_declared_choice_key_too():
@@ -71,8 +65,6 @@ def test_an_on_exit_assignment_may_read_a_declared_choice_key_too():
      r"State a, action 'go': trigger references choice.nowhere — 'nowhere' is not an env key"),
     ("      - name: go\n        target: b\n        trigger: \"choice.slot.first != ''\"\n",
      r"State a, action 'go': trigger references choice.slot.first — choice.<key> is the whole of it"),
-    ("      - name: go\n        target: b\n        env:\n          booked_slot: choice.visits\n",
-     r"State a, action 'go': env expression for 'booked_slot' references choice.visits"),
     ("      - name: go\n        target: b\n        on-exit: env.booked_slot = choice.visits\n",
      r"State a, action 'go': on-exit references choice.visits — 'visits' is not an env key declared of type list"),
     ("      - name: go\n        target: b\n        trigger: \"choice.slot()\"\n",
@@ -80,9 +72,9 @@ def test_an_on_exit_assignment_may_read_a_declared_choice_key_too():
     ("      - name: go\n        target: b\n        on-exit: env.booked_slot = choice.slot()\n",
      r"State a, action 'go': on-exit calls choice.slot\(\)"),
     ("      - name: go\n        target: b\n        task: task.send_mail(user.email, choice.slot)\n",
-     r"State a, action 'go': task references choice.slot — choice.\* is read in an action's trigger, env and on-exit only"),
+     r"State a, action 'go': task references choice.slot — choice.\* is read in an action's trigger and on-exit only"),
 ], ids=[
-    "not-a-choice-key", "undeclared-key", "three-segments", "env-not-a-choice-key", "on-exit-not-a-choice-key",
+    "not-a-choice-key", "undeclared-key", "three-segments", "on-exit-not-a-choice-key",
     "called-in-trigger", "called-in-on-exit", "task",
 ])
 def test_build_rejects_a_chain_that_is_not_exactly_a_declared_choice_key_or_sits_in_a_script(actions_yaml, match):
@@ -103,7 +95,7 @@ def test_a_states_choice_keys_are_the_ones_its_triggers_read_in_order_of_first_o
     automaton = _build(
         "      - name: first\n        target: b\n        trigger: \"choice.other != '' or choice.slot != ''\"\n"
         "      - name: second\n        target: b\n        trigger: \"choice.slot != ''\"\n"
-        "      - name: manual\n        target: b\n        env:\n          booked_slot: choice.slot\n"
+        "      - name: manual\n        target: b\n        on-exit: env.booked_slot = choice.slot\n"
     )
     assert automaton.states["a"].choice_keys == ("other", "slot")
     assert automaton.states["b"].choice_keys == ()

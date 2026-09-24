@@ -71,6 +71,7 @@ from typing import Any
 from automaton.automaton_builder import AutomatonBuilder
 from automaton.core import TASK_FUNCTION_NAMES, TRIGGER_FUNCTION_NAMES
 from automaton.identifier_registry import IdentifierRegistry
+from automaton.on_exit_expression_analyzer import OnExitExpressionAnalyzer
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.model import Action, EnvKey, Reaction, Signal, Source, State
 from project.archive.layout import BUNDLE_FILE_NAMES
@@ -398,9 +399,9 @@ def _compiled(table, text, kind):
         for action in actions:
             if action.trigger:
                 expressions[action.trigger] = None
-            for expression in (action.env or {}).values():
-                expressions[expression] = None
-            for _line, statement in TriggerExpressionAnalyzer.task_statements(action.on_exit or ""):
+            for _line, statement in OnExitExpressionAnalyzer.flattened_statements(
+                TriggerExpressionAnalyzer.task_statements(action.on_exit or "")
+            ):
                 assignment = (
                     TriggerExpressionAnalyzer.on_exit_assignment(statement)
                     or TriggerExpressionAnalyzer.task_assignment(statement)

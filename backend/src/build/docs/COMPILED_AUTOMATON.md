@@ -78,7 +78,6 @@ These are the whole of what a compiled automaton replaces.
 | Seam | Evaluates |
 | --- | --- |
 | `_eval_trigger` → `evaluate_triggers_action` | an action's `trigger` expression |
-| `eval_action_env` | an action's `env:` expressions |
 | `eval_action_on_exit` | an on-exit script's `env.<key> = …` lines and bare `chat.*` calls |
 | `render_task` → `render_task_script` | a `task:` script |
 
@@ -87,7 +86,7 @@ trigger whose referenced signals are not computed yet returns `False`
 silently, and any other failure returns `False` with a warning rather
 than propagating.
 
-All four are dispatched polymorphically from their call sites, so
+All three are dispatched polymorphically from their call sites, so
 overriding them in a subclass is enough — no caller branches on which
 kind of automaton it has.
 
@@ -429,7 +428,7 @@ Done:
 - `project-service.compiled-automaton` and `CompiledAutomatonLoader`
 - the compiler emitting data, prompts and archives, verified identical to
   the interpreted automaton on eight sample projects
-- the seams compiled: every trigger, `env:` expression, on-exit line and
+- the seams compiled: every trigger, on-exit line and
   task statement emitted as a real function, the three primitives
   overridden, nothing in a generated package evaluating a string
 - `bin/verify_compiled_seam.py`, which runs every expression of every
@@ -474,9 +473,9 @@ Open points:
 - **`State`/`Action` are frozen, their interiors are not.** `frozen=True`
   landed with no other change — nothing assigned to one, and the single
   place that alters an action already used `dataclasses.replace`. What it
-  does not cover is `Action.env` (a dict) and `State.actions` (a list):
-  the field cannot be rebound, what it points at can still be edited.
-  Turning those into tuples and a read-only mapping is the second step,
+  does not cover is `State.actions` (a list): the field cannot be
+  rebound, what it points at can still be edited. Turning it into a
+  tuple is the second step,
   and it does touch the builder and the compiler.
 - **A compiled product still cannot serve *alone*.** What works, proven
   end to end, is the platform serving a project from a package: upload,

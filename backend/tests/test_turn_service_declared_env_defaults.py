@@ -1,7 +1,7 @@
 """TurnService._backfill_declared_env_keys — every declared env key takes
 its type's own default (Automaton.env_defaults_action) when the automaton
 starts, in declaration order. A key that must start at anything else is
-written by the init-action, which then runs as an action: its own `env:`,
+written by the init-action, which then runs as an action: its own
 `on-exit`, `task` and one transition row.
 """
 from __future__ import annotations
@@ -25,12 +25,12 @@ PROJECT_ID = "proj"
 
 
 def _automaton(
-    env_keys: list[EnvKey], *, init_env: dict | None = None, init_on_exit: str | None = None,
+    env_keys: list[EnvKey], *, init_on_exit: str | None = None,
     init_task: str | None = None, new_session_strategy: str = "resume",
 ) -> Automaton:
     init_action = Action(
         name="init-action", ui_label="init-action", ui_button="", target="a",
-        env=init_env, on_exit=init_on_exit, task=init_task,
+        on_exit=init_on_exit, task=init_task,
     )
     state_a = State(input_processor="ai", key="a", ui_label="A", final=True, contextual_prompt="hi", actions=[])
     return Automaton(
@@ -147,12 +147,12 @@ async def test_a_key_present_only_in_memory_is_not_already_set_the_default_still
     assert _env_for(db).action_set() == {"a": 0}
 
 
-async def test_the_init_actions_own_env_and_on_exit_write_even_a_key_that_is_already_set(db):
+async def test_the_init_actions_own_on_exit_writes_even_a_key_that_is_already_set(db):
     """The declared defaults are backfilled first — a, b and c are all 0
     by the time init-action runs — and init-action writes a and b anyway."""
     turn_service = _turn_service(db, _automaton(
         [_number("a"), _number("b"), _number("c")],
-        init_env={"a": "10"}, init_on_exit="env.b = 11",
+        init_on_exit="env.a = 10\nenv.b = 11",
     ))
 
     await turn_service.enter_session(PROJECT_ID, 'live')

@@ -277,3 +277,55 @@ def test_eval_action_on_exit_collects_chat_snippets_alongside_env_updates():
     assert updates == {"counter": 6}
     assert chat_snippets == 'celebrate()\nnotify("Nice!", "Done.")'
     assert failures == ()
+
+
+def test_eval_action_on_exit_runs_only_the_branch_whose_condition_holds():
+    from automaton.automaton import Action
+    from automaton.scope import EvaluationScope
+    from tracking.actuators.chat_namespace import FakeChatNamespace
+
+    on_exit = (
+        "if env.counter > 10:\n"
+        "    env.flight = 'big'\n"
+        "elif env.counter > 3:\n"
+        "    label = 'mid'\n"
+        "    env.flight = label\n"
+        "    chat.celebrate()\n"
+        "else:\n"
+        "    env.flight = 'small'\n"
+        "env.counter = env.counter + 1"
+    )
+    automaton = _build(_go("        on-exit: |\n" + "".join(f"          {line}\n" for line in on_exit.splitlines())))
+    action = Action(name="go", ui_label="go", ui_button="go", target="b", on_exit=on_exit)
+
+    outcomes = []
+    for counter in (20, 5, 1):
+        scope = EvaluationScope({"env": {"counter": counter}, "chat": FakeChatNamespace(project_id="p")}, automaton=None, state_key="a")
+        outcomes.append(automaton.eval_action_on_exit(action, scope))
+
+    assert outcomes == [
+        ({"flight": "big", "counter": 21}, None, ()),
+        ({"flight": "mid", "counter": 6}, "celebrate()", ()),
+        ({"flight": "small", "counter": 2}, None, ()),
+    ]
+
+
+def test_on_exit_if_lets_a_later_line_read_a_local_only_when_every_branch_assigns_it():
+    both = "|\n          if env.counter > 1:\n            label = 'a'\n          else:\n            label = 'b'\n          env.flight = label\n"
+    assert _build(_go(f"        on-exit: {both}\n")).states["a"].actions[0].on_exit.rstrip().endswith("env.flight = label")
+
+    one = "|\n          if env.counter > 1:\n            label = 'a'\n          env.flight = label\n"
+    with pytest.raises(ValueError, match=r"on-exit line 3.*references undefined name\(s\): label"):
+        _build(_go(f"        on-exit: {one}\n"))
+
+
+@pytest.mark.parametrize(("on_exit", "match"), [
+    ("|\n          if env.counter:\n            env.unknown_key = 1", r"on-exit line 2.*env key 'unknown_key' is not declared"),
+    ("|\n          if row > 1:\n            chat.celebrate()", r"on-exit line 1.*references undefined name\(s\): row"),
+    ("|\n          if env.counter:\n            task.send_mail(user.email, 'hi')", r"on-exit line 2.*on-exit only supports"),
+    ("|\n          if user.name > 3:\n            chat.celebrate()", r"on-exit line 1"),
+])
+def test_build_rejects_an_on_exit_if_whose_condition_or_branch_is_invalid(on_exit, match):
+    with pytest.raises(ValueError, match=match):
+        _build(_go(f"        on-exit: {on_exit}\n"))
+

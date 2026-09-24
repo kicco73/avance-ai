@@ -26,16 +26,16 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-def _automaton(action_env: dict[str, str] | None = None, memory_scope: str = "none") -> Automaton:
-    """With `action_env`, `mood_score` is state "a"'s own `input` — the one
+def _automaton(written_keys: dict[str, str] | None = None, memory_scope: str = "none") -> Automaton:
+    """With `written_keys`, `mood_score` is state "a"'s own `input` — the one
     configuration under which an action-set env key ever reaches the
     model's prompt at all (see tracking.env_prompt_block)."""
     mood = Signal(name="mood", ui_label="Mood", definition="0-100 mood score.")
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50",
-        env=action_env,
+        on_exit="\n".join(f"env.{key} = {expression}" for key, expression in (written_keys or {}).items()) or None,
     )
-    input_names = tuple(action_env or {})
+    input_names = tuple(written_keys or {})
     state_a = State(
         input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action],
         input=input_names, ai_memory_scope=memory_scope,
@@ -52,7 +52,7 @@ def _automaton(action_env: dict[str, str] | None = None, memory_scope: str = "no
         signals=[mood],
         general_attachments={},
         autotracking_on_ai_message=False,
-        env_keys=[EnvKey(name=key, type="number") for key in (action_env or {})],
+        env_keys=[EnvKey(name=key, type="number") for key in (written_keys or {})],
     )
 
 
@@ -150,7 +150,7 @@ async def test_regeneration_prompt_includes_existing_memory_and_the_firing_actio
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
         start_state="a", end_state="a",
     )
-    automaton = _automaton(action_env={"mood_score": "signal.mood"}, memory_scope="global")
+    automaton = _automaton(written_keys={"mood_score": "signal.mood"}, memory_scope="global")
     ai_service = RecordingSchemaAiService()
     project_service = FixedProjectContext(project_id=PROJECT_ID)
     metrics = MetricService(db, project_service)

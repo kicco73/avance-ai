@@ -1,6 +1,6 @@
 """A state's own `output` (see automaton.State.output) is copied
 automatically onto the real env keys it names once the turn completes —
-no action.env needed — and the fresh value is already visible to this
+no on-exit write needed — and the fresh value is already visible to this
 same turn's own trigger evaluation (see tracking.evaluation_scope).
 """
 from __future__ import annotations
@@ -27,9 +27,9 @@ USERNAME = "user"
 PROJECT_ID = "proj"
 
 
-def _automaton(*, trigger: str | None = None, action_env: dict | None = None, on_exit: str | None = None) -> Automaton:
+def _automaton(*, trigger: str | None = None, on_exit: str | None = None) -> Automaton:
     action = Action(
-        name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger, env=action_env,
+        name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger,
         on_exit=on_exit,
     )
     state_a = State(
@@ -140,7 +140,7 @@ async def test_a_trigger_this_same_turn_already_sees_the_fresh_output_value(db):
 
 
 async def test_the_turn_reports_every_key_it_wrote_whoever_wrote_it(db):
-    automaton = _automaton(trigger="env.status == 'done'", action_env={"seen": "True"})
+    automaton = _automaton(trigger="env.status == 'done'", on_exit="env.seen = True")
     processor, _, _ = _processor(db, automaton, {"status": "done", "confidence": 90.0})
 
     result = await processor.process("hello")
@@ -172,11 +172,3 @@ async def test_on_exit_is_authoritative_over_the_models_output_on_the_same_key(d
     assert env.action_set()["status"] == "verified"
     assert result["env_changed"]["status"] == "verified"
 
-
-async def test_action_env_is_authoritative_over_the_models_output_on_the_same_key(db):
-    automaton = _automaton(trigger="env.status == 'done'", action_env={"status": "'verified'"})
-    processor, _, env = _processor(db, automaton, {"status": "done", "confidence": 90.0})
-
-    await processor.process("hello")
-
-    assert env.action_set()["status"] == "verified"

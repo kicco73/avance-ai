@@ -105,8 +105,8 @@ of its own.
 | `signals` | no | mapping (name → signal) | `{}` | Numeric values the model estimates each turn. §3. |
 | `general-prompt` | no | string | `""` | Appended to a state's `contextual-prompt` for a normal reply. Never sent to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `attachments` | no | list of filenames | `[]` | Global attachments, sent with every call that also sends `general-prompt`. §6. |
-| `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` a trigger/env expression may reference. Whether/how the model sees or sets a given key is decided per state, by that state's own `input`/`output` (§4.3) — never a property of the key itself. An action's `env:` (§5.3) can only update a key declared here. |
-| `sources` | no | mapping (name → fields) | `{}` | Declares every `source.<name>` a trigger/env expression may reference, and the model may read/write as a tool. §5.2. |
+| `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` a trigger or script may reference. Whether/how the model sees or sets a given key is decided per state, by that state's own `input`/`output` (§4.3) — never a property of the key itself. An `on-exit` `env.<key> = …` line (§5.3bis) can only update a key declared here. |
+| `sources` | no | mapping (name → fields) | `{}` | Declares every `source.<name>` a trigger or script may reference, and the model may read/write as a tool. §5.2. |
 | `project` | no | mapping | — | Identity/display metadata + auto-tracking mode. §1.1. |
 
 Any other top-level key is a build error, with one exception: a
@@ -137,7 +137,7 @@ project:
 | `ui-label` | no | string | — | The only "name" ever shown to a user; `id` is never displayed. |
 | `ui-description` | no | string | — | Shown in the frontend. |
 | `signal-tracking-on-ai-message` | no | boolean | `false` | `false`: auto-tracking runs after the user's message, before the reply. `true`: runs after the reply instead (may reuse model-reported inline values, §3.2). Concerns `ai` states only — a `system` state (§4.1) runs no turn. |
-| `new-session-strategy` | no | `resume` \| `restart` | `resume` | What a **new live session** of a returning user inherits. `resume`: it opens in the state the previous session left, every env key and the model's own `global` memory (§5.3) intact, and nothing fires — unless the automaton has never run for that user in a live session, which is the automaton starting and fires `init-action` (§7). `restart`: it opens in `init-action.target` with the env keys and the `global` memory wiped — the declared defaults and `init-action`'s own `env:` apply afresh, and its `task` fires again (§7). Either way, a `local`-scope memory never carries over to a new session regardless: it's per-session by definition (§4). Test and preview sessions always start from `init-action`, whatever this says. |
+| `new-session-strategy` | no | `resume` \| `restart` | `resume` | What a **new live session** of a returning user inherits. `resume`: it opens in the state the previous session left, every env key and the model's own `global` memory (§5.3) intact, and nothing fires — unless the automaton has never run for that user in a live session, which is the automaton starting and fires `init-action` (§7). `restart`: it opens in `init-action.target` with the env keys and the `global` memory wiped — the declared defaults and `init-action`'s own `on-exit` apply afresh, and its `task` fires again (§7). Either way, a `local`-scope memory never carries over to a new session regardless: it's per-session by definition (§4). Test and preview sessions always start from `init-action`, whatever this says. |
 | `services` | no | mapping (service name → level) | `{}` | What this project asks of each platform service it can reach. §1.2. |
 
 ### 1.2 `project.services:`
@@ -214,9 +214,14 @@ signals:
 **3.1 Computation.** Signals are requested inline, as part of the same
 structured reply a normal chat turn already produces — there is no
 separate model call for them. Which signals a turn requests is the
-current state's `signal-tracking-strategy` (§4): with `relevant`, only the ones
-its own actions read (a state with no such actions asks for none); with
-`all`, every declared signal. When it requests any, the system prompt lists
+current state's `signal-tracking-strategy` (§4): with `relevant`, every
+`signal.<name>` its own actions cite anywhere in their scripts — `trigger`,
+`on-exit` (the whole script, `if`/`elif` conditions and bare `chat.*` calls
+included) and `task` (`task.defer` lambda bodies included); a state whose
+actions cite none asks for none. A value an `on-exit` or `task` computes
+from a signal is thus the same under `relevant` as under `all`. A `task`
+sees the values frozen when its action fired: it runs later, off the
+request, against a snapshot (§5.4). With `all`, every declared signal. When it requests any, the system prompt lists
 every requested signal's `name`+`definition`, and that signal's own
 `attachments` (deduplicated against global/state attachments already
 being sent, §6) ride along with the very same turn. The model's reply
@@ -261,7 +266,7 @@ states:
 | `chat-enabled` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation, and the chat shows no text input line. Independent of `final`. Always `false` in a `system` state, whatever is declared. An `ai` state that takes no messages (this `false`, or `final`) reached by a trigger that fired after the reply (`signal-tracking-on-ai-message: true`) takes its turn right away, as its own message — the same as when a manual action reaches it; nothing else could ever prompt it. |
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
-| `signal-tracking-strategy` | no | `relevant` \| `all` | `relevant` | Which signals a turn in this state computes (§3.1). `relevant`: only the ones this state's own actions read — in a `trigger`, an `env:` expression or an `on-exit` assignment. `all`: every declared signal, whether or not anything here reads it — for a state whose signals feed a later state, a metric, or a report rather than its own triggers. |
+| `signal-tracking-strategy` | no | `relevant` \| `all` | `relevant` | Which signals a turn in this state computes (§3.1). `relevant`: every signal this state's own actions cite in a `trigger`, `on-exit` or `task`. `all`: every declared signal, whether or not an action here cites it — for a state whose signals feed a later state, a metric, or a report rather than its own actions. |
 | `ai-memory-scope` | no | `none` \| `local` \| `global` | `none` | Which memory a turn in this state reads and writes (§5.3) — a property of *this* state, not of the transition landing on it. `none`: the memory channel isn't even offered to the model — nothing shown, nothing parsed back, nothing kept. `global`: the shared, project+user-persistent store every session of that pair sees, unaffected by which states came before it. `local`: a fresh, empty memory that starts the moment a transition lands here (a self-loop counts as landing again, as for `history-cutoff`) and is destroyed the moment the session leaves this state — isolated from `global`, which a `local` visit never reads from or writes into. The automaton's `env:` keys are untouched by any of the three. |
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
@@ -275,7 +280,7 @@ states:
 
 `system` is the automaton alone. No turn runs in such a state: no model
 call, no auto-tracking, no signals — `signal.*` is not defined in any of
-its scripts (`trigger`, `env`, `on-exit`, `task`), and a build refuses a
+its scripts (`trigger`, `on-exit`, `task`), and a build refuses a
 reference to it. A chat message is refused as in any `chat-enabled:
 false` state; what moves the conversation on is a manual action or a
 choice (§5.2, `choice.<key>`), whose triggers are evaluated when the
@@ -370,7 +375,7 @@ and independent of `ai-may-read-sources`/`ai-must-read-sources` above
   invalidate the cacheable prefix. A state with an empty `input` gets no
   block at all — not even empty. There is no model-facing write path
   through this block: the model is told to change these only through
-  `output` below (or wait for an action's own `env:` script), never by
+  `output` below (or wait for an action's own `on-exit`), never by
   restating them in its `memory` field — a *declared* key named there is
   discarded outright.
 - **`output`** — the model's own structured reply carries a separate
@@ -382,7 +387,7 @@ and independent of `ai-may-read-sources`/`ai-must-read-sources` above
   Once the turn completes, every reported name that's actually in this
   state's `output` is copied onto the real env key — anything else the
   model reports under `output` is ignored. That copy lands *before* the
-  action this turn fires runs its own `env:`/`on-exit` (§5.3, §5.3bis):
+  action this turn fires runs its own `on-exit` (§5.3bis):
   the model proposes, the script decides — an `on-exit` assignment to a
   key the model also reported is the value that stays.
   Requested *before* the reply text only when this state has a
@@ -412,10 +417,10 @@ actions:
     trigger: "signal.mood >= 70 and engagement >= 20"
     task: |
       line = task.prompt('Write a short celebratory one-liner.')
-    on-exit: chat.celebrate()
-    env:
-      reset_counter: True
-      number_of_steps: env.number_of_steps + 1
+    on-exit: |
+      env.reset_counter = True
+      env.number_of_steps = env.number_of_steps + 1
+      chat.celebrate()
 ```
 
 | Field | Required | Type | Default | Meaning |
@@ -424,8 +429,7 @@ actions:
 | `target` | no | string | this action's own state | Destination state; must be a real key (or the current state itself). Omitted/self-referential ⇒ self-loop: only the action's own effects happen. Fired manually (a button, a choice) in an `ai` state, nobody answers — no model call, no message, since nothing new was said; in a `system` state the reply is what its `on-exit` wrote (§4.1), as for any action reaching that state. |
 | `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
 | `task` | no | string | `None` | One or more `task.<name>(...)` calls, one per line — side effect of firing, run in the background off the request (§5.4). Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
-| `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, `name = expression` locals and/or bare `chat.<method>(...)` calls, one per line — same timing as `env:` (and its future replacement for the write half), run synchronously, in this same request. §5.3bis. |
-| `env` | no | mapping key → expression | `None` | Updates the project's environment memory when this action fires. §5.3. Legacy — new actions should write the same updates as `on-exit` lines instead. |
+| `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, `name = expression` locals and/or bare `chat.<method>(...)` calls, one per line, optionally inside `if`/`elif`/`else` — run synchronously, in this same request. §5.3bis. |
 | `ui-label` | no | string | `name` | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, then `name` | Manual-action button text. |
 | `ui-description` | no | string | `None` | Shown in the frontend. |
@@ -477,7 +481,7 @@ len(env.notes) > 0
 | `user.<name>` | Current user's account field (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute |
 | `source.<name>.<method>(...)` | A source declared in top-level `sources:` — below | method call, e.g. `.select_rows_containing(...)` |
 | `datetime.<name>` | Python's `datetime`/`timedelta`/`timezone` only, mainly for `task.defer`'s `when` | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)` |
-| `choice.<key>` | `<key>` an env key declared of type `list` (§5.3): the option just pressed, for the one trigger evaluation the press starts — `""` in every other evaluation and under every other `list` key. Exactly `choice.<key>`, in `trigger:`, `env:` and `on-exit:` — never in `task:`, which runs later, against a scope of its own | attribute |
+| `choice.<key>` | `<key>` an env key declared of type `list` (§5.3): the option just pressed, for the one trigger evaluation the press starts — `""` in every other evaluation and under every other `list` key. Exactly `choice.<key>`, in `trigger:` and `on-exit:` — never in `task:`, which runs later, against a scope of its own | attribute |
 
 A **bare** name is only ever a core metric (§2) — nothing else may appear
 unnamespaced. An installed feature may declare one more namespace of its
@@ -485,12 +489,12 @@ own for `trigger:` (its own section of this document says which, and what
 it holds); a build without that feature refuses the reference as an
 undefined name. `task.<name>(...)` is reserved but only valid inside
 `task:` (§5.4); `chat.<name>(...)` is reserved but only valid inside
-`on-exit:` (§5.3bis) — neither is available in `trigger:`/`env:`, and
+`on-exit:` (§5.3bis) — neither is available in `trigger:`, and
 each is off-limits to the other's own script.
 
 **Data sources.** A project declares its own named sources under a
-top-level `sources:` mapping — each one a handle a trigger/env
-expression addresses as `source.<name>.<method>(...)`:
+top-level `sources:` mapping — each one a handle a trigger or
+script addresses as `source.<name>.<method>(...)`:
 
 ```yaml
 sources:
@@ -563,7 +567,7 @@ of source kinds: method support is the whole compatibility story.
   number (`int` or `float`) when the cell reads as one, the raw string
   otherwise; `""` if no row matches, an error *text* if `key` isn't a
   real column.
-  Scripts and trigger/env: expressions only — never exposed to the model,
+  Scripts and triggers only — never exposed to the model,
   which reads through the `select_rows_*` tools instead.
   `source.pino.value('VY3003', key='flight')` reads one field without
   parsing a table.
@@ -571,7 +575,7 @@ of source kinds: method support is the whole compatibility story.
   the same filter as `select_rows_containing`, as a **list** (no values
   at all: the whole column); `[]` if no row matches, if `column` isn't a
   real column, or if the result would exceed the size bound. Scripts and
-  trigger/env: expressions only — never exposed to the model.
+  triggers only — never exposed to the model.
   `'ABC-1' in source.casos.column('archivo')` is a membership check, and
   `env.casos = source.casos.column('archivo')` keeps the list.
 - `select_subtable(*columns)` — the named columns of **every** row, as a
@@ -580,13 +584,13 @@ of source kinds: method support is the whole compatibility story.
   `{'caso': [1, 2], 'titulo': ['Ana', 'Luis']}`; `{}` if the file has
   no row at all, if any column isn't real, or if the result would
   exceed the size bound. Scripts and
-  trigger/env: expressions only — never exposed to the model. This is
+  triggers only — never exposed to the model. This is
   the shape `chat.write_table` (§5.3bis) takes.
 - `row_where(column, operator, value, *strings)` — the *first* row
   `select_rows_where` would return, as a **dict** (`{column: cell}`, every
   column of the file); `{}` if no row matches, if `column` or `operator`
   isn't real, or if the row would exceed the size bound. Scripts and
-  trigger/env: expressions only — never exposed to the model.
+  triggers only — never exposed to the model.
   `env.caso = source.casos.row_where('caso', '=', 1)` keeps one whole
   record, and the prompt's env block renders it as JSON.
 
@@ -668,8 +672,8 @@ with two different owners, and the names are load-bearing:
   and writes a store that starts empty on entry and is gone on exit,
   never touching `global`.
 - **env** — the automaton's declared variables: the project's top-level
-  `env:` keys, deterministic, written by an action's own `env:` field
-  (below) — or, for a key some state lists in its own `output` (§4.3), by
+  `env:` keys, deterministic, written by an action's own `on-exit`
+  (§5.3bis) — or, for a key some state lists in its own `output` (§4.3), by
   the model's own structured reply — and read by triggers, scripts
   (`env.<name>`) and, where a state's own `input` lists it (§4.3), the
   model. `session` facts (§5.2) are never part of either.
@@ -697,17 +701,19 @@ env:
 A key declares what it holds and nothing else: it takes no `value`, and a
 `value` field fails the build like any other unknown one. Every key starts
 at its type's own default — `0`, `""`, `False`, `[]` — applied once, in
-declaration order, the first time a session opens; a key that must start
-at anything else is written by the init-action's own `env:` (§7).
+declaration order, through a synthetic `env.<key> = <default>` on-exit
+line for every declared key a session does not hold yet when it starts
+(§7); a key that must start at anything else is written by the
+init-action's own `on-exit` (§7).
 
-An action's `env:` can only update a key declared here, never invent one
+An `on-exit` line can only write a key declared here, never invent one
 (fails build validation otherwise). Declaring a key here doesn't by
 itself update it on any turn. Whether the model ever sees or sets a given
 key is decided entirely per state, by that state's own `input`/`output`
 (§4.3) — never a property of the key itself.
 
 **List keys.** A `list` key holds a list of strings a script writes (an
-action's `env:` or `on-exit`) — the options on offer when a trigger
+action's `on-exit`) — the options on offer when a trigger
 reads it through `choice.<key>`, or any list a script keeps for its own
 use. A list never reaches the model: a `list` key in a state's
 `input`/`output` fails the build. Its `ai-definition` is read only by
@@ -718,7 +724,7 @@ actions (see BUS.md, `state.buttons`). Pressing one writes nothing: the
 option is the value of `choice.<key>` for the single trigger evaluation
 the press starts — `""` everywhere else, in every other evaluation and
 under every other `list` key — and the first action whose trigger
-answers transitions as a manual action does, its own `env:` and
+answers transitions as a manual action does, its own
 `on-exit` reading the same `choice.<key>`. No trigger answering, nothing
 happens. The pattern:
 
@@ -735,13 +741,11 @@ states:
       - name: offer
         target: pick
         trigger: "env.slot == []"
-        env:
-          slot: "['morning', 'evening']"
+        on-exit: env.slot = ['morning', 'evening']
       - name: book
         target: booked
         trigger: "choice.slot != ''"
-        env:
-          booked_slot: choice.slot
+        on-exit: env.booked_slot = choice.slot
 ```
 
 **Profiles.** A `list` key may hold, instead of strings, a list of
@@ -772,25 +776,23 @@ discarded like any other value outside its type (below).
       - name: offer
         target: pick
         trigger: "env.hero == []"
-        env:
-          hero: >
-            [{'title': 'Ada', 'picture_url': '/ada.png',
-              'description': 'The analyst.', 'key': 'ada'},
-             {'title': 'Grace', 'picture_url': '/grace.png',
-              'description': 'The admiral.', 'key': 'grace'}]
+        on-exit: |
+          env.hero = [{'title': 'Ada', 'picture_url': '/ada.png',
+                       'description': 'The analyst.', 'key': 'ada'},
+                      {'title': 'Grace', 'picture_url': '/grace.png',
+                       'description': 'The admiral.', 'key': 'grace'}]
       - name: chosen
         target: play
         trigger: "choice.hero != ''"
-        env:
-          hero_key: choice.hero
+        on-exit: env.hero_key = choice.hero
 ```
 
 **The type is enforced twice.** At build, every expression that writes a
-key — an action's `env:` entry, an `on-exit` assignment, the key's own
+key — an `on-exit` assignment, the key's own
 `value` — is compared with the declared `type` whenever its kind is
 statically known (`"42"` into a `string` key fails; `env.other` is not
 knowable ahead of a turn and passes). At run time, every value an
-action's `env:` or `on-exit` produces is checked against the declared
+action's `on-exit` produces is checked against the declared
 type before it is written: `number` takes an `int` or `float` and never
 a bool, `string` a `str`, `bool` a `bool`, `list` a list whose
 elements are all strings or all profiles. A value outside its type is treated exactly
@@ -849,57 +851,17 @@ per (project, user), so it never survives past the session that collected
 it regardless of `new-session-strategy` — every transition empties it
 outright, landing on the same `local` state again included (§4).
 
-**Action `env`.**
-
-Each `env:` entry is `key: expression`, same namespaced scope/mechanics
-as `trigger` (§5.2) minus the boolean cast — any simple value (string,
-number, bool, `None`, ...):
-
-```yaml
-    actions:
-      - name: advance
-        target: b
-        trigger: "signal.mood >= 70"
-        env:
-          reset_counter: True
-          number_of_steps: env.number_of_steps + 1
-```
-
-Self-referencing a key this same mapping also writes (`number_of_steps`
-above) is common and always valid — it reads that key's last stored value
-from *before* this action fired.
-
-Writes only happen as a side effect of the action actually firing
-(manual, or the exact moment its `trigger` turns `true`) — never merely
-from having a `trigger` that stays `false`. Same build-time validation as
-`trigger` (syntax + unknown-name). At evaluation time, a failure (a
-recognized-but-never-set `env.<name>`, a runtime error) is logged and
-that key's previous value is left untouched — one bad key never blocks
-the rest of the mapping. Updates merge onto the store and land **before**
-anything else that turn generates a reply (this action's own `task`,
-the destination state's opening message, or a normal chat turn) — the
-very next prompt already reflects it.
-
-Persisted separately from the model's own memory; only this action-set
-store feeds a trigger's `env.<name>`. The action-set one is never
-directly editable in the Inspector — only ever a side effect of its
-action firing again, or of the model's own `output` report on a key some
-state lists (§4.3).
-
-**5.3bis Action `on-exit`.** The future replacement for `env:` above,
-plus a second statement shape of its own — one or more statements, one
+**5.3bis Action `on-exit`.** One or more statements, one
 per non-blank line, split with `task`'s own statement grammar
 (`TriggerExpressionAnalyzer.task_statements`: a single call may itself
 span several lines, and a `#` comment just works). Each line is
 **either**:
 
-- an `env.<key> = expression` assignment — the future replacement for
-  the `env:` mapping above: same env-write contract (the key must
-  already be declared under top-level `env:`, same "one bad key never
-  blocks the rest" evaluation-time failure handling, same "lands before
-  anything else that turn generates a reply" timing), same namespaced
-  scope/mechanics as `trigger`/`env` (§5.2, minus the boolean cast) —
-  unlike a `env:` mapping entry, an accepted write lands in place right
+- an `env.<key> = expression` assignment — the one way a script
+  writes the env (§5.3): the key must already be declared under
+  top-level `env:`, the expression has the namespaced scope/mechanics of
+  `trigger` (§5.2) minus the boolean cast — any simple value (string,
+  number, bool, `None`, ...). An accepted write lands in place right
   away: a *later* line's own `env.<key>` read (another assignment's RHS,
   a local, a `chat.<method>(...)` argument) sees the value this line
   just wrote, never the one from before this action fired — on-exit is
@@ -909,7 +871,13 @@ span several lines, and a `#` comment just works). Each line is
   read by a *later* line, and is dropped once the script ends — it never
   reaches the env, the task that follows, or the next turn; **or**
 - a bare `chat.<method>(...)` call — `on-exit`'s own side effect,
-  described below.
+  described below; **or**
+- an `if condition:` block, with any `elif`/`else` — each branch holds
+  lines of these same shapes, nested `if` included, and only the first
+  branch whose condition holds runs. A local assigned inside a branch is
+  readable after the block only when every branch, `else` included,
+  assigns it. A condition that raises is a failure like any other line,
+  and no branch runs.
 
 Unlike `task` (§5.4), no `task.<name>(...)` calls: `task:`'s own
 `task.<name>(...)` calls stay off-limits, that remains `task`'s own
@@ -960,12 +928,21 @@ content from, for `chat.show_media` (above) to hand to the browser, e.g.
           chat.notify('Nice!', 'You reached **state B** in ' + str(steps) + ' steps.')
 ```
 
-An action may declare `env:` and `on-exit` at once (only already-published
-YAML predating `on-exit` should still have a reason to); should both
-write the same key, `on-exit`'s own value wins.
+Env writes only happen as a side effect of the action actually firing
+(manual, or the exact moment its `trigger` turns `true`) — never merely
+from having a `trigger` that stays `false`. At evaluation time, a failing
+assignment (a recognized-but-never-set `env.<name>`, a runtime error) is
+logged and that key's previous value is left untouched — one bad line
+never blocks the rest of the script. Writes land **before** anything else
+that turn generates a reply (this action's own `task`, the destination
+state's opening message, or a normal chat turn) — the very next prompt
+already reflects them. The env is persisted separately from the model's
+own memory and is never directly editable in the Inspector — only ever
+written by an action firing, or by the model's own `output` report on a
+key some state lists (§4.3).
 
 **`chat.*`** is `on-exit`'s own namespace — reachable only here, never
-from `trigger:`/`env:`/`task:`. Unlike `task:`'s own script (§5.4),
+from `trigger:`/`task:`. Unlike `task:`'s own script (§5.4),
 every `on-exit:` script — its own env writes and its own `chat.*`
 calls alike — runs **synchronously, in the same request that fired the
 action**, never hibernated as a background job: `chat.*` has no
@@ -1078,8 +1055,8 @@ same suppress-and-report contract `task:`'s own real side effects get
 have no real-world side effect to suppress, so they always run.
 
 **5.4 Action `task`.** One or more statements, one per non-blank
-line, same namespaced scope as `trigger`/`env` (§5.2) as a firing side
-effect, same timing as `env:` — except it additionally sees `task`
+line, same namespaced scope as `trigger` (§5.2) as a firing side
+effect, fired at the same moment as `on-exit` — except it additionally sees `task`
 and does **not** see `session.*`/`session.metric.*` (a call may be
 deferred past the firing session's own lifetime, so the whole scope is
 built without a session rather than allowing it selectively) or
@@ -1099,7 +1076,7 @@ task: |
 ```
 
 **Every task script runs as a task, never inside the request that
-fired it.** The transition and the action's `env:` writes are applied
+fired it.** The transition and the action's `on-exit` writes are applied
 synchronously (they feed the very next prompt); the script itself is
 hibernated in the database as a task due immediately and executed by a
 background worker — a `task.*` call is a model call or a network call,
@@ -1275,20 +1252,20 @@ init-action:
 | --- | --- | --- | --- |
 | `target` | **yes** | string | Starting state — must be a real key under `states:`. |
 | `task` | no | string | Same mechanics as any action's (§5.4), scheduled as a task (delivered over the websocket) each time init-action fires. |
-| `on-exit` | no | string | Same mechanics as any action's (§5.3bis), run each time init-action fires. When `target` is a `system` state (§4.1), its `chat.write(...)` is the opening message. |
-| `env` | no | mapping key → expression | Same mechanics as any action's (§5.3), applied each time init-action fires — the place to reset a key a previous case left behind. It writes the key whether or not it already has a value. |
+| `on-exit` | no | string | Same mechanics as any action's (§5.3bis), run each time init-action fires — the place to reset a key a previous case left behind: it writes the key whether or not it already has a value. When `target` is a `system` state (§4.1), its `chat.write(...)` is the opening message. |
 
 A mapping, not a list item — otherwise a regular action with no
 `name`/`ui-label`/`trigger` (fixed internally).
 
 **It is an action, executed as one.** The init-action goes through the
 same transition path every other action does, in the same order: its
-`env:` and `on-exit` are evaluated against one scope and written, its
+`on-exit` is evaluated and written, its
 `task` is scheduled, and a transition row from the implicit initial
 state `""` to `target` is recorded with origin `init-action`. Before it
 fires, every declared key that has no value yet is backfilled with its
-own default (§5.3) — a separate, implicit action of its own, so the
-init-action's `env:` may read the defaults and override them.
+own default (§5.3) — a separate, implicit action of its own, whose
+`on-exit` is one `env.<key> = <default>` line per missing key, so the
+init-action's own `on-exit` may read the defaults and override them.
 
 **When it fires.** At one moment only: the creation of a session, before
 anything has looked at that session's state. A test or preview session
@@ -1342,7 +1319,6 @@ of how you're likely to hit them:
 - Every action's `trigger` compares a `signal.<name>` only against a
   number between 0 and 100 (§5.2) — the domain every signal value is
   coerced to (§3.1).
-- Every action's `env`, if given: a mapping, each expression validated the same way as `trigger`.
 - Every action's `task`, if given: one `task.<name>(...)` call (or
   `name = <expr>` assignment — §5.4) per non-blank line, validated the
   same way plus its own argument-count check; an assignment's `name` may
@@ -1351,7 +1327,7 @@ of how you're likely to hit them:
 - Every action's `on-exit`, if given: one `env.<key> = expr` assignment,
   `name = expr` local or bare `chat.<method>(...)` call per non-blank
   line — §5.3bis — each env assignment's `key` already declared under
-  top-level `env:` and its expression validated the same way as `env:`'s
+  top-level `env:` and its expression validated the same way as `trigger`'s
   own (including its type-consistency check against that key's declared
   default), each local under task's own rules (no reserved name, read
   only by a later line), each `chat.*` call validated the same way plus
@@ -1398,7 +1374,8 @@ underneath it is not left for a person when it does not have to be.
 `automaton/deprecations.py` is the list of spellings that still have an
 exact meaning today — `project.talk-enabled` is `services: {talk: …}`,
 an action's `actuator`/`on-enter` is its `task`, its `action-prompt` is a
-`task.prompt(...)` call in that `task`, a state's `chat` is
+`task.prompt(...)` call in that `task`, its `env:` mapping is
+`env.<key> = <expr>` lines prepended to its `on-exit`, a state's `chat` is
 `chat-enabled`, its `on-enter` is the `task` of every action that reaches
 it, its `ai-memory-strategy` is `ai-memory-scope` (`keep`/`clear` renamed
 to `global`/`local`, §4), an env key's `ai-access`/`ui-label`/`value` are

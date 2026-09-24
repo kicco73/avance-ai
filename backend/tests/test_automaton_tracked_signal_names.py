@@ -43,30 +43,40 @@ def _automaton(
 @pytest.mark.parametrize(("actions", "signals", "expected"), [
     ([_action("advance", trigger="signal.mood >= 50")], [MOOD], {"mood"}),
     ([_action("advance", trigger="signal.mood >= 50")], [MOOD, UNUSED], {"mood"}),
-    ([_action("advance", env={"last_mood": "signal.mood"})], [MOOD], {"mood"}),
+    ([_action("advance", on_exit="env.last_mood = signal.mood")], [MOOD], {"mood"}),
     (
-        [_action("advance", trigger="signal.mood >= 50", env={"last_stability": "signal.stability"})],
+        [_action("advance", trigger="signal.mood >= 50", on_exit="env.last_stability = signal.stability")],
         [MOOD, STABILITY], {"mood", "stability"},
     ),
     (
         [_action("a1", trigger="signal.mood >= 50"), _action("a2", trigger="retention >= 1 and signal.stability >= 1")],
         [MOOD, STABILITY], {"mood", "stability"},
     ),
-    ([_action("a1", env={"reset": "True"}), _action("a2", trigger="signal.mood >= 50")], [MOOD], {"mood"}),
+    ([_action("a1", on_exit="env.reset = True"), _action("a2", trigger="signal.mood >= 50")], [MOOD], {"mood"}),
     ([_action("advance", trigger="engagement >= 1")], [MOOD], set()),
     ([_action("advance")], [MOOD], set()),
     ([], [MOOD], set()),
-    ([_action("advance", env={"reset_counter": "True"})], [MOOD], set()),
+    ([_action("advance", on_exit="env.reset_counter = True")], [MOOD], set()),
     (
-        [_action("advance", env={"number_of_steps": "env.number_of_steps + 1", "last_engagement": "engagement"})],
+        [_action("advance", on_exit="env.number_of_steps = env.number_of_steps + 1\nenv.last_engagement = engagement")],
         [MOOD], set(),
     ),
+    (
+        [_action("advance", trigger="1", on_exit="if signal.mood > 1:\n    env.x = 1\nelse:\n    chat.say(signal.stability)")],
+        [MOOD, STABILITY], {"mood", "stability"},
+    ),
+    ([_action("advance", trigger="1", task="task.send_mail(user.email, signal.mood)")], [MOOD], {"mood"}),
+    (
+        [_action("advance", trigger="1", task="task.defer(lambda: task.send_mail(user.email, signal.mood), when)")],
+        [MOOD], {"mood"},
+    ),
 ], ids=[
-    "trigger", "excludes-unreferenced-signal", "env-only", "trigger-and-env-same-action",
-    "several-actions", "env-on-one-trigger-on-another", "metric-name", "no-trigger",
-    "final-state", "literal-env", "metric-or-env-key-in-env",
+    "trigger", "excludes-unreferenced-signal", "on-exit-only", "trigger-and-on-exit-same-action",
+    "several-actions", "on-exit-on-one-trigger-on-another", "metric-name", "no-trigger",
+    "final-state", "literal-on-exit", "metric-or-env-key-in-on-exit",
+    "on-exit-if-and-call", "task", "task-defer",
 ])
-def test_only_signals_a_states_own_triggers_or_env_expressions_reference_are_reported(actions, signals, expected):
+def test_only_signals_a_states_own_scripts_reference_are_reported(actions, signals, expected):
     assert _automaton(signals, actions).tracked_signal_names("a") == expected
 
 

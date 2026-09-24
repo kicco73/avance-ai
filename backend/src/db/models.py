@@ -25,6 +25,7 @@ class Project(BaseModel):
     manually_paused = BooleanField(default=False)
     ui_label = TextField(null=True)
     ui_description = TextField(null=True)
+    published_skills = TextField(null=True)
 
     class Meta:
         table_name = 'Project'

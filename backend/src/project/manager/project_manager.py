@@ -11,6 +11,7 @@ from automaton.automaton_builder import AutomatonBuilder
 from automaton.build_error import AutomatonBuildError
 from turn.sessions.session_manager import SessionManager
 from db import Db
+from system import skills
 from system.logging_factory import LoggerFactory
 from system.project_locks import ProjectLocks
 from system.web_session import WebSession
@@ -200,6 +201,8 @@ class ProjectManager:
             self._automaton_loader.invalidate_cache(project_id)
 
         self._db.publish_project(project_id)
+        sources = ArchiveLayout.decode_text(self._db.get_archives(project_id))
+        self._db.set_published_skills(project_id, skills.required_for(draft, sources))
         return self._inspector.get_project_revision_info(project_id)
 
     async def revert_to_published(self, project_id: str) -> dict:

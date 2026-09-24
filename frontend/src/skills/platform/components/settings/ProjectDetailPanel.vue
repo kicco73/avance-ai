@@ -89,7 +89,7 @@ onBeforeUnmount(async () => {
       </div>
     </div>
     <div class="project-detail-badges">
-      <span class="project-detail-badge">MULTILINGUAL</span>
+      <span v-for="skill in app.skills ?? []" :key="skill.key" class="project-detail-badge">{{ skill.ui_label }}</span>
       <span v-if="app.reactions_enabled" class="project-detail-badge">REACTIONS</span>
       <span v-if="app.compiled" class="project-detail-badge">COMPILED</span>
     </div>

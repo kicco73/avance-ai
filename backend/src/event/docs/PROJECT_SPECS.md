@@ -18,7 +18,7 @@ Only a **self-loop** action's own `trigger:` may reference `event.*` —
 an action whose target is the state it is already in. A watcher is being
 told something changed elsewhere, not being driven from elsewhere, so it
 may act on its own state and may not be moved out of it by a project it
-does not belong to. Anywhere else (`task:`, `on-exit:`, `env:`, a
+does not belong to. Anywhere else (`task:`, `on-exit:`, a
 non-self-loop trigger) the reference is refused at build time.
 
 The reading is not only done on the watcher's own turns: the moment the

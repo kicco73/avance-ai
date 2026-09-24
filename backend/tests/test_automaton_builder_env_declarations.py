@@ -49,13 +49,13 @@ def test_the_env_defaults_action_carries_each_keys_own_type_default_in_declarati
     )
     action = automaton.env_defaults_action
     assert action.name == ENV_DEFAULTS_ACTION_NAME
-    assert action.env == {"visits": "0", "name": "''", "flag": "False", "slot": "[]", "total": "0"}
-    assert action.task is None and action.on_exit is None
+    assert action.on_exit == "env.visits = 0\nenv.name = ''\nenv.flag = False\nenv.slot = []\nenv.total = 0"
+    assert action.task is None
     declarable = ("number", "string", "bool", "list")
     assert {name: ENV_TYPE_DEFAULTS[name] for name in declarable} == {
         "number": 0, "string": "", "bool": False, "list": [],
     }
-    assert _build("").env_defaults_action.env is None
+    assert _build("").env_defaults_action.on_exit is None
 
 
 @pytest.mark.parametrize(("env_yaml", "match"), [

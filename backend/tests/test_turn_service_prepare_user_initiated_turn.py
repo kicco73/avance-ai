@@ -23,8 +23,8 @@ pytestmark = pytest.mark.regression
 PROJECT_ID = "proj"
 
 
-def _automaton(*, final: bool, env: dict | None = None) -> Automaton:
-    init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a", env=env)
+def _automaton(*, final: bool, on_exit: str | None = None) -> Automaton:
+    init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a", on_exit=on_exit)
     actions = [] if final else [Action(name="go", ui_label="go", ui_button="", target="a")]
     state_a = State(input_processor="ai", key="a", ui_label="A", final=final, contextual_prompt="hi", actions=actions)
     return Automaton(
@@ -113,7 +113,7 @@ async def test_still_generates_the_wrap_up_message_for_a_chat_blocked_state(db):
 
 
 async def test_still_applies_declared_env_defaults(db):
-    turn_service = _turn_service(db, _automaton(final=False, env={"a": "2"}))
+    turn_service = _turn_service(db, _automaton(final=False, on_exit="env.a = 2"))
     session = await turn_service.enter_session(PROJECT_ID, 'live')
 
     await turn_service.prepare_user_initiated_turn(session["id"])

@@ -299,7 +299,7 @@ class AutomatonYamlEditor:
 
     def set_action_field(self, state_name: str, action_name: str, field: str, value) -> ActionPayload:
         raw_action = self._find_action(state_name, action_name)
-        if field in ("trigger", "env") and not value:
+        if field == "trigger" and not value:
             raw_action.pop(field, None)
         else:
             raw_action[field] = value
@@ -399,15 +399,11 @@ class AutomatonYamlEditor:
 
     def set_init_action_field(self, field: str, value) -> StatePayload | ActionPayload:
         """'target' is handled by set_init_action_target below since the
-        init-action lives outside `states:`. 'env' gets the same
-        falsy-removes-the-key treatment as a regular action's env field."""
+        init-action lives outside `states:`."""
         if field == "target":
             return self.set_init_action_target(value)
         init_action = self.__raw.setdefault("init-action", CommentedMap())
-        if field == "env" and not value:
-            init_action.pop(field, None)
-        else:
-            init_action[field] = value
+        init_action[field] = value
         return self._init_action_payload()
 
     def set_init_action_target(self, state_name: str) -> StatePayload:

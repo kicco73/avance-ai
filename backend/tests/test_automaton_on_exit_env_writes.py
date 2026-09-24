@@ -1,8 +1,8 @@
-"""Automaton.eval_action_env — an action's own `env` field, evaluated like
-a trigger but returning a value of any type instead of a forced boolean
-cast. Unlike a trigger, a failing key here is logged, not swallowed; so
-is a value that is not of the key's declared type. A key that fails to
-evaluate is also returned in the second element, (label, exception)
+"""Automaton.eval_action_on_exit's `env.<key> = expr` writes — evaluated
+like a trigger but returning a value of any type instead of a forced
+boolean cast. Unlike a trigger, a failing write is logged, not swallowed;
+so is a value that is not of the key's declared type. A write that fails
+to evaluate is also returned among the failures, (label, exception)
 pairs — TaskOutcome.failures' own shape — so a caller can surface it
 rather than let the log line be the only trace of it.
 """
@@ -13,12 +13,20 @@ import logging
 import pytest
 
 from automaton.automaton import Action, Automaton, EnvKey, State
+from automaton.scope import EvaluationScope
 
 pytestmark = pytest.mark.contract
 
 
 def _action(env=None) -> Action:
-    return Action(name="advance", ui_label="Advance", ui_button="Advance", target="a", env=env)
+    on_exit = "\n".join(f"env.{key} = {expression}" for key, expression in (env or {}).items())
+    return Action(name="advance", ui_label="Advance", ui_button="Advance", target="a", on_exit=on_exit or None)
+
+
+def _writes(automaton: Automaton, action: Action, names: dict) -> tuple[dict, tuple]:
+    scope = EvaluationScope({"env": {}, **names}, automaton=automaton, state_key="a")
+    updates, _snippets, failures = automaton.eval_action_on_exit(action, scope)
+    return updates, failures
 
 
 def _automaton(env_keys: list[EnvKey] | None = None) -> Automaton:
@@ -39,28 +47,28 @@ def _automaton(env_keys: list[EnvKey] | None = None) -> Automaton:
 
 def test_every_key_is_evaluated_independently_against_the_current_scope_and_no_env_field_yields_nothing():
     automaton = _automaton()
-    assert automaton.eval_action_env(_action(), {}) == ({}, ())
-    assert automaton.eval_action_env(_action({"reset_counter": "True"}), {}) == ({"reset_counter": True}, ())
-    assert automaton.eval_action_env(_action({"number_of_steps": "number_of_steps + 1"}), {"number_of_steps": 3}) == ({"number_of_steps": 4}, ())
-    assert automaton.eval_action_env(_action({"mood": "'happy'", "score": "score * 2"}), {"score": 5}) == ({"mood": "happy", "score": 10}, ())
+    assert _writes(automaton, _action(), {}) == ({}, ())
+    assert _writes(automaton, _action({"reset_counter": "True"}), {}) == ({"reset_counter": True}, ())
+    assert _writes(automaton, _action({"number_of_steps": "number_of_steps + 1"}), {"number_of_steps": 3}) == ({"number_of_steps": 4}, ())
+    assert _writes(automaton, _action({"mood": "'happy'", "score": "score * 2"}), {"score": 5}) == ({"mood": "happy", "score": 10}, ())
 
 
 def test_len_is_available_to_an_env_expression():
     automaton = _automaton()
-    assert automaton.eval_action_env(_action({"count": "len(names)"}), {"names": ["a", "b", "c"]}) == ({"count": 3}, ())
+    assert _writes(automaton, _action({"count": "len(names)"}), {"names": ["a", "b", "c"]}) == ({"count": 3}, ())
 
 
 @pytest.mark.parametrize(("env", "scope"), [
     ({"total": "count + 1"}, {"count": None}),
     ({"A": "A + 1"}, {}),
-    ({"broken": "1 +"}, {}),
-], ids=["name-still-none", "name-missing-entirely", "malformed-expression"])
+    ({"broken": "1 / 0"}, {}),
+], ids=["name-still-none", "name-missing-entirely", "raising-expression"])
 def test_a_key_that_cannot_be_evaluated_is_skipped_and_logged_rather_than_silently_no_op_d(caplog, env, scope):
     """A missing name (e.g. a typo) must be visible — unlike
     _eval_trigger's silent treatment of the same case — and reported
     back to the caller, not just logged."""
     with caplog.at_level(logging.WARNING):
-        result, failures = _automaton().eval_action_env(_action(env), scope)
+        result, failures = _writes(_automaton(), _action(env), scope)
 
     assert result == {}
     assert len(caplog.records) == 1
@@ -72,7 +80,7 @@ def test_a_key_that_cannot_be_evaluated_is_skipped_and_logged_rather_than_silent
 
 
 def test_one_broken_key_does_not_prevent_others_from_evaluating():
-    result, failures = _automaton().eval_action_env(_action({"broken": "1 +", "fine": "1 + 1"}), {})
+    result, failures = _writes(_automaton(), _action({"broken": "1 / 0", "fine": "1 + 1"}), {})
     assert result == {"fine": 2}
     assert len(failures) == 1 and failures[0][0].startswith("broken:")
 
@@ -97,7 +105,7 @@ TYPED_KEYS = [
     ),
 ], ids=["every-type", "float-is-a-number", "empty-list", "profile-list", "profile-list-without-a-picture"])
 def test_a_value_of_the_declared_type_is_written(env, expected):
-    assert _automaton(TYPED_KEYS).eval_action_env(_action(env), {}) == (expected, ())
+    assert _writes(_automaton(TYPED_KEYS), _action(env), {}) == (expected, ())
 
 
 @pytest.mark.parametrize(("env", "expected", "logged"), [
@@ -123,7 +131,7 @@ def test_a_value_outside_the_declared_type_is_discarded_and_logged_while_the_oth
     caplog, env, expected, logged
 ):
     with caplog.at_level(logging.WARNING):
-        result, failures = _automaton(TYPED_KEYS).eval_action_env(_action(env), {})
+        result, failures = _writes(_automaton(TYPED_KEYS), _action(env), {})
 
     assert result == expected
     assert failures == ()

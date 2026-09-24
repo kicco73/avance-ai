@@ -23,7 +23,7 @@ from automaton.automaton import Automaton, CompiledAutomaton, ProjectPayload, St
 from automaton.build_error import AutomatonBuildError
 from automaton.file_types import ICON_FILE_RE, SNAPSHOT_FILE_RE
 from project.web_import_job import WebImportJob
-from system import bus
+from system import bus, skills
 from system.bus import POINT_PROJECT_PUBLISHED
 from system.wiring import construct
 from tracking.sources.url import parse_source_url
@@ -214,18 +214,20 @@ class PlatformService(object):
 
     def list_app_store_apps(self, username: str, search: str | None = None) -> list[dict]:
         trials_used = self.db.count_trial_sessions_by_project(username)
+        declarable = skills.declarable()
         apps = []
         for app in self.db.list_projects_for_app_store(username, search):
             try:
-                apps.append(self._offered(app, self._published_automaton(app["id"]), trials_used))
+                apps.append(self._offered(app, self._published_automaton(app["id"]), trials_used, declarable))
             except AutomatonBuildError:
                 continue
         return apps
 
     def list_managed_apps(self, username: str, search: str | None = None) -> list[dict]:
         trials_used = self.db.count_trial_sessions_by_project(username)
+        declarable = skills.declarable()
         return [
-            self._offered(app, self._published_automaton_or_unbuildable(app["id"]), trials_used)
+            self._offered(app, self._published_automaton_or_unbuildable(app["id"]), trials_used, declarable)
             for app in self.db.list_projects_for_app_store(username, search)
         ]
 
@@ -238,7 +240,15 @@ class PlatformService(object):
         except AutomatonBuildError:
             return UnbuildableRevision()
 
-    def _offered(self, app: dict, automaton: Automaton | UnbuildableRevision, trials_used: dict[str, int]) -> dict:
+    def _offered(
+        self, app: dict, automaton: Automaton | UnbuildableRevision, trials_used: dict[str, int], declarable: list[dict],
+    ) -> dict:
+        required = set(app.pop("published_skills"))
+        app["skills"] = [
+            {"key": entry["key"], "ui_label": entry["ui_label"], "ui_description": entry["ui_description"]}
+            for entry in declarable
+            if entry["package"] in required
+        ]
         app["icon_file"] = self._find_app_icon_file(app["id"])
         app["snapshot_files"] = self._find_app_snapshot_files(app["id"])
         app["family"] = automaton.family
@@ -270,26 +280,6 @@ class PlatformService(object):
                 continue
             indexed.setdefault(match.group("aspect").lower(), []).append((int(match.group("index")), name))
         return {aspect: [name for _, name in sorted(entries)] for aspect, entries in indexed.items()}
-
-    def get_app_skills(self, project_id: str) -> list[dict]:
-        """The declarable skills the published revision of `project_id`
-        cannot run without — WhatsApp, speech, mail and the rest — as
-        `skills.installed()` labels them. This is what the store has to
-        say about an app: what it is made of. It is asked for one app at
-        a time rather than folded into the listing, because working it
-        out reads that revision's whole archive set."""
-        from project.archive.layout import ArchiveLayout
-        from system import skills
-
-        revision = self.project_service.get_published_revision(project_id)
-        automaton = self.project_service.get_automaton(project_id, revision)
-        sources = ArchiveLayout.decode_text(self.db.get_archives(project_id, revision=revision))
-        required = set(skills.required_for(automaton, sources))
-        return [
-            {"key": entry["key"], "ui_label": entry["ui_label"], "ui_description": entry["ui_description"]}
-            for entry in skills.declarable()
-            if entry["package"] in required
-        ]
 
     def start_trial_session(self, username: str, project_id: str) -> int:
         """Spend one of this user's test sessions on `project_id` and

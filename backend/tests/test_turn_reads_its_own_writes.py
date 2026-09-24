@@ -119,7 +119,7 @@ async def test_the_reply_answers_every_message_of_its_batch_and_the_tokens_land_
 def _automaton_writing_engagement(autotracking_on_ai_message: bool) -> Automaton:
     fires = Action(
         name="note", ui_label="Note", ui_button="", target="a",
-        trigger="True", env={"engagement_at_trigger": "session.metric.engagement()"},
+        trigger="True", on_exit="env.engagement_at_trigger = session.metric.engagement()",
     )
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
     states = {

@@ -36,7 +36,6 @@ class Action:
     trigger: str | None = None
     task: str | None = None
     on_exit: str | None = None
-    env: dict[str, str] | None = None
     line: int | None = None
 
 @dataclass(frozen=True)
@@ -106,16 +105,17 @@ class EnvKey:
     otherwise. Whether the model sees or produces a given key at all is
     decided per state, by that state's own `input`/`output` (see
     automaton.State) — never a property of the key itself. Scripts (an
-    action's own `env:`) write any key regardless."""
+    action's own `on-exit`) write any key regardless."""
     name: str
     type: str
     ai_definition: str | None = None
 
 
 def env_defaults_action(env_keys: list[EnvKey]) -> Action:
-    env = {key.name: repr(ENV_TYPE_DEFAULTS[key.type]) for key in env_keys}
+    on_exit = "\n".join(f"env.{key.name} = {ENV_TYPE_DEFAULTS[key.type]!r}" for key in env_keys)
     return Action(
-        name=ENV_DEFAULTS_ACTION_NAME, ui_label=ENV_DEFAULTS_ACTION_NAME, ui_button="", target="", env=env or None,
+        name=ENV_DEFAULTS_ACTION_NAME, ui_label=ENV_DEFAULTS_ACTION_NAME, ui_button="", target="",
+        on_exit=on_exit or None,
     )
 
 

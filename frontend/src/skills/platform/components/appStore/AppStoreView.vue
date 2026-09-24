@@ -18,7 +18,6 @@ const props = defineProps({
   title: { type: String, default: 'Store' },
   showLogo: { type: Boolean, default: false },
   subscribedOnly: { type: Boolean, default: false },
-  showFreeBadge: { type: Boolean, default: true },
   hideInstallActions: { type: Boolean, default: false },
   tryButtonLabel: { type: String, default: 'Try me!' },
   showStoreButton: { type: Boolean, default: false },
@@ -176,7 +175,6 @@ defineExpose({ refresh: load })
             v-else-if="selectedApp"
             :key="selectedApp.id"
             :app="selectedApp"
-            :show-free-badge="showFreeBadge"
             :hide-install-actions="hideInstallActions"
             :try-button-label="tryButtonLabel"
             :show-uninstall-menu="showUninstallMenu"

@@ -170,7 +170,7 @@ def _automaton_moving_on_a_signal(autotracking_on_ai_message: bool) -> Automaton
 	from automaton.automaton import Signal
 	advance = Action(
 		name="advance", ui_label="Advance", ui_button="", target="b",
-		trigger="signal.mySignal >= 1", env={"steps": "1"},
+		trigger="signal.mySignal >= 1", on_exit="env.steps = 1",
 	)
 	init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
 	states = {

@@ -4,7 +4,7 @@ import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppSnapshotGallery from './AppSnapshotGallery.vue'
 import AppStoreFrozenPreview from './AppStoreFrozenPreview.vue'
 import PreviewChatFrame from '../PreviewChatFrame.vue'
-import { postInstallApp, deleteInstallApp, postTrialSession, getAppSkills, appStoreFileContentUrl } from '../../api.js'
+import { postInstallApp, deleteInstallApp, postTrialSession, appStoreFileContentUrl } from '../../api.js'
 import { confirmDialog } from '../../../../dialogStore.js'
 import { holdSkin } from '../../../../chatSkin.js'
 import { AppSkinSource } from '../../appSkinSource.js'
@@ -14,7 +14,6 @@ import avanceLogoUrl from '../../../../assets/avance-logo.png'
 
 const props = defineProps({
   app: { type: Object, required: true },
-  showFreeBadge: { type: Boolean, default: true },
   hideInstallActions: { type: Boolean, default: false },
   tryButtonLabel: { type: String, default: 'Try me!' },
   showUninstallMenu: { type: Boolean, default: false }
@@ -31,17 +30,7 @@ const iconFailed = ref(false)
 const trialsLeft = ref(props.app.trials_left ?? 0)
 watch(() => props.app.trials_left, (left) => { trialsLeft.value = left ?? 0 })
 
-const appSkills = ref([])
-
-watch(() => props.app.id, async (appId) => {
-  appSkills.value = []
-  if (!appId) return
-  try {
-    const { skills } = await getAppSkills(appId)
-    if (props.app.id === appId) appSkills.value = skills
-  } catch {
-  }
-}, { immediate: true })
+const appSkills = computed(() => props.app.skills ?? [])
 
 const hasSnapshots = computed(() => Object.values(props.app.snapshot_files ?? {}).some((files) => files?.length))
 const canTry = computed(() => trialsLeft.value > 0)
@@ -188,8 +177,7 @@ onBeforeUnmount(async () => {
     <div class="app-detail-identity">
       <h2 class="app-detail-title">{{ appTitle(app) }}</h2>
       <div class="app-detail-badges">
-        <span v-if="showFreeBadge" class="app-store-badge">FREE</span>
-        <span class="app-store-badge">MULTILINGUAL</span>
+        <span v-for="skill in appSkills" :key="skill.key" class="app-store-badge">{{ skill.ui_label }}</span>
         <span v-if="app.reactions_enabled" class="app-store-badge">REACTIONS</span>
       </div>
     </div>

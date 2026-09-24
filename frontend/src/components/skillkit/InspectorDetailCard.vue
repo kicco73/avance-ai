@@ -130,7 +130,6 @@ function handleDelete() {
   emit('delete')
 }
 
-const envEntries = computed(() => Object.entries(props.selectedElement?.data.env ?? {}))
 
 function attachmentLabel(index) { return String.fromCharCode(97 + index) }
 
@@ -388,10 +387,6 @@ function selectAttachment(fileName) {
           <div v-else key="readonly" class="inspector-detail-readonly">
             <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
             <p class="inspector-detail-field"><template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template><strong>{{ stateLabelFor(selectedElement.data.target) }}</strong></p>
-            <p v-if="envEntries.length" class="inspector-detail-field">
-              <strong>Env:</strong>
-              <code v-for="[key, value] in envEntries" :key="key" class="inspector-detail-code">{{ key }} = {{ value }}</code>
-            </p>
           </div>
         </Transition>
       </template>

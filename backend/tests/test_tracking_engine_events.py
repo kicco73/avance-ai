@@ -1,6 +1,6 @@
 """What TrackingEngine reports about an action's env writes: every
-action-set key an action's `env:` field (or its own `on-exit` script —
-same env-write timing, see Automaton.eval_action_on_exit) wrote is
+action-set key an action's own `on-exit` script (see
+Automaton.eval_action_on_exit) wrote is
 handed back to the caller, who is the one that says so on the way out
 (see turn/outbound.py). The engine itself publishes nothing.
 """
@@ -77,9 +77,9 @@ class FakeScopeBuilderWithChat:
 
 
 def _automaton(
-    action_target: str, action_env: dict | None = None, action_on_exit: str | None = None,
+    action_target: str, action_on_exit: str | None = None,
 ) -> tuple[Automaton, State, Action]:
-    action = Action(name="go", ui_label="Go", ui_button="Go", target=action_target, env=action_env, on_exit=action_on_exit)
+    action = Action(name="go", ui_label="Go", ui_button="Go", target=action_target, on_exit=action_on_exit)
     state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     state_b = State(input_processor="ai", key="b", ui_label="B", final=True, contextual_prompt="bye")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
@@ -101,7 +101,7 @@ def _engine() -> tuple[TrackingEngine, FakeSink, FakeEnv]:
 
 
 def test_apply_transition_records_the_move_and_hands_back_what_its_action_wrote():
-    automaton, state, action = _automaton(action_target="b", action_env={"counter": "1"})
+    automaton, state, action = _automaton(action_target="b", action_on_exit="env.counter = 1")
     engine, sink, env = _engine()
 
     tracking_id, written = engine.apply_transition(
@@ -136,7 +136,7 @@ def test_apply_transition_requires_an_origin():
 
 
 def test_apply_action_env_returns_every_key_it_wrote():
-    automaton, state, action = _automaton(action_target="a", action_env={"counter": "1", "flag": "True"})
+    automaton, state, action = _automaton(action_target="a", action_on_exit="env.counter = 1\nenv.flag = True")
     engine, _sink, env = _engine()
 
     written = engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
@@ -151,26 +151,6 @@ def test_apply_action_env_returns_nothing_for_an_action_that_writes_nothing():
 
     assert engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key) == {}
     assert env.updates == []
-
-
-def test_apply_action_env_also_applies_and_returns_on_exit_writes():
-    automaton, state, action = _automaton(action_target="a", action_on_exit="env.counter = 1")
-    engine, _sink, env = _engine()
-
-    written = engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
-
-    assert env.updates == [{"counter": 1}]
-    assert written == {"counter": 1}
-
-
-def test_apply_action_env_prefers_on_exit_over_env_for_the_same_key():
-    automaton, state, action = _automaton(
-        action_target="a", action_env={"counter": "0"}, action_on_exit="env.counter = 1",
-    )
-    engine, _sink, env = _engine()
-    engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
-
-    assert env.updates == [{"counter": 1}]
 
 
 def test_apply_action_env_pushes_on_exits_own_chat_snippets_through_the_scopes_chat_namespace():
@@ -216,22 +196,6 @@ def test_apply_action_env_never_touches_chat_when_on_exit_writes_env_only():
     engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
 
     assert env.updates == [{"counter": 1}]
-
-
-def test_apply_action_env_pushes_a_chat_notification_when_an_env_write_fails():
-    """A key whose expression raises does not just vanish behind a log
-    line — it is reported to whoever is watching the conversation as a
-    chat.notify(...) toast, the same frame chat.* calls already use."""
-    automaton, state, action = _automaton(action_target="a", action_env={"counter": "1", "broken": "1 +"})
-    chat = FakeChatNamespaceRecorder()
-    engine = TrackingEngine(FakeSink(), FakeEnv(), FakeScopeBuilderWithChat(chat))
-
-    written = engine.apply_action_env(automaton, action, {}, ChoiceSelection.NONE, state.key)
-
-    assert written == {"counter": 1}
-    assert len(chat.pushed) == 1
-    assert chat.pushed[0].startswith("notify(")
-    assert "broken" in chat.pushed[0] and "go" in chat.pushed[0]
 
 
 def test_apply_action_env_pushes_a_chat_notification_when_an_on_exit_expression_fails():
