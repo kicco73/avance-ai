@@ -6,7 +6,7 @@ from typing import Sequence, TYPE_CHECKING
 
 from db import Db, _utc_iso
 from db.messages import _TIMESTAMP_UNSET, _group_user_fragments
-from turn.turn_transaction import OPENING_USER_TURN, Inbox, PendingMessage, RowHandle, TurnTransaction, row_id
+from turn.turn_transaction import Inbox, PendingMessage, RowHandle, TurnTransaction, row_id
 
 if TYPE_CHECKING:
     from tracking.actuators import TaskNamespace
@@ -197,7 +197,7 @@ class AtomicTurnTransaction(TurnTransaction):
     def get_turn_history(self, session_id: int, since: datetime | None, token_budget: int | None) -> list[dict]:
         history = self._db.get_turn_history(session_id, since, token_budget)
         fragments = _group_user_fragments([m.as_dict() for m in self.answering])
-        return history + fragments + [dict(OPENING_USER_TURN)] * (not self._answering)
+        return history + fragments
 
     def mark_messages_answered(self, messages: Sequence[RowHandle], assistant_message: RowHandle) -> None:
         for message in messages:

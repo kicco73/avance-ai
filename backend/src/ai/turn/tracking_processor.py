@@ -8,6 +8,7 @@ from turn.errors import TurnServiceError
 from turn.turn_transaction import RowHandle, TurnTransaction
 from ai import AiService
 from ai import MetadataCallback, content_to_text
+from ai.llm_provider import with_opening_turn
 from automaton.automaton import Action, Automaton, State, StatePayload
 from automaton.choice import ChoiceSelection
 from automaton.model import ENV_TYPE_DEFAULTS
@@ -696,7 +697,7 @@ def estimate_state_prompt(
 ) -> str:
 	"""The system_prompt TrackingProcessor.generate_reply would actually
 	send for `state`, plus a synthetic one-turn history standing in for a
-	real conversation — a single '...' placeholder user message, preceded
+	real conversation — the opening user turn, preceded
 	by this state's own attachments, global attachments, and (since
 	signals_prompt below is always composed) every triggerable signal's
 	own attachments too — see _turn_attachment_paths, the same
@@ -736,6 +737,7 @@ def estimate_state_prompt(
 	if env_block is not None:
 		system_prompt = f"{system_prompt}\n\n{env_block.text()}"
 
-	history_parts = [content_to_text(message["content"]) for message in build_priming_messages(turn_attachments)]
-	history_parts.append("...")
+	history_parts = [
+		content_to_text(message["content"]) for message in with_opening_turn(build_priming_messages(turn_attachments))
+	]
 	return "\n\n".join([system_prompt, *history_parts])

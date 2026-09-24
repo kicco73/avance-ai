@@ -16,6 +16,11 @@ from system.try_again_error import TryAgainError
 
 logger = LoggerFactory.get_logger(__name__)
 MetadataCallback = Callable[[str, Any], None]
+OPENING_USER_TURN = {"role": "user", "content": "It's your turn to speak."}
+
+
+def with_opening_turn(history: list[dict]) -> list[dict]:
+	return history + [dict(OPENING_USER_TURN)] * (not history or history[-1]["role"] == "assistant")
 
 
 @dataclass(frozen=True)
@@ -219,7 +224,7 @@ class LLMProvider(TokenCounter, ABC):
 		reply = StructuredReply(schema, on_metadata or _ignore_metadata)
 		try:
 			async for chunk in self.stream_json(
-				system_prompt, history, schema, **forward_kwargs(on_metadata, tools, tool_round, required_tools),
+				system_prompt, with_opening_turn(history), schema, **forward_kwargs(on_metadata, tools, tool_round, required_tools),
 			):
 				yield reply.feed(chunk)
 		except AIServiceProviderOutputTruncatedError as exc:

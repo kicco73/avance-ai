@@ -9,8 +9,6 @@ from db.messages import _TIMESTAMP_UNSET
 if TYPE_CHECKING:
     from tracking.actuators import TaskNamespace
 
-OPENING_USER_TURN = {"role": "user", "content": "..."}
-
 
 class RowHandle(object):
     __slots__ = ("id",)
@@ -223,8 +221,7 @@ class TurnTransaction(object):
         return self._db.get_messages(session_id, last_n=last_n, since=since)
 
     def get_turn_history(self, session_id: int, since: datetime | None, token_budget: int | None) -> list[dict]:
-        history = self._db.get_turn_history(session_id, since, token_budget)
-        return history + [dict(OPENING_USER_TURN)] * (not self._answering)
+        return self._db.get_turn_history(session_id, since, token_budget)
 
     def mark_messages_answered(self, messages: Sequence[RowHandle], assistant_message: RowHandle) -> None:
         self._db.mark_messages_answered([m.id for m in messages if m.id is not None], _required(assistant_message))
