@@ -240,6 +240,10 @@ class EditProjectController(BaseController):
         )
         return self.scheduler_service.stream_progress(job)
 
+    @post("/api/skills/platform/projects/{project_id}/states/{state_name}/duplicate", role="admin")
+    async def duplicate_state(self, project_id: str, state_name: str):
+        return await self.project_service.duplicate_state(project_id, state_name)
+
     @post("/api/skills/platform/projects/{project_id}/states/{state_name}/actions", role="admin")
     async def add_action(self, project_id: str, state_name: str):
         return await self.project_service.add_action(project_id, state_name)

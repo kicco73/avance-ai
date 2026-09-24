@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import io
 import re
+from copy import deepcopy
 from typing import Any, Mapping
 
 from ruamel.yaml import YAML
@@ -252,6 +253,15 @@ class AutomatonYamlEditor:
             "input-processor": SystemKind.name,
             "contextual-prompt": "",
         }))
+        return self._state_payload(name)
+
+    def duplicate_state(self, state_name: str) -> StatePayload:
+        source = self._state(state_name)
+        states = self._states()
+        name = self._next_numbered_name("state", set(states.keys()))
+        duplicate = CommentedMap((key, deepcopy(value)) for key, value in source.items() if key != "actions")
+        duplicate["ui-label"] = self._unique_ui_label(source.get("ui-label", state_name), self._existing_state_ui_labels())
+        self._add_entry(states, name, duplicate)
         return self._state_payload(name)
 
     def add_signal(self) -> SignalPayload:

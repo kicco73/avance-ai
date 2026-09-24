@@ -45,6 +45,27 @@ class TestAddState:
         assert continuing.add_state()["key"] == "state-1"
 
 
+class TestDuplicateState:
+    def test_copies_every_field_under_a_new_id_and_label_without_the_actions_and_still_builds(self):
+        editor = make_editor()
+        payload = editor.duplicate_state("a")
+        assert payload["key"] == "state-0"
+        assert payload["ui_label"] == "State A 2"
+        assert payload["input_processor"] == "ai"
+        assert payload["actions"] == []
+
+        assert editor.duplicate_state("a")["ui_label"] == "State A 3"
+        automaton = builds(editor.serialize())
+        assert {a.name for a in automaton.states["a"].actions} == {"go-b", "go-c"}
+        assert automaton.states["state-0"].contextual_prompt == "hi"
+        assert automaton.states["state-0"].actions == []
+        assert all(a.target != "state-0" for s in automaton.states.values() for a in s.actions)
+
+    def test_refuses_a_state_that_does_not_exist(self):
+        with pytest.raises(ValueError):
+            make_editor().duplicate_state("missing")
+
+
 class TestAddSignal:
     def test_name_is_derived_from_the_generated_ui_label_collisions_are_suffixed_and_it_still_builds(self):
         editor = make_editor()

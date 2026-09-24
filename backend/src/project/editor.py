@@ -418,6 +418,9 @@ class ProjectEditor:
     async def add_state(self, project_id: str) -> StatePayload:
         return await self._edit_index_yml(project_id, lambda editor: editor.add_state())
 
+    async def duplicate_state(self, project_id: str, state_name: str) -> StatePayload:
+        return await self._edit_index_yml(project_id, lambda editor: editor.duplicate_state(state_name))
+
     async def add_signal(self, project_id: str) -> SignalPayload:
         return await self._edit_index_yml(project_id, lambda editor: editor.add_signal())
 

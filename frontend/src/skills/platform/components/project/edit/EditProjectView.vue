@@ -288,7 +288,7 @@ const {
 } = useProjectRevision(props.projectId, currentFileName, activeEditor, selectedGraphElement)
 
 const {
-  handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
+  handleAddState, handleDuplicateState, handleAddSignal, handleAddEnvKey, handleAddAction,
   handleSetStateField, handleSetProjectField, handleSetServiceLevel, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
   handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
 } = useIndexYmlEditing(
@@ -331,6 +331,11 @@ function handleDeleteSelectedElement(element) {
   if (!element) return
   if (element.kind === 'state') handleDeleteState(element.data.id)
   else handleDeleteAction(element.data.matchStateKey, element.data.actionName)
+}
+
+function handleDuplicateSelectedElement(element) {
+  if (element?.kind !== 'state') return
+  handleDuplicateState(element.data.id)
 }
 
 function handleOpenActionsOrder(element) {
@@ -578,6 +583,7 @@ async function handleSetSessionComment(sessionId, comment) {
                 @select="handleTabSelect"
                 @set-field="handleSetSelectedElementField"
                 @delete="handleDeleteSelectedElement"
+                @duplicate="handleDuplicateSelectedElement"
                 @open-actions-order="handleOpenActionsOrder"
               />
             </template>
@@ -608,6 +614,7 @@ async function handleSetSessionComment(sessionId, comment) {
                 @set-project-field="handleProjectFieldSet"
                 @set-service-level="handleSetServiceLevel"
                 @delete="handleDeleteSelectedElement"
+                @duplicate="handleDuplicateSelectedElement"
                 @open-actions-order="handleOpenActionsOrder"
                 @add-state="handleAddState"
                 @add-action="handleAddAction"

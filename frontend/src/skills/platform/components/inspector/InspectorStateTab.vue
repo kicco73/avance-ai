@@ -35,7 +35,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'delete',
+  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'delete', 'duplicate',
   'add-state', 'add-action', 'open-actions-order',
   'set-source-field', 'delete-source'
 ])
@@ -131,6 +131,7 @@ watch(elementIdentity, (identity) => {
       @jump-to-attachment="emit('jump-to-attachment', $event)"
       @set-field="(field, value) => emit('set-field', field, value)"
       @delete="emit('delete', selectedElement)"
+      @duplicate="emit('duplicate', selectedElement)"
       @open-actions-order="emit('open-actions-order', selectedElement)"
       @open-sources="openSourcesDialog"
     />

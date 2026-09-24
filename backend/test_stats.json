@@ -2862,10 +2862,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.543,
-    "runs": 13,
-    "seconds": 7.134,
+    "runs": 14,
+    "seconds": 7.781,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestAdd::test_signal_is_created_with_defaults_and_persisted": {
@@ -2873,10 +2873,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.889,
-    "runs": 13,
-    "seconds": 7.547,
+    "runs": 14,
+    "seconds": 8.05,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestAdd::test_state_is_created_with_defaults_and_persisted_and_an_unknown_project_is_404": {
@@ -2884,10 +2884,20 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.57,
-    "runs": 13,
-    "seconds": 10.292,
+    "runs": 14,
+    "seconds": 11.594,
+    "skips": 0
+  },
+  "src/avance_platform/tests/test_controller_project_editor.py::TestAdd::test_state_is_duplicated_without_its_actions_and_persisted_and_an_unknown_state_is_400": {
+    "failures": 0,
+    "first_run": "2026-09-24T10:41:55+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-24T10:41:55+00:00",
+    "runs": 1,
+    "seconds": 0.518,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestDelete::test_removes_a_state_action_or_signal_but_never_the_init_actions_own_target": {
@@ -2895,10 +2905,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 1.303,
-    "runs": 13,
-    "seconds": 11.956,
+    "runs": 14,
+    "seconds": 13.207,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestExportOmitsCache::test_downloaded_zip_excludes_every_cache_prefixed_archive": {
@@ -2906,10 +2916,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.732,
-    "runs": 13,
-    "seconds": 6.196,
+    "runs": 14,
+    "seconds": 6.76,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutActionField::test_an_invalid_trigger_returns_structured_error_fields": {
@@ -2917,10 +2927,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.544,
-    "runs": 13,
-    "seconds": 7.205,
+    "runs": 14,
+    "seconds": 7.713,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutActionField::test_edits_target_ui_description_task_and_trigger_and_clearing_trigger_removes_the_key": {
@@ -2928,10 +2938,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 1.148,
-    "runs": 13,
-    "seconds": 12.82,
+    "runs": 14,
+    "seconds": 13.951,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutActionField::test_env_is_set_cleared_without_leaving_an_empty_mapping_and_gated_on_declared_keys": {
@@ -2950,10 +2960,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.65,
-    "runs": 13,
-    "seconds": 7.677,
+    "runs": 14,
+    "seconds": 8.341,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutInitAction::test_edits_ui_description_and_task_never_reports_a_trigger_and_rejects_setting_one": {
@@ -2961,10 +2971,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 1.048,
-    "runs": 13,
-    "seconds": 8.439,
+    "runs": 14,
+    "seconds": 9.096,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutInitAction::test_env_is_set_cleared_without_leaving_an_empty_mapping_and_gated_on_declared_keys": {
@@ -2983,10 +2993,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.733,
-    "runs": 13,
-    "seconds": 7.944,
+    "runs": 14,
+    "seconds": 8.659,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutSignalField::test_edits_definition_and_ui_description_and_a_ui_label_edit_renames_the_signal": {
@@ -2994,10 +3004,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.786,
-    "runs": 13,
-    "seconds": 8.993,
+    "runs": 14,
+    "seconds": 10.044,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestPutStateField::test_edits_ui_label_trimmed_history_cutoff_and_ui_description": {
@@ -3005,10 +3015,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.727,
-    "runs": 13,
-    "seconds": 9.311,
+    "runs": 14,
+    "seconds": 10.0,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestReorderActions::test_moves_an_action_returning_the_new_order_and_an_out_of_range_position_is_400": {
@@ -3016,10 +3026,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.714,
-    "runs": 13,
-    "seconds": 7.569,
+    "runs": 14,
+    "seconds": 8.389,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSourceZipRoundTrip::test_downloading_then_reuploading_keeps_the_source_and_its_content": {
@@ -3027,10 +3037,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 1.596,
-    "runs": 13,
-    "seconds": 10.922,
+    "runs": 14,
+    "seconds": 11.818,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_add_creates_an_empty_archive_per_source_suffixing_name_collisions": {
@@ -3038,10 +3048,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.734,
-    "runs": 13,
-    "seconds": 8.251,
+    "runs": 14,
+    "seconds": 8.89,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_add_websearch_declares_a_user_scoped_source_with_no_archive_of_its_own": {
@@ -3049,10 +3059,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.77,
-    "runs": 13,
-    "seconds": 7.962,
+    "runs": 14,
+    "seconds": 8.854,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_delete_removes_it_and_its_archive": {
@@ -3060,10 +3070,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.635,
-    "runs": 13,
-    "seconds": 7.669,
+    "runs": 14,
+    "seconds": 8.246,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::TestSources::test_ui_label_is_a_plain_edit_and_renaming_the_id_renames_its_archive_keeping_its_content": {
@@ -3071,10 +3081,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 1.098,
-    "runs": 13,
-    "seconds": 9.238,
+    "runs": 14,
+    "seconds": 9.976,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_editor.py::test_every_field_endpoint_rejects_a_field_not_on_its_whitelist": {
@@ -3082,10 +3092,10 @@
     "first_run": "2026-09-21T17:40:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:18:46+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.727,
-    "runs": 13,
-    "seconds": 9.197,
+    "runs": 14,
+    "seconds": 10.06,
     "skips": 0
   },
   "src/avance_platform/tests/test_controller_project_field.py::TestGetProjectMetadata::test_reports_declared_fields": {
@@ -13304,10 +13314,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.036,
-    "runs": 18,
-    "seconds": 0.338,
+    "runs": 21,
+    "seconds": 0.388,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestAddAction::test_numbering_and_ui_label_uniqueness_are_scoped_to_the_state_not_the_project": {
@@ -13315,10 +13325,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.016,
-    "runs": 18,
-    "seconds": 0.127,
+    "runs": 21,
+    "seconds": 0.145,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestAddSignal::test_name_is_derived_from_the_generated_ui_label_collisions_are_suffixed_and_it_still_builds": {
@@ -13326,10 +13336,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.047,
-    "runs": 20,
-    "seconds": 0.408,
+    "runs": 23,
+    "seconds": 0.459,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestAddState::test_generates_a_numbered_name_and_placeholder_label_suffixing_collisions_and_still_builds": {
@@ -13337,10 +13347,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.067,
-    "runs": 18,
-    "seconds": 0.562,
+    "runs": 21,
+    "seconds": 0.658,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestDeleteAction::test_removes_only_that_action_no_cascade": {
@@ -13348,10 +13358,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.03,
-    "runs": 16,
-    "seconds": 0.446,
+    "runs": 19,
+    "seconds": 0.489,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestDeleteSignal::test_removes_the_signal_dropping_just_its_operand_from_bool_ops_and_whole_lone_triggers": {
@@ -13359,10 +13369,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.048,
-    "runs": 18,
-    "seconds": 0.461,
+    "runs": 21,
+    "seconds": 0.525,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestDeleteSignal::test_unrelated_triggers_survive_and_a_trigger_referencing_it_everywhere_is_emptied": {
@@ -13370,10 +13380,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-21T22:17:49+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.029,
-    "runs": 18,
-    "seconds": 0.259,
+    "runs": 21,
+    "seconds": 0.296,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestDeleteState::test_outgoing_actions_vanish_along_with_the_state_itself": {
@@ -13381,10 +13391,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": "2026-09-21T22:18:16+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.016,
-    "runs": 18,
-    "seconds": 0.125,
+    "runs": 21,
+    "seconds": 0.141,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestDeleteState::test_removes_the_state_and_incoming_actions_but_refuses_the_init_actions_own_target": {
@@ -13392,10 +13402,30 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.046,
-    "runs": 18,
-    "seconds": 0.411,
+    "runs": 21,
+    "seconds": 0.468,
+    "skips": 0
+  },
+  "tests/test_automaton_yaml_editor.py::TestDuplicateState::test_copies_every_field_under_a_new_id_and_label_without_the_actions_and_still_builds": {
+    "failures": 1,
+    "first_run": "2026-09-24T10:40:22+00:00",
+    "last_failed": "2026-09-24T10:40:22+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-24T10:41:55+00:00",
+    "runs": 3,
+    "seconds": 0.046,
+    "skips": 0
+  },
+  "tests/test_automaton_yaml_editor.py::TestDuplicateState::test_refuses_a_state_that_does_not_exist": {
+    "failures": 0,
+    "first_run": "2026-09-24T10:40:22+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-24T10:41:55+00:00",
+    "runs": 3,
+    "seconds": 0.019,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestRenameSignal::test_renames_the_key_in_place_suffixing_collisions": {
@@ -13403,10 +13433,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.047,
-    "runs": 20,
-    "seconds": 0.642,
+    "runs": 23,
+    "seconds": 0.703,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestRenameSignal::test_rewrites_only_the_triggers_referencing_the_old_name_via_ast_not_text": {
@@ -13414,10 +13444,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.037,
-    "runs": 20,
-    "seconds": 0.362,
+    "runs": 23,
+    "seconds": 0.406,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestSetActionField::test_plain_field_edits_never_touch_the_name": {
@@ -13425,10 +13455,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.04,
-    "runs": 18,
-    "seconds": 0.348,
+    "runs": 21,
+    "seconds": 0.396,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestSetActionField::test_trigger_edit_and_clearing_removes_the_key_instead_of_storing_an_empty_string": {
@@ -13436,10 +13466,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.052,
-    "runs": 18,
-    "seconds": 0.475,
+    "runs": 21,
+    "seconds": 0.542,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestSetInitActionField::test_edits_share_the_action_payload_shape_and_has_trigger_is_always_false": {
@@ -13447,10 +13477,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.048,
-    "runs": 18,
-    "seconds": 0.426,
+    "runs": 21,
+    "seconds": 0.487,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestSetSignalField::test_plain_edits_stay_in_place_and_a_ui_label_changing_the_derived_name_renames_the_signal": {
@@ -13458,10 +13488,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.037,
-    "runs": 20,
-    "seconds": 0.351,
+    "runs": 23,
+    "seconds": 0.398,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestSetStateField::test_ai_source_access_edits_round_trip_through_the_payload_and_the_build": {
@@ -13469,10 +13499,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.069,
-    "runs": 18,
-    "seconds": 0.619,
+    "runs": 21,
+    "seconds": 0.7,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestSetStateField::test_plain_field_edits_never_touch_the_key": {
@@ -13480,10 +13510,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.042,
-    "runs": 18,
-    "seconds": 0.403,
+    "runs": 21,
+    "seconds": 0.45,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor.py::TestToSnakeCase::test_lowercases_replaces_non_alnum_collapses_separators_and_trims_underscores": {
@@ -13491,10 +13521,10 @@
     "first_run": "2026-09-21T17:51:02+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T09:15:32+00:00",
+    "last_run": "2026-09-24T10:41:55+00:00",
     "last_seconds": 0.004,
-    "runs": 18,
-    "seconds": 0.021,
+    "runs": 21,
+    "seconds": 0.025,
     "skips": 0
   },
   "tests/test_automaton_yaml_editor_env_sources.py::TestAddEnvKey::test_generates_a_unique_valid_identifier_suffixing_collisions_and_still_builds": {

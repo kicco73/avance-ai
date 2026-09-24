@@ -25,7 +25,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'jump-to-definition', 'select-attachment', 'jump-to-attachment', 'update-expected-state',
-  'select', 'set-field', 'delete', 'open-actions-order'
+  'select', 'set-field', 'delete', 'duplicate', 'open-actions-order'
 ])
 
 const graphRef = ref(null)
@@ -119,6 +119,7 @@ defineExpose({ loadGraph, resize, fit, refresh, resync: refresh, stateElementFor
       @jump-to-attachment="emit('jump-to-attachment', $event)"
       @set-field="(field, value) => emit('set-field', field, value)"
       @delete="emit('delete', selectedElement)"
+      @duplicate="emit('duplicate', selectedElement)"
       @open-actions-order="emit('open-actions-order', selectedElement)"
       @open-sources="openSourcesDialog"
       @close="closeDetail"

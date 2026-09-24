@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 vi.mock('../../../api.js', () => ({
   postAddState: vi.fn(),
+  postDuplicateState: vi.fn(),
   postAddSignal: vi.fn(),
   postAddEnvKey: vi.fn(),
   postAddAction: vi.fn(),
@@ -20,7 +21,7 @@ vi.mock('../../../api.js', () => ({
 }))
 
 import {
-  postAddState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField,
+  postAddState, postDuplicateState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField,
   putActionField, putInitActionField, putSignalField, putEnvKeyField,
   deleteState, deleteProjectAction, deleteProjectSignal, deleteProjectEnvKey,
 } from '../../../api.js'
@@ -62,6 +63,14 @@ describe('useIndexYmlEditing', () => {
     await s.handleAddEnvKey()
     expect(flashRecentlyAdded).toHaveBeenCalledWith('env-key:newKey')
     expect(selectedGraphElement.value).toBeNull()
+  })
+
+  it('duplicating a state selects and flashes the copy, not the original', async () => {
+    postDuplicateState.mockResolvedValue({ key: 'state-3' })
+    await s.handleDuplicateState('a')
+    expect(postDuplicateState).toHaveBeenCalledWith('proj', 'a')
+    expect(selectedGraphElement.value).toEqual({ kind: 'state', data: { id: 'state-3' } })
+    expect(flashRecentlyAdded).toHaveBeenCalledWith('state:state-3')
   })
 
   it('handleAddAction needs a selected state, then selects the new action itself rather than its containing state', async () => {

@@ -1,5 +1,5 @@
 import {
-  postAddState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField, putServiceLevel,
+  postAddState, postDuplicateState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField, putServiceLevel,
   putActionField, putInitActionField, putSignalField, putEnvKeyField,
   deleteState, deleteProjectAction, deleteProjectSignal, deleteProjectEnvKey,
 } from './api.js'
@@ -11,6 +11,17 @@ export function useIndexYmlEditing(
     guardedAction('add a new state', async () => {
       try {
         const state = await postAddState(projectId)
+        selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(state.key) ?? null
+        flashRecentlyAdded(`state:${state.key}`)
+      } catch {
+      }
+    })
+  }
+
+  function handleDuplicateState(stateName) {
+    guardedAction('duplicate this state', async () => {
+      try {
+        const state = await postDuplicateState(projectId, stateName)
         selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(state.key) ?? null
         flashRecentlyAdded(`state:${state.key}`)
       } catch {
@@ -163,7 +174,7 @@ export function useIndexYmlEditing(
   }
 
   return {
-    handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
+    handleAddState, handleDuplicateState, handleAddSignal, handleAddEnvKey, handleAddAction,
     handleSetStateField, handleSetProjectField, handleSetServiceLevel, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
     handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
   }

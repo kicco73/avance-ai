@@ -179,6 +179,9 @@ class ProjectService(object):
     async def add_state(self, project_id: str) -> StatePayload:
         return await self.editor.add_state(project_id)
 
+    async def duplicate_state(self, project_id: str, state_name: str) -> StatePayload:
+        return await self.editor.duplicate_state(project_id, state_name)
+
     async def create_new_project(self, template: bytes) -> tuple[dict, ProjectImportBundleJob]:
         return await self.manager.create_new_project(template)
 

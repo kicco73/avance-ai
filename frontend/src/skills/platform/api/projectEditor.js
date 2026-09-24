@@ -132,6 +132,10 @@ export function postAddState(projectId) {
   return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/states`, { method: 'POST' })
 }
 
+export function postDuplicateState(projectId, stateName) {
+  return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/states/${encodeURIComponent(stateName)}/duplicate`, { method: 'POST' })
+}
+
 export function postAddSignal(projectId) {
   return projectFetch(projectId, `${API_URL}/skills/platform/projects/${encodeURIComponent(projectId)}/signals`, { method: 'POST' })
 }

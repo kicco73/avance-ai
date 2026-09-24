@@ -24,7 +24,7 @@ const props = defineProps({
   saveField: { type: Function, default: null }
 })
 
-const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open', 'open-actions-order', 'open-sources'])
+const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'duplicate', 'update:open', 'open-actions-order', 'open-sources'])
 
 const showEditForm = computed(() => props.editable && props.open)
 
@@ -197,6 +197,11 @@ function selectAttachment(fileName) {
             type="button"
             @click="close(); emit('open-actions-order')"
           >Actions order</button>
+          <button
+            v-if="selectedElement.kind === 'state'"
+            type="button"
+            @click="close(); emit('duplicate')"
+          >Duplicate</button>
           <button
             type="button"
             class="card-menu-item-danger"
