@@ -32,6 +32,29 @@ def _archive_content(client, project_name: str, archive_name: str):
     return response.json()
 
 
+def test_a_saved_index_yml_is_stored_and_returned_formatted(client, hello_project):
+    unformatted = re.sub(r"\n\n+", "\n", _index_yml(client, hello_project))
+
+    response = client.put(f"/api/skills/platform/projects/{hello_project}/files/index.yml", content=unformatted.encode())
+
+    assert response.status_code == 200
+    assert response.json()["content"] != unformatted
+    assert "\n\nstates:\n" in response.json()["content"]
+    assert _index_yml(client, hello_project) == response.json()["content"]
+
+
+def test_a_build_error_in_a_saved_index_yml_points_at_the_line_as_written(client, hello_project):
+    written = re.sub(r"\n\n+", "\n", _index_yml(client, hello_project)).replace(
+        'trigger: "True"', "trigger: signal.definitely_not_declared == 1 and True",
+    )
+    actions_line = written.split("\n").index("    actions:") + 1
+
+    response = client.put(f"/api/skills/platform/projects/{hello_project}/files/index.yml", content=written.encode())
+
+    assert response.status_code == 400
+    assert response.json()["error"]["fields"]["line"] == actions_line
+
+
 class TestAdd:
     def test_state_is_created_with_defaults_and_persisted_and_an_unknown_project_is_404(self, client, hello_project):
         response = client.post(f"/api/skills/platform/projects/{hello_project}/states")

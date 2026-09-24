@@ -21,7 +21,7 @@ def _zip_of(files: dict[str, str]) -> bytes:
 
 
 def _yml(prompt: str = "hi") -> str:
-    return f"project:\n  id: proj\ninit-action:\n  target: a\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: {prompt}\n"
+    return f"project:\n  id: proj\n\ninit-action:\n  target: a\n\nstates:\n  a:\n    input-processor: ai\n    contextual-prompt: {prompt}\n"
 
 
 MINIMAL_YML = _yml()

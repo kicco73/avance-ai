@@ -29,14 +29,19 @@ class InitActionTargetError(Exception):
     more specific guidance than a generic "target is not a valid state"."""
 
 
+def round_trip_yaml() -> YAML:
+    yaml = YAML(typ='rt')
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    yaml.default_flow_style = False
+    yaml.preserve_quotes = True
+    yaml.width = 4096
+    return yaml
+
+
 class AutomatonYamlEditor:
 
     def __init__(self, raw_text: str) -> None:
-        self._yaml = YAML(typ='rt')
-        self._yaml.indent(mapping=2, sequence=4, offset=2)
-        self._yaml.default_flow_style = False
-        self._yaml.preserve_quotes = True
-        self._yaml.width = 4096
+        self._yaml = round_trip_yaml()
         self.__raw = self._yaml.load(raw_text)
         self._source_lines = raw_text.splitlines()
 

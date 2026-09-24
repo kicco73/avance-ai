@@ -11,6 +11,7 @@ from automaton.automaton_builder import AutomatonBuilder
 from automaton.file_types import ProjectFileTypes
 from automaton.build_error import AutomatonBuildError
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
+from automaton.index_yml_formatter import IndexYmlFormatter
 from db import ContentRestored, Db, FileRenamed
 from system import doc_catalog
 from system.logging_factory import LoggerFactory
@@ -111,6 +112,15 @@ Reply with nothing but the CSS itself, inside a single ```css code fence \
 — no explanation before or after it.\
 """
 _CODE_FENCE_RE = re.compile(r"```[a-zA-Z0-9_+-]*\s*\n(.*?)```", re.DOTALL)
+
+
+class _VerbatimText:
+
+    def format(self, text: str) -> str:
+        return text
+
+
+_TEXT_FORMATTERS = {"index.yml": IndexYmlFormatter()}
 
 
 class ProjectEditor:
@@ -271,7 +281,8 @@ class ProjectEditor:
         file_type = ProjectFileTypes.of(file_name)
 
         if file_type.text:
-            text_content = content.decode("utf-8") if isinstance(content, bytes) else content
+            written: str | bytes = content.decode("utf-8") if isinstance(content, bytes) else content
+            text_content = _TEXT_FORMATTERS.get(file_name, _VerbatimText()).format(written)
             content_type = file_type.content_type
             if file_name == "index.css":
                 syntax_errors = CssValidator.syntax_errors(text_content)
@@ -298,11 +309,12 @@ class ProjectEditor:
             if file_type.oversized(len(content)):
                 raise ValueError(f"'{file_name}' exceeds the {file_type.max_upload_bytes}-byte upload limit.")
             content_type = expected_content_type
-            update_value = content
+            written = update_value = content
             to_save = content
         try:
             new_automaton, to_persist = self._manager.prepare_update(project_id, {file_name: update_value})
         except AutomatonBuildError:
+            self._manager.prepare_update(project_id, {file_name: written})
             raise
         except Exception as exc:
             raise ValueError(f"Invalid project update: {exc}") from exc

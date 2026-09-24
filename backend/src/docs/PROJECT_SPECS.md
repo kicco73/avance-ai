@@ -1419,6 +1419,29 @@ A `fixed-message` state (§4.1) is the same: its text belongs in the
 `on-exit` of the actions that reach it, and which of them, and in what
 words, is the author's to say.
 
+### 8.3 What a save formats
+
+Saving `index.yml` from the editor (`PUT .../files/index.yml`) stores it
+laid out by `automaton/index_yml_formatter.py`, and the response carries
+that text, which the editor shows in place of what was typed:
+
+- a multi-line string is a `|` block — an `on-exit` stored as one quoted
+  line full of `\n` comes back as the script it is. A `>` block the author
+  wrote stays one;
+- a trigger of more than one condition is a `>-` block wrapped in one pair
+  of parentheses, with a line break after every `and`/`or`, and every line at the
+  same indentation, so the fold joins them with spaces and nothing else;
+- one blank line before every top-level section and every state but the
+  first, a comment above one staying with it;
+- one newline at the end.
+
+Everything else is ruamel's round trip, which leaves comments, quotes and
+key order as written. A layout that would change what the file means —
+data, or a trigger's expression — is not applied: the file is stored as
+written. A build error is reported against the text as written, so its
+line is the one the author is looking at. Import and the modernizer
+(§8.2) do not format.
+
 ## 9. Worked examples
 
 **Minimal** (the "Hello world" sample project):
