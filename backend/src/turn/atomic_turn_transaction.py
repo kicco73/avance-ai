@@ -221,6 +221,9 @@ class AtomicTurnTransaction(TurnTransaction):
             m.role == "assistant" and (since is None or m.timestamp > since) for m in self._messages()
         )
 
+    def has_user_message(self, session_id: int) -> bool:
+        return self._db.has_user_message(session_id) or any(m.role == "user" for m in self._messages())
+
     def record_tool_calls(
         self, session_id: int, tool_calls: list[dict], message_id: RowHandle | None = None,
         timestamp: datetime | None = None,

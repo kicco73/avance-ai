@@ -207,3 +207,6 @@ class MessageMixin:
         if since is not None:
             query = query.where(Message.timestamp > since)
         return query.exists()
+
+    def has_user_message(self, session_id: int) -> bool:
+        return Message.select().where((Message.session == session_id) & (Message.role == "user")).exists()

@@ -115,6 +115,7 @@ class TurnDbInterface(Protocol):
     def set_message_tokens(self, message: RowHandle, tokens: int, cache_read_tokens: int = 0) -> None: ...
     def has_messages_since(self, session_id: int, since: datetime | None) -> bool: ...
     def has_assistant_message_since(self, session_id: int, since: datetime | None) -> bool: ...
+    def has_user_message(self, session_id: int) -> bool: ...
     def record_tool_calls(
         self, session_id: int, tool_calls: list[dict], message_id: RowHandle | None = None,
         timestamp: datetime | None = None,
@@ -237,6 +238,9 @@ class TurnTransaction(object):
 
     def has_assistant_message_since(self, session_id: int, since: datetime | None) -> bool:
         return self._db.has_assistant_message_since(session_id, since)
+
+    def has_user_message(self, session_id: int) -> bool:
+        return self._db.has_user_message(session_id)
 
     def record_tool_calls(
         self, session_id: int, tool_calls: list[dict], message_id: RowHandle | None = None,

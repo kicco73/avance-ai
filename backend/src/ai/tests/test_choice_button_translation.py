@@ -113,11 +113,26 @@ async def test_a_manual_transitions_own_buttons_still_carry_the_translation_a_di
 	db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
 	session = await turn_service.enter_session(PROJECT_ID, "live")
 	env_for_session(db, db.get_chat_session(session["id"])).update_action_set({"slot": ["morning"]})
+	await turn_service.process_turn(session["id"], "hello")
 
 	result = await turn_service.apply_manual_action("enter", session["id"])
 
 	by_name = {b["name"]: b for b in result["buttons"]}
 	assert by_name["choice:slot:0"]["ui_button"] == "MORNING"
+
+
+async def test_buttons_stay_in_their_authored_language_until_the_user_has_written(turn_service_for):
+	db = turn_service_for.db
+	turn_service = turn_service_for(_automaton_reached_by_a_manual_action(), ai_service=UppercasingSchemaAiService())
+	db.get_or_create_user(None, None, WebSession().user, None, None, user_id=WebSession().user)
+	session = await turn_service.enter_session(PROJECT_ID, "live")
+	env_for_session(db, db.get_chat_session(session["id"])).update_action_set({"slot": ["mañana"]})
+
+	result = await turn_service.apply_manual_action("enter", session["id"])
+
+	by_name = {b["name"]: b for b in result["buttons"]}
+	assert by_name["choice:slot:0"]["ui_button"] == "mañana"
+	assert db.count_translations() == 0
 
 
 async def test_no_translation_event_leaves_choice_buttons_with_the_raw_option_text(turn_service_for):

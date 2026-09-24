@@ -570,7 +570,10 @@ class TrackingProcessor(object):
 		return self._append_translate_prompt(prompt, state)
 
 	def _append_translate_prompt(self, prompt: Prompt, state: State) -> Prompt:
-		manual = self._button_labels_to_translate(state)
+		self._pending_translatable_labels = {}
+		if not self.transaction.has_user_message(self.user.session_id):
+			return prompt
+		manual =self._button_labels_to_translate(state)
 		contributed = bus.collect(
 			POINT_TRANSLATABLE_LABELS, TranslatableLabels(state_key=state.key, session_id=self.user.session_id),
 		).items
