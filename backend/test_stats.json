@@ -8280,15 +8280,25 @@
     "seconds": 13.035,
     "skips": 0
   },
+  "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_carries_each_signals_last_value_past_empty_and_partial_snapshots": {
+    "failures": 0,
+    "first_run": "2026-09-24T07:48:05+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-24T07:53:12+00:00",
+    "runs": 3,
+    "seconds": 2.255,
+    "skips": 0
+  },
   "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_falls_back_to_an_earlier_session_when_the_latest_has_none": {
     "failures": 0,
     "first_run": "2026-09-21T12:19:40+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T07:35:41+00:00",
+    "last_run": "2026-09-24T07:53:12+00:00",
     "last_seconds": 0.981,
-    "runs": 19,
-    "seconds": 13.376,
+    "runs": 22,
+    "seconds": 15.472,
     "skips": 0
   },
   "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_has_no_values_for_a_session_with_no_signal_snapshot": {
@@ -8296,10 +8306,10 @@
     "first_run": "2026-09-21T12:19:40+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T07:35:41+00:00",
+    "last_run": "2026-09-24T07:53:12+00:00",
     "last_seconds": 0.969,
-    "runs": 19,
-    "seconds": 11.533,
+    "runs": 22,
+    "seconds": 13.167,
     "skips": 0
   },
   "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_is_none_for_a_user_with_no_sessions": {
@@ -8307,10 +8317,20 @@
     "first_run": "2026-09-21T12:19:40+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T07:35:41+00:00",
+    "last_run": "2026-09-24T07:53:12+00:00",
     "last_seconds": 0.665,
-    "runs": 19,
-    "seconds": 8.623,
+    "runs": 22,
+    "seconds": 9.941,
+    "skips": 0
+  },
+  "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_reads_values_from_test_sessions_like_the_timeline": {
+    "failures": 0,
+    "first_run": "2026-09-24T07:53:12+00:00",
+    "last_failed": null,
+    "last_outcome": "passed",
+    "last_run": "2026-09-24T07:53:12+00:00",
+    "runs": 1,
+    "seconds": 0.673,
     "skips": 0
   },
   "src/webchat/tests/test_controller_latest_signals.py::test_latest_signals_returns_the_most_recent_sessions_latest_snapshot": {
@@ -8318,10 +8338,10 @@
     "first_run": "2026-09-21T12:19:40+00:00",
     "last_failed": "2026-09-22T22:35:47+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-24T07:35:41+00:00",
+    "last_run": "2026-09-24T07:53:12+00:00",
     "last_seconds": 0.675,
-    "runs": 19,
-    "seconds": 11.922,
+    "runs": 22,
+    "seconds": 16.23,
     "skips": 0
   },
   "src/webchat/tests/test_controller_metrics_history.py::test_metrics_history_includes_one_session_start_per_session": {
@@ -8384,10 +8404,10 @@
     "first_run": "2026-09-21T12:19:40+00:00",
     "last_failed": "2026-09-23T15:14:07+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-24T07:35:41+00:00",
+    "last_run": "2026-09-24T07:52:50+00:00",
     "last_seconds": 1.197,
-    "runs": 25,
-    "seconds": 16.913,
+    "runs": 26,
+    "seconds": 17.568,
     "skips": 0
   },
   "src/webchat/tests/test_controller_timeline.py::test_timeline_includes_state_transitions": {
@@ -8395,10 +8415,10 @@
     "first_run": "2026-09-21T12:19:40+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T07:35:41+00:00",
+    "last_run": "2026-09-24T07:52:50+00:00",
     "last_seconds": 1.057,
-    "runs": 24,
-    "seconds": 14.584,
+    "runs": 25,
+    "seconds": 15.106,
     "skips": 0
   },
   "src/webchat/tests/test_controller_timeline.py::test_timeline_is_scoped_to_the_given_user_and_project": {
@@ -8406,10 +8426,10 @@
     "first_run": "2026-09-21T12:19:40+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T07:35:41+00:00",
+    "last_run": "2026-09-24T07:52:50+00:00",
     "last_seconds": 1.319,
-    "runs": 24,
-    "seconds": 18.329,
+    "runs": 25,
+    "seconds": 19.066,
     "skips": 0
   },
   "src/webchat/tests/test_controller_timeline.py::test_timeline_signals_span_every_session_chronologically": {
@@ -8417,10 +8437,10 @@
     "first_run": "2026-09-21T12:19:40+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-24T07:35:41+00:00",
+    "last_run": "2026-09-24T07:52:50+00:00",
     "last_seconds": 1.165,
-    "runs": 24,
-    "seconds": 19.719,
+    "runs": 25,
+    "seconds": 20.627,
     "skips": 0
   },
   "src/webchat/tests/test_entering_opens_the_conversation.py::test_a_new_session_asked_for_outright_is_greeted_too": {

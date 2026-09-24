@@ -219,8 +219,6 @@ class ProjectController(BaseController):
 
     @get("/api/core/projects/{project_id}/users/{username}/latest-signals")
     def get_user_latest_signals(self, project_id: str, username: str):
-        """The most recent live session's own latest signal snapshot for
-        `username` in `project_id` — Manage Users' Signals tab."""
         return self.turn_service.get_latest_signal_values(project_id, username)
 
     @get("/api/core/projects/{project_id}/users/{username}/timeline")

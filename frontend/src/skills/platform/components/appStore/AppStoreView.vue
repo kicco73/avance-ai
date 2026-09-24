@@ -25,7 +25,7 @@ const props = defineProps({
   showUninstallMenu: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['close', 'open', 'open-store', 'manage-projects', 'manage-users', 'manage-services', 'home', 'profile', 'logout'])
+const emit = defineEmits(['close', 'open', 'open-store', 'manage-projects', 'manage-users', 'manage-services', 'home', 'profile', 'logout', 'about'])
 
 const canOpenSettings = computed(() => roleSatisfies(props.role, 'admin'))
 
@@ -109,7 +109,7 @@ defineExpose({ refresh: load })
         </button>
       </template>
       <template #center>
-        <img v-if="showLogo" :src="avanceLogoLargeUrl" alt="Avance" class="app-store-header-logo" />
+        <img v-if="showLogo" :src="avanceLogoLargeUrl" alt="Avance" class="app-store-header-logo" @click="emit('about')" />
         <h2 v-else class="app-header-title app-store-header-title">{{ title }}</h2>
       </template>
       <template #right>
@@ -206,6 +206,7 @@ defineExpose({ refresh: load })
 .app-store-header-logo {
   height: 1.6rem;
   width: auto;
+  cursor: pointer;
 }
 
 .app-store-body {

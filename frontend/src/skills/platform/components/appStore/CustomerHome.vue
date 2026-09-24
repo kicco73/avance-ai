@@ -9,7 +9,7 @@ const props = defineProps({
   viewStack: { type: Object, default: null }
 })
 
-const emit = defineEmits(['close', 'open', 'open-store', 'manage-projects', 'manage-users', 'manage-services', 'home', 'profile', 'logout'])
+const emit = defineEmits(['close', 'open', 'open-store', 'manage-projects', 'manage-users', 'manage-services', 'home', 'profile', 'logout', 'about'])
 
 const appStoreViewRef = ref(null)
 
@@ -38,5 +38,6 @@ defineExpose({ refresh: () => appStoreViewRef.value?.refresh() })
     @home="emit('home')"
     @profile="emit('profile')"
     @logout="emit('logout')"
+    @about="emit('about')"
   />
 </template>

@@ -192,21 +192,19 @@ function selectAttachment(fileName) { emit('select-attachment', fileName) }
               <button type="button" class="card-menu-item-danger" @click="handleDeleteSignal(entry.signal.name)">Delete</button>
             </CardMenu>
           </div>
+          <div class="inspector-signal-bar-track">
+            <div v-if="hasSignalValue(signalValues[entry.signal.name])" class="inspector-signal-bar-fill" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }" :style="{ width: signalValues[entry.signal.name].value + '%' }"></div>
+            <div v-else class="inspector-signal-bar-fill inspector-signal-bar-na" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }"></div>
+            <div v-if="annotatable" class="inspector-signal-expected-fill" :class="{ 'inspector-signal-expected-fill-set': isExpectedValueSet(entry.signal.name) && !imported, 'inspector-signal-expected-fill-labelled': isExpectedValueSet(entry.signal.name) && imported }" :style="{ width: displayedExpectedValue(entry.signal.name) + '%' }"></div>
+            <input v-if="annotatable" type="range" min="0" max="100" step="1" class="inspector-signal-slider" :class="{ 'inspector-signal-slider-set': isExpectedValueSet(entry.signal.name) && !imported, 'inspector-signal-slider-labelled': isExpectedValueSet(entry.signal.name) && imported }" :value="displayedExpectedValue(entry.signal.name)" :title="`Expected: ${expectedValues[entry.signal.name] ?? '—'}`" @click.stop @input="onExpectedSignalInput(entry.signal.name, $event.target.value)" @change="onExpectedSignalChange(entry.signal.name, $event.target.value)" />
+          </div>
+          <div v-if="annotatable && isExpectedValueSet(entry.signal.name)" class="inspector-signal-annotation-footer">
+            <span class="inspector-signal-expected-label" :class="{ 'inspector-signal-expected-label-labelled': imported }">Expected: {{ draggingExpectedValues[entry.signal.name] ?? expectedValues[entry.signal.name] }}</span>
+            <button v-if="expectedValues[entry.signal.name] != null" type="button" class="inspector-annotation-clear-btn" title="Remove annotation" @click.stop="onClearExpectedSignal(entry.signal.name)">×</button>
+          </div>
           <span v-if="entry.signal.ui_description" class="inspector-signal-ui_description">{{ entry.signal.ui_description }}</span>
         </div>
       </Transition>
-      <template v-if="!editableFiles || expandedSignalName !== entry.signal.name">
-        <div class="inspector-signal-bar-track">
-          <div v-if="hasSignalValue(signalValues[entry.signal.name])" class="inspector-signal-bar-fill" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }" :style="{ width: signalValues[entry.signal.name].value + '%' }"></div>
-          <div v-else class="inspector-signal-bar-fill inspector-signal-bar-na" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }"></div>
-          <div v-if="annotatable" class="inspector-signal-expected-fill" :class="{ 'inspector-signal-expected-fill-set': isExpectedValueSet(entry.signal.name) && !imported, 'inspector-signal-expected-fill-labelled': isExpectedValueSet(entry.signal.name) && imported }" :style="{ width: displayedExpectedValue(entry.signal.name) + '%' }"></div>
-          <input v-if="annotatable" type="range" min="0" max="100" step="1" class="inspector-signal-slider" :class="{ 'inspector-signal-slider-set': isExpectedValueSet(entry.signal.name) && !imported, 'inspector-signal-slider-labelled': isExpectedValueSet(entry.signal.name) && imported }" :value="displayedExpectedValue(entry.signal.name)" :title="`Expected: ${expectedValues[entry.signal.name] ?? '—'}`" @click.stop @input="onExpectedSignalInput(entry.signal.name, $event.target.value)" @change="onExpectedSignalChange(entry.signal.name, $event.target.value)" />
-        </div>
-        <div v-if="annotatable && isExpectedValueSet(entry.signal.name)" class="inspector-signal-annotation-footer">
-          <span class="inspector-signal-expected-label" :class="{ 'inspector-signal-expected-label-labelled': imported }">Expected: {{ draggingExpectedValues[entry.signal.name] ?? expectedValues[entry.signal.name] }}</span>
-          <button v-if="expectedValues[entry.signal.name] != null" type="button" class="inspector-annotation-clear-btn" title="Remove annotation" @click.stop="onClearExpectedSignal(entry.signal.name)">×</button>
-        </div>
-      </template>
     </div>
   </div>
 </template>

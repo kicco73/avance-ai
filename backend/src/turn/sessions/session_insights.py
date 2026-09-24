@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from turn.sessions.session_ownership import SessionOwnership
 from db import Db, _utc_iso
 from metrics.metric_service import MetricService
@@ -64,11 +66,19 @@ class SessionInsights:
         last_session_payload = {
             'id': last_session['id'], 'start_state': last_session['start_state'], 'end_state': last_session['end_state'],
         }
-        for session in sessions:
+        latest: dict = {}
+        latest_session_id = None
+        for session in self._db.list_chat_sessions(username, project_id, type=None):
             for row in reversed(self._db.get_signals(session['id'])):
-                if row['values'] is not None:
-                    return {'last_session': last_session_payload, 'session_id': session['id'], 'values': row['values']}
-        return {'last_session': last_session_payload, 'session_id': last_session['id'], 'values': None}
+                for name, value in json.loads(row['values'] or '{}').items():
+                    if value is not None and name not in latest:
+                        latest[name] = value
+                        latest_session_id = latest_session_id or session['id']
+        return {
+            'last_session': last_session_payload,
+            'session_id': latest_session_id or last_session['id'],
+            'values': json.dumps(latest) if latest else None,
+        }
 
     def get_timeline(self, project_id: str, username: str) -> dict:
         data = self._db.get_timeline(project_id, username)
