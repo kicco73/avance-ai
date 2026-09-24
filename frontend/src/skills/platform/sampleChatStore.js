@@ -45,6 +45,7 @@ export function createSampleChatStore({ stateKey = ref(''), reactionKey = ref(''
     state: computed(() => ({ key: stateKey.value, chat_enabled: true, reactions: [] })),
     reaction: computed(() => reactionKey.value || null),
     envClasses: ref([]),
+    progress: ref(null),
     buttons: ref(SAMPLE_BUTTONS),
     messages,
     historyLoaded,

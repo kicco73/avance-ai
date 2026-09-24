@@ -1,5 +1,5 @@
-"""Auto-tracking's end of the action-level `env` feature: once a trigger
-fires an action, that action's `env` field is evaluated and merged onto
+"""Auto-tracking's end of an action's `on-exit` env writes: once a trigger
+fires an action, its `env.<key> = <expr>` lines are evaluated and merged onto
 tracking.env.Env's persisted store, as seen through the env a caller can
 read back (TurnService.get_env).
 """
@@ -15,10 +15,10 @@ from turn_harness import PROJECT_ID, turn_service_for  # noqa: F401 — a pytest
 pytestmark = pytest.mark.regression
 
 
-def _automaton_with_env(trigger_expr: str, action_env: dict | None, target: str = "b") -> Automaton:
+def _automaton_with_env(trigger_expr: str, writes: dict | None, target: str = "b") -> Automaton:
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target=target,
-        trigger=trigger_expr, env=action_env,
+        trigger=trigger_expr, on_exit="\n".join(f"env.{key} = {expression}" for key, expression in (writes or {}).items()) or None,
     )
     state_a = State(input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     state_b = State(input_processor="ai", key="b", ui_label="B", final=target == "b", contextual_prompt="bye", actions=[])

@@ -16,7 +16,7 @@ function assistantBubble(chatStore) {
   return chatStore.messages.value.find((m) => m.role === 'assistant')
 }
 
-describe('output.progress bubble state', () => {
+describe('output.progress', () => {
   let chatStore
   let deliver
 
@@ -33,40 +33,27 @@ describe('output.progress bubble state', () => {
     vi.clearAllMocks()
   })
 
-  it('has no progress on a fresh bubble', async () => {
-    await chatStore.handleSend('upload my report')
-    deliver({ type: 'output.text_stream', session_id: 1, text: '' })
-
-    expect(assistantBubble(chatStore).progressPercentage).toBe(null)
-  })
-
-  it('shows the title and percentage once output.progress arrives, and un-hides a still-pending bubble', async () => {
-    await chatStore.handleSend('upload my report')
-
+  it('publishes the title and percentage, with no bubble of its own', () => {
     deliver({ type: 'output.progress', session_id: 1, title: 'Uploading', percentage: 42 })
 
-    const bubble = assistantBubble(chatStore)
-    expect(bubble.progressTitle).toBe('Uploading')
-    expect(bubble.progressPercentage).toBe(42)
-    expect(bubble.pending).toBe(false)
+    expect(chatStore.progress.value).toEqual({ title: 'Uploading', percentage: 42 })
+    expect(assistantBubble(chatStore)).toBeUndefined()
   })
 
-  it('clears the bar once the reply lands, even at less than 100%', async () => {
+  it('leaves the reply being written untouched', async () => {
     await chatStore.handleSend('upload my report')
-    deliver({ type: 'output.text_stream', session_id: 1, text: '' })
+    deliver({ type: 'output.text_stream', session_id: 1, text: 'Wor' })
     deliver({ type: 'output.progress', session_id: 1, title: 'Uploading', percentage: 42 })
-    deliver({ type: 'state.buttons', session_id: 1, actions: [] })
-    deliver({ type: 'output.text', session_id: 1, assistant_message_id: 51, text: 'Done.', timestamp: 't' })
+    deliver({ type: 'output.text_stream', session_id: 1, text: 'king' })
 
-    expect(assistantBubble(chatStore).progressPercentage).toBe(null)
+    expect(assistantBubble(chatStore)).toMatchObject({ content: 'Working', awaitingReply: false })
   })
 
-  it('ignores a progress frame for another session', async () => {
-    await chatStore.handleSend('upload my report')
+  it('ignores a progress frame for another session', () => {
     chatStore.currentSessionId.value = 2
 
     deliver({ type: 'output.progress', session_id: 1, title: 'Uploading', percentage: 42 })
 
-    expect(assistantBubble(chatStore)).toBeUndefined()
+    expect(chatStore.progress.value).toBe(null)
   })
 })

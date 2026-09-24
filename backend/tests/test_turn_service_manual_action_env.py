@@ -1,5 +1,5 @@
-"""TurnService.apply_manual_action's end of the action-level `env`
-feature — a manually fired (button click) action updates env exactly
+"""TurnService.apply_manual_action's end of an action's `on-exit` env
+writes — a manually fired (button click) action updates env exactly
 like an auto-tracking-fired one does, without any signal_values.
 """
 from __future__ import annotations
@@ -26,15 +26,18 @@ ENV_TYPES = {"reset_counter": "bool", "number_of_steps": "number", "score": "num
 
 
 def _automaton(
-    action_env: dict, target: str = "b", model_reads_env: bool = False, target_memory: str = "global",
+    writes: dict | None, target: str = "b", model_reads_env: bool = False, target_memory: str = "global",
     signals: list | None = None,
 ) -> Automaton:
     """`model_reads_env`: declares every written key as the destination
     state's own `input` — the one configuration under which an env value
     ever reaches the model's prompt (see tracking.env_prompt_block); a
     state with no `input` never sees one."""
-    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target=target, env=action_env)
-    input_names = tuple(action_env or {}) if model_reads_env else ()
+    action = Action(
+        name="advance", ui_label="Advance", ui_button="Advance", target=target,
+        on_exit="\n".join(f"env.{key} = {expression}" for key, expression in (writes or {}).items()) or None,
+    )
+    input_names = tuple(writes or {}) if model_reads_env else ()
     state_a = State(
         input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action],
         input=input_names if target == "a" else (),
@@ -52,7 +55,7 @@ def _automaton(
         signals=signals or [],
         general_attachments={},
         autotracking_on_ai_message=False,
-        env_keys=[EnvKey(name=key, type=ENV_TYPES[key]) for key in (action_env or {})],
+        env_keys=[EnvKey(name=key, type=ENV_TYPES[key]) for key in (writes or {})],
     )
 
 

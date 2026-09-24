@@ -1,6 +1,6 @@
 import { busChannel } from './busChannel.js'
 
-const WATCHED = ['output.text_stream', 'output.tool', 'output.speech', 'output.text', 'output.error', 'output.progress']
+const WATCHED = ['output.text_stream', 'output.tool', 'output.speech', 'output.text', 'output.error']
 
 export class ChatExchange {
   constructor({ sessionId, bubble, silenceSeconds }) {
@@ -38,7 +38,6 @@ export class ChatExchange {
     else if (type === 'output.tool') this._tool(frame)
     else if (type === 'output.text') this._said(frame)
     else if (type === 'output.error') this._failed(frame)
-    else if (type === 'output.progress') this._bubble.progress(frame.title, frame.percentage)
   }
 
   _streamed(text) {

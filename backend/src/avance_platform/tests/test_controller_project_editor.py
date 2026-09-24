@@ -130,21 +130,6 @@ class TestPutActionField:
         assert isinstance(fields["line"], int)
         assert isinstance(fields["revision"], int)
 
-    def test_env_is_set_cleared_without_leaving_an_empty_mapping_and_gated_on_declared_keys(self, client, hello_project):
-        env_key = client.post(f"/api/skills/platform/projects/{hello_project}/env-keys").json()
-        action = client.post(f"/api/skills/platform/projects/{hello_project}/states/Hello/actions").json()
-        url = f"/api/skills/platform/projects/{hello_project}/states/Hello/actions/{action['name']}/env"
-
-        assert env_key["type"] == "string"
-        assert client.put(url, json={"value": {env_key["name"]: "1"}}).status_code == 400
-        assert client.put(url, json={"value": {env_key["name"]: "'one'"}}).status_code == 200
-        assert f"{env_key['name']}:" in _index_yml(client, hello_project)
-
-        assert client.put(url, json={"value": {}}).status_code == 200
-        assert _index_yml(client, hello_project).count("env:") == 1
-
-        assert client.put(url, json={"value": {"never_declared_anywhere": "1"}}).status_code == 400
-
 
 class TestPutSignalField:
     def test_edits_definition_and_ui_description_and_a_ui_label_edit_renames_the_signal(self, client, hello_project):
@@ -203,18 +188,6 @@ class TestPutInitAction:
         assert response.json()["has_trigger"] is False
 
         assert client.put(f"{base}/trigger", json={"value": "True"}).status_code == 400
-
-    def test_env_is_set_cleared_without_leaving_an_empty_mapping_and_gated_on_declared_keys(self, client, hello_project):
-        env_key = client.post(f"/api/skills/platform/projects/{hello_project}/env-keys").json()
-        url = f"/api/skills/platform/projects/{hello_project}/init-action/env"
-
-        assert client.put(url, json={"value": {env_key["name"]: "'one'"}}).status_code == 200
-        assert f"{env_key['name']}:" in _index_yml(client, hello_project)
-
-        assert client.put(url, json={"value": {}}).status_code == 200
-        assert "env: {}" not in _index_yml(client, hello_project)
-
-        assert client.put(url, json={"value": {"never_declared": "1"}}).status_code == 400
 
 
 def test_every_field_endpoint_rejects_a_field_not_on_its_whitelist(client, hello_project):

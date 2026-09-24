@@ -321,6 +321,42 @@ def test_a_fixed_message_state_becomes_system_and_a_chat_write_on_every_action_t
     assert IndexYmlModernizer().modernize(modernized.text).fixes == ()
 
 
+LEGACY_ACTION_ENV_YML = """\
+project:
+  id: legacy_talk
+env:
+  hp:
+    type: number
+  kind:
+    type: string
+init-action:
+  target: a
+  env:
+    hp: 3
+states:
+  a:
+    ui-label: A
+    input-processor: ai
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: a
+        env:
+          kind: "'quote'"
+        on-exit: env.hp = env.hp - 1
+"""
+
+
+def test_an_action_env_mapping_becomes_the_first_lines_of_its_on_exit():
+    modernized = IndexYmlModernizer().modernize(LEGACY_ACTION_ENV_YML)
+
+    assert modernized.fixes == ("init-action: env → on-exit", "go: env → on-exit")
+    automaton = AutomatonBuilder().build({"index.yml": modernized.text})
+    assert automaton.init_action.on_exit == "env.hp = 3"
+    assert automaton.states["a"].actions[0].on_exit == "env.kind = 'quote'\nenv.hp = env.hp - 1"
+    assert IndexYmlModernizer().modernize(modernized.text).fixes == ()
+
+
 def test_every_stored_revision_is_settled_at_boot_not_at_the_first_visit(db):
     from project.archive.index_yml_migration import modernize_stored_revisions
 

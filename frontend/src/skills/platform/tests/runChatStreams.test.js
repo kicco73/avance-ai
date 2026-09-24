@@ -47,16 +47,6 @@ describe('the Run chat', () => {
     expect(assistantBubbles()[0]).toMatchObject({ pending: false, awaitingReply: true })
   })
 
-  it('keeps the progress when the empty chunk arrives after it', async () => {
-    await testStore.handleSend('ciao')
-
-    deliver({ type: 'output.progress', session_id: 5, title: 'Loading', percentage: 40 })
-    deliver({ type: 'output.text_stream', session_id: 5, text: '' })
-
-    expect(assistantBubbles()).toHaveLength(1)
-    expect(assistantBubbles()[0]).toMatchObject({ progressTitle: 'Loading', progressPercentage: 40, awaitingReply: false })
-  })
-
   it('streams the text as it is written', async () => {
     await testStore.handleSend('ciao')
     deliver({ type: 'output.text_stream', session_id: 5, text: '' })

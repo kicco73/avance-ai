@@ -65,8 +65,7 @@ def test_an_attachment_reference_is_refused_unless_it_names_one_readable_text_fi
 
 @pytest.mark.parametrize("field_yaml", [
     '        trigger: "attachment.policy.read() != \'\'"',
-    "        env:\n          notes: attachment.policy.read()",
-], ids=["trigger", "env-expression"])
+], ids=["trigger"])
 def test_attachment_may_only_be_referenced_from_a_script(field_yaml):
     content = f"""
 project:

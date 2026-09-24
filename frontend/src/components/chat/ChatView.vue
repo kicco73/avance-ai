@@ -7,6 +7,7 @@ import MessageBubble from './MessageBubble.vue'
 import ChatWaitingPanel from './ChatWaitingPanel.vue'
 import SessionRating from './SessionRating.vue'
 import ChartDialog from './ChartDialog.vue'
+import ProgressToast from './ProgressToast.vue'
 import SelectProfileDialog from './SelectProfileDialog.vue'
 import { ProfileSelection, ProjectMedia, splitProfileChoices } from './profileChoices.js'
 import ProjectsMenu from '../ProjectsMenu.vue'
@@ -61,6 +62,7 @@ const {
   reloadMessages,
   chart,
   dismissChart,
+  progress,
   envClasses,
   backgroundAudioUrl,
   backgroundAudioPlaying,
@@ -288,6 +290,7 @@ watch(
     />
     <template v-else>
     <ErrorBanner />
+    <ProgressToast :progress="progress" />
     <div class="chat-header">
       <div class="chat-header-icon"></div>
     </div>

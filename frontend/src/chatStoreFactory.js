@@ -95,6 +95,7 @@ export function createChatStore({
   function dismissChart() {
     chart.value = null
   }
+  const progress = ref(null)
   const turnCount = ref(0)
   let nextMessageId = 0
 
@@ -194,8 +195,7 @@ export function createChatStore({
 
   busChannel.subscribe('output.progress', (frame) => {
     if (!isAboutOurConversation(frame)) return
-    if (openExchanges.size > 0) return
-    watchReply(frame.session_id).receive(frame)
+    progress.value = { title: frame.title, percentage: frame.percentage }
   })
 
   busChannel.subscribe('output.text', (frame) => {
@@ -452,9 +452,7 @@ export function createChatStore({
       timestamp: new Date().toISOString(),
       pending: true,
       awaitingReply: false,
-      statusText: '',
-      progressTitle: '',
-      progressPercentage: null
+      statusText: ''
     })
 
     const statusHold = new ToolStatusHold({
@@ -470,10 +468,7 @@ export function createChatStore({
       silenceSeconds: replySilenceSeconds,
       bubble: {
         writing: () => {
-          if (!mine()) return
-          const current = messages.value.find((m) => m.id === assistantMsgId)
-          if (current?.progressPercentage != null) return
-          patchBubble(assistantMsgId, { pending: false, awaitingReply: true })
+          if (mine()) patchBubble(assistantMsgId, { pending: false, awaitingReply: true })
         },
         append: (text) => {
           if (!mine()) return
@@ -491,10 +486,6 @@ export function createChatStore({
           chatStatus.value = text
           if (text) statusHold.show(text)
           else statusHold.hide()
-        },
-        progress: (title, percentage) => {
-          if (!mine()) return
-          patchBubble(assistantMsgId, { pending: false, progressTitle: title, progressPercentage: percentage })
         },
         said: (said) => finishExchange(said),
         failed: (frame) => failExchange(frame)
@@ -532,13 +523,12 @@ export function createChatStore({
           messageId: said.id,
           timestamp: said.timestamp ?? messages.value[idx].timestamp,
           pending: false,
-          awaitingReply: false,
-          progressPercentage: null
+          awaitingReply: false
         }
       } else {
         messages.value.push({
           id: assistantMsgId, role: 'assistant', content: said.content, messageId: said.id,
-          timestamp: said.timestamp ?? new Date().toISOString(), statusText: '', progressPercentage: null
+          timestamp: said.timestamp ?? new Date().toISOString(), statusText: ''
         })
       }
 
@@ -561,7 +551,7 @@ export function createChatStore({
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx !== -1) {
         if (exchange.hasChunk) {
-          messages.value[idx] = { ...messages.value[idx], failed: true, statusText: '', progressPercentage: null }
+          messages.value[idx] = { ...messages.value[idx], failed: true, statusText: '' }
         } else {
           messages.value.splice(idx, 1)
         }
@@ -712,7 +702,7 @@ export function createChatStore({
     backgroundAudioUrl, backgroundAudioPlaying, toggleBackgroundAudio, stopBackgroundAudio, pauseBackgroundAudio,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectId,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading, buttons,
-    chart, dismissChart, envClasses,
+    chart, dismissChart, progress, envClasses,
     actuatorsEnabled, actuatorsLoading, draft, turnCount,
     setProject,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,

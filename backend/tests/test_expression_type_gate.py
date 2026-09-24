@@ -1,6 +1,6 @@
 """AutomatonValidator.validate_expression_types — the one static type gate
 every expression a project can run goes through: an action's `trigger`,
-its `env:` writes, its `on-exit` assignments and its `task` lines. Same
+its `on-exit` assignments and its `task` lines. Same
 two checks everywhere
 (TriggerExpressionAnalyzer.type_violations + signal_domain_violations), so
 a mistake is caught wherever it is written, not only in a trigger.
@@ -50,10 +50,9 @@ def _build(env_yaml: str = "", action_yaml: str = ""):
 @pytest.mark.parametrize("expression", [MISTYPED, OUT_OF_RANGE, ORDERED_STRING])
 @pytest.mark.parametrize(("env_yaml", "action_yaml", "context"), [
     ("", "        trigger: \"{expression}\"\n", "trigger"),
-    ("", "        env:\n          stage: \"'x' if {expression} else 'y'\"\n", "env expression for 'stage'"),
     ("", "        on-exit: |\n          env.stage = 'x' if {expression} else 'y'\n", "on-exit line 1"),
     ("", "        task: |\n          task.send_mail('a', 'b' if {expression} else 'c')\n", "task line 1"),
-], ids=["trigger", "action-env", "on-exit", "task"])
+], ids=["trigger", "on-exit", "task"])
 def test_the_same_mistake_is_rejected_at_build_time_wherever_the_expression_is_written(
     expression, env_yaml, action_yaml, context
 ):
@@ -65,9 +64,8 @@ def test_the_same_mistake_is_rejected_at_build_time_wherever_the_expression_is_w
 
 @pytest.mark.parametrize(("env_yaml", "action_yaml"), [
     ("", "        trigger: \"signal.mood >= 75\"\n"),
-    ("", "        env:\n          stage: \"'x' if signal.mood >= 75 else 'y'\"\n"),
     ("", "        on-exit: |\n          env.stage = 'x' if signal.mood >= 75 else 'y'\n"),
     ("", "        task: |\n          task.send_mail('a', 'b' if signal.mood >= 75 else 'c')\n"),
-], ids=["trigger", "action-env", "on-exit", "task"])
+], ids=["trigger", "on-exit", "task"])
 def test_an_expression_the_gate_has_nothing_against_still_builds(env_yaml, action_yaml):
     assert _build(env_yaml, action_yaml).states["a"].actions[0].name == "go"
