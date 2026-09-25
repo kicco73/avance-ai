@@ -11,7 +11,6 @@ const props = defineProps({
   url: { type: String, required: true }
 })
 
-const closeDialog = inject('closeDialog')
 const setDialogPending = inject('setDialogPending', () => {})
 
 const kind = ref(null)
@@ -176,10 +175,9 @@ onBeforeUnmount(() => {
         <img v-else-if="kind === 'image'" :key="url" :src="blobUrl" class="media-dialog-image" @load="markReady" @error="markFailed" />
       </div>
     </div>
-    <div v-show="ready" class="media-dialog-actions">
+    <div v-show="ready && (canSave || canDownload)" class="media-dialog-actions">
       <button v-if="canSave" type="button" class="media-dialog-action-btn" :disabled="saving" @click="handleSave">Save</button>
       <button v-if="canDownload" type="button" class="media-dialog-action-btn" :disabled="downloading" @click="handleDownload">Download</button>
-      <button type="button" class="media-dialog-action-btn media-dialog-close-btn" @click="closeDialog()">Close</button>
     </div>
   </div>
 </template>
@@ -189,9 +187,7 @@ onBeforeUnmount(() => {
 .media-dialog-action-btn { padding: 0.4rem 1rem; border-radius: 6px; border: 1px solid #4a6fa5; background: #4a6fa5; color: white; font-size: 0.85rem; cursor: pointer; }
 .media-dialog-action-btn:hover:not(:disabled) { background: #3d5c8a; }
 .media-dialog-action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.media-dialog-close-btn { border-color: #ccc; background: white; color: #444; }
-.media-dialog-close-btn:hover { background: #f0f0f0; }
-.media-dialog { position: relative; max-height: 80vh; overflow: auto; }
+.media-dialog { position: relative; max-height: 80vh; overflow: auto; margin-right: -1rem; padding-right: 1rem; }
 .media-dialog-loading { min-height: 240px; }
 .media-dialog-loading-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 .media-dialog-spinner { width: 32px; height: 32px; color: #4a6fa5; }

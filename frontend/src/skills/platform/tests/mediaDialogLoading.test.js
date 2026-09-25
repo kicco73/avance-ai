@@ -36,13 +36,11 @@ function fakeResponse({ ok = true, contentType = '', text = '', arrayBuffer = ne
   }
 }
 
-function mount(url, { closeDialog = vi.fn() } = {}) {
+function mount(url) {
   const host = document.createElement('div')
   document.body.appendChild(host)
   const app = createApp({ setup: () => () => h(MediaDialog, { url }) })
-  app.provide('closeDialog', closeDialog)
   app.mount(host)
-  host.closeDialog = closeDialog
   return host
 }
 
@@ -185,7 +183,7 @@ describe('MediaDialog Save/Download to drive', () => {
     await nextTick()
     await nextTick()
 
-    expect(actionButtons(host)).toEqual(['Save', 'Download', 'Close'])
+    expect(actionButtons(host)).toEqual(['Save', 'Download'])
   })
 
   it('shows only Download once the file is already in the drive', async () => {
@@ -197,10 +195,10 @@ describe('MediaDialog Save/Download to drive', () => {
     await nextTick()
     await nextTick()
 
-    expect(actionButtons(host)).toEqual(['Download', 'Close'])
+    expect(actionButtons(host)).toEqual(['Download'])
   })
 
-  it('shows only Close below customer', async () => {
+  it('shows no action below customer', async () => {
     getMe.mockResolvedValue({ role: 'user' })
     getDriveFiles.mockResolvedValue({ files: [] })
 
@@ -209,10 +207,10 @@ describe('MediaDialog Save/Download to drive', () => {
     await nextTick()
     await nextTick()
 
-    expect(actionButtons(host)).toEqual(['Close'])
+    expect(actionButtons(host)).toEqual([])
   })
 
-  it('never shows Save/Download for a non-pdf media kind, even for a customer — Close still shows', async () => {
+  it('never shows Save/Download for a non-pdf media kind, even for a customer', async () => {
     getMe.mockResolvedValue({ role: 'customer' })
     getDriveFiles.mockResolvedValue({ files: [] })
     globalThis.fetch = vi.fn(() => Promise.resolve(fakeResponse({ contentType: 'image/png' })))
@@ -222,7 +220,7 @@ describe('MediaDialog Save/Download to drive', () => {
     host.querySelector('.media-dialog-image')?.dispatchEvent(new Event('load'))
     await nextTick()
 
-    expect(actionButtons(host)).toEqual(['Close'])
+    expect(actionButtons(host)).toEqual([])
   })
 
   it('clicking Save adds the file to the drive and then hides the Save button', async () => {
@@ -240,7 +238,7 @@ describe('MediaDialog Save/Download to drive', () => {
     await nextTick()
 
     expect(postSaveMediaToDrive).toHaveBeenCalledWith('proj-1', 'media/report.pdf')
-    expect(actionButtons(host)).toEqual(['Download', 'Close'])
+    expect(actionButtons(host)).toEqual(['Download'])
   })
 
   it('clicking Download saves it, counts it, and triggers a real browser download', async () => {
@@ -273,22 +271,7 @@ describe('MediaDialog Save/Download to drive', () => {
     await nextTick()
 
     expect(getDriveFiles).not.toHaveBeenCalled()
-    expect(actionButtons(host)).toEqual(['Download', 'Close'])
-  })
-
-  it('clicking Close closes the dialog', async () => {
-    getMe.mockResolvedValue({ role: 'user' })
-    getDriveFiles.mockResolvedValue({ files: [] })
-
-    const host = mount(PDF_URL)
-    await nextTick()
-    await nextTick()
-    await nextTick()
-
-    const closeBtn = [...host.querySelectorAll('.media-dialog-action-btn')].find((el) => el.textContent.trim() === 'Close')
-    closeBtn.click()
-
-    expect(host.closeDialog).toHaveBeenCalledOnce()
+    expect(actionButtons(host)).toEqual(['Download'])
   })
 
   it('clicking Download on a drive-viewed file only counts it, no re-save', async () => {
