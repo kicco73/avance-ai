@@ -155,6 +155,101 @@ class BenchmarkMetricsTest(unittest.TestCase):
         self.assertEqual(transition.value, 0.0)
         self.assertEqual(transition.sample_count, 0)
 
+    @staticmethod
+    def _turns(roles: list[str], expected_states: dict[int, str], evaluations: list[dict], annotations: list[dict]) -> BenchmarkData:
+        messages = pd.DataFrame([
+            {
+                "id": index + 1, "session_id": 1, "role": role,
+                "timestamp": pd.Timestamp("2026-01-01T00:00:00Z") + pd.Timedelta(minutes=index),
+                "expected_state": expected_states.get(index + 1),
+            }
+            for index, role in enumerate(roles)
+        ])
+        rows = [
+            {
+                "id": 100 + index, "session_id": 1, "message_id": row["message_id"],
+                "timestamp": pd.Timestamp("2026-01-01T00:00:00Z") + pd.Timedelta(minutes=row["message_id"] - 1),
+                "values": row.get("values"), "expected_values": None,
+                "old_state": row.get("old_state"), "action": row.get("action"), "new_state": row.get("new_state"),
+            }
+            for index, row in enumerate(evaluations)
+        ] + [
+            {
+                "id": 200 + index, "session_id": 1, "message_id": row["message_id"],
+                "timestamp": pd.Timestamp("2026-01-01T00:00:00Z"),
+                "values": None, "expected_values": row["expected_values"],
+                "old_state": None, "action": None, "new_state": None,
+            }
+            for index, row in enumerate(annotations)
+        ]
+        signals = pd.DataFrame(rows)
+        sessions = pd.DataFrame([{
+            "id": 1, "username": "u", "project_id": "p", "datetime_start": pd.Timestamp("2026-01-01T00:00:00Z"),
+            "datetime_end": None, "start_state": "a", "end_state": None,
+        }])
+        return BenchmarkData(
+            messages=messages, sessions=sessions, signals=signals,
+            transitions=signals.loc[signals["new_state"].notna()].copy(),
+        )
+
+    @staticmethod
+    def _observations_of(data: BenchmarkData) -> tuple[BenchmarkObservation, ...]:
+        return BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data)
+
+    def test_an_annotation_on_the_user_message_is_compared_with_the_evaluation_after_the_ai_reply(self) -> None:
+        data = self._turns(
+            ["user", "assistant"],
+            expected_states={1: "b"},
+            evaluations=[{"message_id": 2, "values": '{"score": 60}', "old_state": "a", "action": "go", "new_state": "b"}],
+            annotations=[{"message_id": 1, "expected_values": '{"score": 80}'}],
+        )
+        observations = self._observations_of(data)
+
+        signal = SignalAccuracyMetric().calculate(observations)
+        state = StateAccuracyMetric().calculate(observations)
+        self.assertEqual((signal.value, signal.sample_count), (80.0, 1))
+        self.assertEqual((state.value, state.sample_count), (100.0, 1))
+
+    def test_an_annotation_on_the_ai_reply_is_compared_with_the_next_evaluation_after_the_user_message(self) -> None:
+        data = self._turns(
+            ["user", "assistant", "user"],
+            expected_states={},
+            evaluations=[
+                {"message_id": 1, "values": '{"score": 10}', "new_state": "a"},
+                {"message_id": 3, "values": '{"score": 70}', "new_state": "a"},
+            ],
+            annotations=[{"message_id": 2, "expected_values": '{"score": 80}'}],
+        )
+        result = SignalAccuracyMetric().calculate(self._observations_of(data))
+
+        self.assertEqual((result.value, result.sample_count), (90.0, 1))
+
+    def test_an_annotation_with_no_evaluation_after_it_is_not_compared(self) -> None:
+        data = self._turns(
+            ["user", "assistant"],
+            expected_states={2: "a"},
+            evaluations=[{"message_id": 1, "values": '{"score": 80}', "new_state": "a"}],
+            annotations=[{"message_id": 2, "expected_values": '{"score": 80}'}],
+        )
+        observations = self._observations_of(data)
+
+        self.assertEqual(SignalAccuracyMetric().calculate(observations).sample_count, 0)
+        self.assertEqual(StateAccuracyMetric().calculate(observations).sample_count, 0)
+
+    def test_two_annotations_reaching_the_same_evaluation_are_one_comparison_with_the_later_one(self) -> None:
+        data = self._turns(
+            ["user", "assistant"],
+            expected_states={},
+            evaluations=[{"message_id": 2, "values": '{"score": 80}', "new_state": "a"}],
+            annotations=[
+                {"message_id": 1, "expected_values": '{"score": 50}'},
+                {"message_id": 2, "expected_values": '{"score": 80}'},
+            ],
+        )
+        result = SignalAccuracyMetric().calculate(self._observations_of(data))
+
+        self.assertEqual((result.value, result.sample_count), (100.0, 1))
+
     def test_all_results_are_normalized(self) -> None:
         observations = BenchmarkObservationBuilder(BenchmarkConfiguration()).build(self._data())
         metrics = (

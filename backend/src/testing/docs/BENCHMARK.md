@@ -18,8 +18,8 @@ which observations are supplied.
 
 ## 1. Observations
 
-An evaluation point is created when the conversation is evaluated after a
-user message. An expert may annotate two things there.
+An evaluation point is created each time the conversation is evaluated. An
+expert may annotate two things on a message.
 
 **Expected state** (`Message.expected_state`) — the state the system was
 expected to be in after that message.
@@ -33,6 +33,24 @@ expected to be in after that message.
 
 The system's own values are in `Signals.values`. A signal absent from
 `expected_values` does not participate.
+
+**Which evaluation an annotation is compared with.** The system evaluates
+once per turn, after the user message or after the AI reply depending on
+the project, while an expert may annotate either message. An annotation is
+compared with the first evaluation made on or after the annotated message
+— never an earlier one, since the system could not know what it had not
+yet seen:
+
+| Project evaluates after | Annotated message | Compared with the evaluation on |
+| ----------------------- | ----------------- | ------------------------------- |
+| the AI reply            | user message N    | AI reply N                      |
+| the AI reply            | AI reply N        | AI reply N                      |
+| the user message        | user message N    | user message N                  |
+| the user message        | AI reply N        | user message N+1                |
+
+An annotation with no evaluation after it is not compared. Two annotations
+reaching the same evaluation make one comparison: for each signal, and for
+the state, the later annotation wins.
 
 ## 2. State accuracy
 

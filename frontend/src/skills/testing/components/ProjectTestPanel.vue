@@ -5,7 +5,7 @@ import SignalAccuracyDistributionChart from './SignalAccuracyDistributionChart.v
 import DocInfoButton from '../../../components/DocInfoButton.vue'
 import MetricDetail from '../../../components/skillkit/MetricDetail.vue'
 import { getProjectSignals, getProjectStates } from '../../../api.js'
-import { getTestMetrics } from '../api.js'
+import { getExport, getTestMetrics } from '../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../chatStore.js'
 import { useResizablePanel } from '../../../composables/useResizablePanel.js'
 import { useFloatingMenu } from '../../../composables/useFloatingMenu.js'
@@ -77,6 +77,30 @@ const {
   resettingCache, onResetCache,
 } = useTestExecutionTree(props.projectId, strategy, sessions, projectSignals, emit)
 
+const anyTestCompleted = computed(() => (
+  Object.values(currentStrategyStatuses.value).some((status) => status === 'ok' || status === 'warning')
+))
+const exporting = ref(false)
+
+async function onExport() {
+  exporting.value = true
+  try {
+    const exported = await getExport(props.projectId, strategy.value)
+    const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${props.projectId}-benchmark-${strategy.value}.json`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch {
+  } finally {
+    exporting.value = false
+  }
+}
+
 const TEST_BUDGET = 300000
 const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(tokensBurnt, TEST_BUDGET)
 const {
@@ -139,6 +163,7 @@ onMounted(() => {
       <p v-if="sessionsLoading || statesLoading || signalsLoading" class="tests-panel-tree-status">Loading…</p>
       <TestsTree
         v-else
+        class="tests-panel-tree-list"
         :sessions="annotatedSessions"
         :states="projectStates"
         :signals="projectSignals"
@@ -149,6 +174,21 @@ onMounted(() => {
         @activate="onActivate"
         @abort="onAbort"
       />
+      <div class="tests-panel-export">
+        <button
+          type="button"
+          class="tests-panel-export-btn"
+          :disabled="!anyTestCompleted || exporting"
+          :title="anyTestCompleted ? 'Export results as JSON' : 'No completed test to export'"
+          @click="onExport"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+          </svg>
+          <span>Export</span>
+        </button>
+        <DocInfoButton doc-name="benchmark-export" title="Benchmark export" />
+      </div>
     </div>
 
     <div class="tests-panel-split-divider" @mousedown="startTreeDrag"></div>
@@ -386,6 +426,47 @@ onMounted(() => {
   min-height: 0;
   border-right: 1px solid #ddd;
   background: #f9fafb;
+}
+
+.tests-panel-tree-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.tests-panel-export {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: auto;
+  padding: 0.6rem 0.75rem;
+  border-top: 1px solid #ddd;
+}
+
+.tests-panel-export-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 1.8rem;
+  border: 1px solid #4a6fa5;
+  border-radius: 6px;
+  background: white;
+  color: #4a6fa5;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.tests-panel-export-btn:hover:not(:disabled) {
+  background: #4a6fa5;
+  color: white;
+}
+
+.tests-panel-export-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .tests-panel-tokens-bar {

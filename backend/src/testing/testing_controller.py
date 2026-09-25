@@ -140,6 +140,10 @@ class TestingController(BaseController):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No aggregate result for this key yet.")
         return result
 
+    @get("/api/skills/testing/projects/{project_id}/export", role="supervisor")
+    def get_export(self, project_id: str, strategy: str):
+        return self.testing_service.export(project_id, strategy)
+
     @get("/api/skills/testing/projects/{project_id}/status", role="supervisor")
     def get_test_status(self, project_id: str):
         return {

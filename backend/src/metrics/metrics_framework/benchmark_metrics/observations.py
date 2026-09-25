@@ -38,11 +38,12 @@ class BenchmarkObservationBuilder(object):
             session_id = int(row["session_id"])
             point_timestamp = pd.Timestamp(row["timestamp"])
             message_id = int(row["message_id"])
+            evaluation_message_id = int(row["evaluation_message_id"])
             session_messages = messages.loc[messages["session_id"].eq(session_id)].copy()
             session_messages = session_messages.sort_values(["id"], kind="stable")
             expected_state = row.get("expected_state")
-            expected_values = self._parse_values(row.get("expected_values"))
-            actual_state = self._state_after_message(session_id, message_id, transitions, sessions)
+            expected_values = row["expected_values"]
+            actual_state = self._state_after_message(session_id, evaluation_message_id, transitions, sessions)
 
             state_agreement: float | None = None
             if expected_state:
@@ -66,7 +67,7 @@ class BenchmarkObservationBuilder(object):
                     signal_signed_errors[name] = float(actual) - float(expected)
 
             expected_transition = self._is_expected_transition(
-                message_id=message_id,
+                message_id=int(row["state_message_id"]) if row["state_message_id"] is not None else message_id,
                 expected_state=expected_state,
                 session_messages=session_messages,
                 sessions=sessions,
@@ -77,9 +78,9 @@ class BenchmarkObservationBuilder(object):
 
             if expected_transition and expected_state:
                 transition = self._transition_for_expected_point(
-                    session_id, message_id, expected_state, actual_state, transitions
+                    session_id, evaluation_message_id, expected_state, actual_state, transitions
                 )
-                expected_position = self._message_position(session_messages, message_id)
+                expected_position = self._message_position(session_messages, evaluation_message_id)
                 max_seconds = self._configuration.max_session_duration_in_minutes * 60.0
                 if transition is not None:
                     actual_position = self._message_position(session_messages, transition["message_id"])
@@ -138,58 +139,80 @@ class BenchmarkObservationBuilder(object):
             return parsed if isinstance(parsed, dict) else {}
         return {}
 
-    @staticmethod
-    def _points(messages: pd.DataFrame, signals: pd.DataFrame) -> list[dict[str, Any]]:
-        """Return annotated evaluation points, associating signal annotations
-        with the message whose post-message evaluation produced the signal row.
-        """
+    @classmethod
+    def _points(cls, messages: pd.DataFrame, signals: pd.DataFrame) -> list[dict[str, Any]]:
+        evaluations = cls._evaluations(signals)
         points: dict[tuple[int, int], dict[str, Any]] = {}
+        for (session_id, message_id), annotation in sorted(cls._annotations(messages, signals).items()):
+            evaluation = cls._first_evaluation_from(evaluations, session_id, message_id)
+            if evaluation is None:
+                continue
+            evaluation_message_id = int(evaluation["message_id"])
+            point = points.setdefault((session_id, evaluation_message_id), {
+                "session_id": session_id,
+                "evaluation_message_id": evaluation_message_id,
+                "timestamp": pd.Timestamp(evaluation["timestamp"]),
+                "actual_values": evaluation["values"],
+                "expected_state": None,
+                "state_message_id": None,
+                "expected_values": {},
+            })
+            point["message_id"] = message_id
+            if annotation["expected_state"]:
+                point["expected_state"] = annotation["expected_state"]
+                point["state_message_id"] = message_id
+            point["expected_values"].update(annotation["expected_values"])
+
+        return sorted(points.values(), key=lambda point: (point["session_id"], point["evaluation_message_id"]))
+
+    @classmethod
+    def _annotations(cls, messages: pd.DataFrame, signals: pd.DataFrame) -> dict[tuple[int, int], dict[str, Any]]:
+        annotations: dict[tuple[int, int], dict[str, Any]] = {}
         for row in messages.to_dict("records"):
             if pd.notna(row["expected_state"]) and row["expected_state"]:
-                points[(int(row["session_id"]), int(row["id"]))] = {
-                    "session_id": int(row["session_id"]),
-                    "message_id": int(row["id"]),
-                    "timestamp": pd.Timestamp(row["timestamp"]),
+                annotations[(int(row["session_id"]), int(row["id"]))] = {
                     "expected_state": str(row["expected_state"]),
-                    "expected_values": None,
-                    "actual_values": None,
+                    "expected_values": {},
                 }
 
-        if not signals.empty:
-            for row in signals.to_dict("records"):
-                expected_values = row["expected_values"]
-                if pd.isna(expected_values) or not expected_values:
-                    continue
-                if pd.isna(row["message_id"]):
-                    raise ValueError(
-                        f"Tracking row {row['id']!r} in session {row['session_id']!r} has expected_values "
-                        "but no message_id."
-                    )
-                message_rows = messages.loc[messages["id"].eq(int(row["message_id"]))]
-                if message_rows.empty:
-                    raise ValueError(
-                        f"Tracking row {row['id']!r} in session {row['session_id']!r} references unknown "
-                        f"message_id {int(row['message_id'])!r}."
-                    )
-                message = message_rows.iloc[0]
-                key = (int(row["session_id"]), int(message["id"]))
-                message_expected_state = message.get("expected_state")
-                point = points.setdefault(
-                    key,
-                    {
-                        "session_id": int(row["session_id"]),
-                        "message_id": int(message["id"]),
-                        "timestamp": pd.Timestamp(row["timestamp"]),
-                        "expected_state": message_expected_state if pd.notna(message_expected_state) else None,
-                        "expected_values": None,
-                        "actual_values": None,
-                    },
+        for row in signals.to_dict("records"):
+            expected_values = row["expected_values"]
+            if pd.isna(expected_values) or not expected_values:
+                continue
+            if pd.isna(row["message_id"]):
+                raise ValueError(
+                    f"Tracking row {row['id']!r} in session {row['session_id']!r} has expected_values "
+                    "but no message_id."
                 )
-                point["expected_values"] = expected_values
-                point["actual_values"] = row["values"]
-                point["timestamp"] = pd.Timestamp(row["timestamp"])
+            if messages.loc[messages["id"].eq(int(row["message_id"]))].empty:
+                raise ValueError(
+                    f"Tracking row {row['id']!r} in session {row['session_id']!r} references unknown "
+                    f"message_id {int(row['message_id'])!r}."
+                )
+            annotation = annotations.setdefault(
+                (int(row["session_id"]), int(row["message_id"])), {"expected_state": None, "expected_values": {}},
+            )
+            annotation["expected_values"] = cls._parse_values(expected_values)
+        return annotations
 
-        return sorted(points.values(), key=lambda point: (point["session_id"], point["message_id"]))
+    @staticmethod
+    def _evaluations(signals: pd.DataFrame) -> pd.DataFrame:
+        if signals.empty:
+            return signals
+        return signals.loc[
+            signals["message_id"].notna() & (signals["values"].notna() | signals["new_state"].notna())
+        ]
+
+    @staticmethod
+    def _first_evaluation_from(evaluations: pd.DataFrame, session_id: int, message_id: int) -> dict[str, Any] | None:
+        if evaluations.empty:
+            return None
+        rows = evaluations.loc[evaluations["session_id"].eq(session_id) & (evaluations["message_id"] >= message_id)]
+        if rows.empty:
+            return None
+        on_message = rows.loc[rows["message_id"].eq(rows["message_id"].min())].sort_values(["id"], kind="stable")
+        with_values = on_message.loc[on_message["values"].notna()]
+        return (with_values if not with_values.empty else on_message).iloc[-1].to_dict()
 
     @staticmethod
     def _state_after_message(

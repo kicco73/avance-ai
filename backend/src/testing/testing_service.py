@@ -16,6 +16,7 @@ from db.tests import _USERNAME_UNSPECIFIED
 from jobs import CancelableJob
 from jobs.job_queue import JobQueue
 from project.project_service import ProjectService
+from testing.benchmark_export import BenchmarkExport
 from testing.errors import TestServiceError
 from testing.cache import TestCache
 from system.broadcaster import Broadcaster
@@ -143,6 +144,10 @@ class TestingService:
     def get_aggregate_result(self, project_id: str, kind: str, target: str | None, strategy: str) -> dict | list[dict] | None:
         edit_count = self._db.get_project_draft_edit_count(project_id)
         return self._db.find_test_aggregate_result(project_id, kind, target, strategy, edit_count)
+
+    def export(self, project_id: str, strategy: str) -> dict:
+        self._ensure_valid_strategy(strategy)
+        return BenchmarkExport(self, project_id, strategy).as_dict()
 
     def _load_automaton(self, project_id: str) -> Automaton:
         revision = self._db.get_project_revision(project_id)

@@ -111,3 +111,8 @@ export function postSignalTest(projectId, signalName, strategy) {
 export function getTestStatus(projectId) {
   return apiFetch(`${API_URL}/skills/testing/projects/${encodeURIComponent(projectId)}/status`)
 }
+
+export function getExport(projectId, strategy) {
+  const params = new URLSearchParams({ strategy })
+  return apiFetch(`${API_URL}/skills/testing/projects/${encodeURIComponent(projectId)}/export?${params}`)
+}

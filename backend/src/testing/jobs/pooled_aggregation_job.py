@@ -25,19 +25,12 @@ class PooledAggregationJob(_AggregationJob):
         super().__init__(service, project_id, kind, target, strategy)
         self._session_ids = session_ids
         self._sub_run_ids: list[int] = []
-        self._sessions_job: PooledAggregationJob | None = None
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
-        if self._kind == 'sessions':
-            self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
-            return dependencies
-        self._sessions_job = self._service._sessions_job(self._project_id, self._strategy)
-        return (self._sessions_job,)
+        self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
+        return dependencies
 
     async def _compute(self) -> list[dict]:
-        if self._sessions_job is not None:
-            run_ids_by_session = self._sessions_job.run_ids
-            self._sub_run_ids = [run_ids_by_session[sid] for sid in self._session_ids]
         if not self._sub_run_ids:
             return []
         db = self._service._db

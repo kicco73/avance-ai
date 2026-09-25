@@ -1,6 +1,3 @@
-"""Builds the hybrid BenchmarkData a run's metrics are calculated from:
-messages/sessions stay real (untouched by replay), while signals and
-transitions come from TestObservation with expected_values joined in."""
 from __future__ import annotations
 
 from typing import Any
@@ -40,23 +37,24 @@ class TestDataBuilder:
     def _load_run_signals(
         cls, db: Db, run_id: int, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]],
     ) -> pd.DataFrame:
-        expected_values_by_message = {
-            row['message_id']: row['expected_values']
-            for rows in signal_rows_by_session.values()
-            for row in rows
-            if row['message_id'] is not None
-        }
-
         rows = db.get_test_observations(run_id, session_ids)
         if not rows:
             return cls._empty_signals()
 
-        records = [{**row, 'expected_values': expected_values_by_message.get(row['message_id'])} for row in rows]
-        frame = pd.DataFrame.from_records(records)
+        annotations = [
+            {
+                'id': row['id'], 'message_id': row['message_id'], 'timestamp': row['timestamp'],
+                'expected_values': row['expected_values'], 'session_id': session_id,
+            }
+            for session_id, session_rows in signal_rows_by_session.items()
+            for row in session_rows
+            if row['message_id'] is not None and row['expected_values']
+        ]
+        frame = pd.DataFrame.from_records(rows + annotations)
         for column in cls._SIGNALS_COLUMNS:
             if column not in frame.columns:
                 frame[column] = None
-        frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True, format="ISO8601")
         return frame[cls._SIGNALS_COLUMNS].sort_values(["session_id", "id"], kind="stable")
 
     @classmethod

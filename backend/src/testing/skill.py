@@ -31,7 +31,7 @@ class TestingSkill(Skill):
     ui_description = "Benchmark runs and their aggregated results."
 
     def docs(self) -> dict[str, str]:
-        return {"benchmark": "BENCHMARK.md", "project-specs": "PROJECT_SPECS.md"}
+        return {"benchmark": "BENCHMARK.md", "benchmark-export": "BENCHMARK_EXPORT.md", "project-specs": "PROJECT_SPECS.md"}
 
     def __init__(self) -> None:
         self._config = testing_config.parse({}, Path("."))
