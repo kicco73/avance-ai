@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -60,12 +62,10 @@ class OpenAICompatibleProvider(LLMProvider):
             config.url.rstrip("/")
               if config.url else "http://localhost:8080/v1"
         )
-        self._client: AsyncOpenAI = AsyncOpenAI(
-            base_url=base_url,
-            api_key=config.key or "lm-studio",
-            timeout=REQUEST_TIMEOUT,
-            max_retries=SDK_MAX_RETRIES,
-        )
+        self._base_url = base_url
+        self._api_key: str = config.key or "lm-studio"
+        self._async_clients: dict[asyncio.AbstractEventLoop, AsyncOpenAI] = {}
+        self._clients_lock = threading.Lock()
         self._model_name: str = config.model or "default-model"
         self._max_output_tokens: int = config.max_output_tokens
         self._encoding: tiktoken.Encoding | None | bool = None
@@ -84,6 +84,24 @@ class OpenAICompatibleProvider(LLMProvider):
                     )
                     self._encoding = False
         return self._encoding or None
+
+    def _new_client(self) -> AsyncOpenAI:
+        return AsyncOpenAI(
+            base_url=self._base_url, api_key=self._api_key, timeout=REQUEST_TIMEOUT, max_retries=SDK_MAX_RETRIES,
+        )
+
+    def _client_for_current_loop(self) -> AsyncOpenAI:
+        loop = asyncio.get_running_loop()
+        client = self._async_clients.get(loop)
+        if client is None:
+            with self._clients_lock:
+                client = self._async_clients.get(loop)
+                if client is None:
+                    for stale in [candidate for candidate in self._async_clients if candidate.is_closed()]:
+                        del self._async_clients[stale]
+                    client = self._new_client()
+                    self._async_clients[loop] = client
+        return client
 
     def get_input_tokens(self, prompt: str) -> int:
         encoding = self._get_encoding()
@@ -194,7 +212,7 @@ class OpenAICompatibleProvider(LLMProvider):
         tool_call_chunks: Dict[int, Dict[str, Any]] = {}
         accumulated_text = ""
         try:
-            stream = await self._client.chat.completions.create(
+            stream = await self._client_for_current_loop().chat.completions.create(
                 model=self._model_name,
                 messages=messages,  # type: ignore
                 max_tokens=self._max_output_tokens,

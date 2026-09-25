@@ -172,8 +172,9 @@ def test_a_shared_provider_survives_one_shot_loops_after_worker_loops(fake_api_u
         assert asyncio.run(asyncio.wait_for(_one_call(provider), timeout=15)) == "hi"
 
 
-def test_anthropic_keeps_one_client_per_loop_and_prunes_closed_ones(fake_api_url):
-    provider = _anthropic(fake_api_url)
+@pytest.mark.parametrize("make_provider", [_anthropic, _openai], ids=["anthropic", "openai"])
+def test_a_provider_keeps_one_client_per_loop_and_prunes_closed_ones(fake_api_url, make_provider):
+    provider = make_provider(fake_api_url)
     for _ in range(5):
         asyncio.run(_one_call(provider))
     asyncio.run(_one_call(provider))
