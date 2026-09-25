@@ -9,12 +9,14 @@ from datetime import datetime
 from typing import Protocol
 
 from automaton.automaton import Automaton
+from automaton.model import env_defaults_action
 from db import Db
 from tracking.env import Env
 from tracking.session_facts import SessionFacts
 from tracking.tracking_engine import TestObservationSink, TrackingEngine
 from testing.metrics_provider import TestMetricsProvider
 from testing.replay_messages import next_assistant_message_id
+from turn.sessions.session_type_strategy import get_session_type_strategy
 from turn.turn_transaction import RowHandle
 
 
@@ -73,7 +75,11 @@ class TestProcessor(object):
         if session is None:
             return [], f"session {session_id}: not found, skipped"
 
-        current_state = self._determine_starting_state(session_id, session)
+        if self._fired_init_action(session):
+            current_state = self._start_from_init_action(session_id)
+        else:
+            self._backfill_declared_env_keys(session_id)
+            current_state = self._determine_starting_state(session_id, session)
         if current_state is None:
             return [], f"session {session_id}: no known starting state, skipped"
 
@@ -117,8 +123,33 @@ class TestProcessor(object):
         if action is not None:
             self._current_state = action.target
 
+    def _fired_init_action(self, session: dict) -> bool:
+        earlier = self._db.list_chat_sessions(session['username'], session['project_id'], type=session['type'])
+        ran_before = any(row['id'] < session['id'] for row in earlier)
+        return get_session_type_strategy(session['type']).fired_init_action(self._automaton, ran_before)
+
+    def _start_from_init_action(self, session_id: int) -> str:
+        self._env.clear()
+        self._backfill_declared_env_keys(session_id)
+        self._tracking_engine.apply_transition(
+            self._automaton, self._automaton.states[""], self._automaton.init_action, None, ChoiceSelection.NONE,
+            session_id, origin='init-action',
+        )
+        return self._automaton.init_action.target
+
+    def _backfill_declared_env_keys(self, session_id: int) -> None:
+        current = self._env.action_set()
+        missing = [env_key for env_key in self._automaton.env_keys if env_key.name not in current]
+        if not missing:
+            return
+        self._tracking_engine.apply_action_env(
+            self._automaton, env_defaults_action(missing), {}, ChoiceSelection.NONE, "", session_id=session_id,
+        )
+
     def _determine_starting_state(self, session_id: int, session: dict) -> str | None:
+        if session['start_state']:
+            return session['start_state']
         for row in self._db.get_signals(session_id):
             if row['expected_state']:
                 return row['expected_state']
-        return session['start_state']
+        return None

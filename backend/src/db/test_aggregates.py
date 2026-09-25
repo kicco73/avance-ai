@@ -54,6 +54,7 @@ class TestAggregateMixin:
                 'kind': row.kind,
                 'target': row.target or None,
                 'strategy': row.strategy,
+                'project_draft_edit_count': row.project_draft_edit_count,
                 'results': json.loads(row.results),
             }
             for row in query

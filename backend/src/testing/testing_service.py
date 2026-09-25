@@ -31,6 +31,7 @@ from testing.jobs import (
     TestReplayJob,
     UsersAggregationJob,
 )
+from testing.jobs.base import _aggregation_node_id
 from tracking.tracking_service import TrackingService
 
 from system.logging_factory import LoggerFactory
@@ -144,6 +145,27 @@ class TestingService:
     def get_aggregate_result(self, project_id: str, kind: str, target: str | None, strategy: str) -> dict | list[dict] | None:
         edit_count = self._db.get_project_draft_edit_count(project_id)
         return self._db.find_test_aggregate_result(project_id, kind, target, strategy, edit_count)
+
+    def completed_node_events(self, project_id: str) -> list[dict]:
+        edit_count = self._db.get_project_draft_edit_count(project_id)
+        aggregate_keys = [
+            f"{row['strategy']}:{_aggregation_node_id(row['kind'], row['target'])}"
+            for row in self._db.list_test_aggregate_results(project_id)
+            if row['project_draft_edit_count'] == edit_count
+        ]
+        run_keys = [
+            f"{run['strategy']}:session:{run['session_id']}"
+            for session_id in self._labeled_session_ids(project_id)
+            for run in self.list_runs(project_id, session_id)
+            if run['status'] == 'completed' and not run['stale']
+        ]
+        return [
+            {
+                'key': key, 'job_status': 'completed', 'percentage': 100, 'result': None, 'error': None,
+                'queue_status': JobQueue.STATUS.exited.value,
+            }
+            for key in aggregate_keys + run_keys
+        ]
 
     def export(self, project_id: str, strategy: str) -> dict:
         self._ensure_valid_strategy(strategy)

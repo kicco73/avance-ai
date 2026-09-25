@@ -186,7 +186,7 @@ class BatchSignalSource(object):
         output_prompt = kit.OutputBatchPrompt(expected_turns=len(turn_ids)) if output_names else None
         prompt = kit.Prompt.chain(
             output_prompt,
-            kit.SignalsBatchPrompt(None, expected_turns=len(turn_ids)),
+            kit.SignalsBatchPrompt(None, expected_turns=len(turn_ids), signal_names=signal_names),
             kit.MemoryBatchPrompt(expected_turns=len(turn_ids)),
             kit.TextPrompt(base_prompt),
         )

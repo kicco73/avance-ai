@@ -13,6 +13,9 @@ class _FakeState:
 
 
 class _FakeAutomaton:
+    new_session_strategy = "resume"
+    env_keys: list = []
+
     def __init__(self, autotracking_on_ai_message):
         self.autotracking_on_ai_message = autotracking_on_ai_message
 
@@ -46,6 +49,9 @@ class _FakeEnv:
     def update_action_set(self, values, origin=None):
         pass
 
+    def action_set(self):
+        return {}
+
 
 class _FakeSessionFacts:
     def set_replay_instant(self, timestamp):
@@ -70,7 +76,10 @@ class _FakeDb:
         self._messages = messages
 
     def get_chat_session(self, session_id):
-        return {"id": session_id, "start_state": "start"}
+        return {"id": session_id, "start_state": "start", "type": "live", "username": "u", "project_id": "p"}
+
+    def list_chat_sessions(self, username, project_id, type=None):
+        return [{"id": 0}, {"id": 1}]
 
     def get_messages(self, session_id):
         return self._messages

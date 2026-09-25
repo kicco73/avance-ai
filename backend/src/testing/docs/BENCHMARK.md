@@ -52,6 +52,20 @@ An annotation with no evaluation after it is not compared. Two annotations
 reaching the same evaluation make one comparison: for each signal, and for
 the state, the later annotation wins.
 
+**How a replay starts a session.** A replay re-runs a session from its
+start, the way the engine started it. Whether the engine fired the
+`init-action` comes from the session's type and the project's
+`new-session-strategy`: imported, test and preview sessions always start
+from it; a live session does under `restart`, and under `resume` only if it
+was the user's first. When it fires, the replay's env is emptied, every
+declared key is set to its type default, and the `init-action` is applied,
+`on-exit` included; the replay starts in its target. Otherwise the env is
+the session's own at its start, missing declared keys are set to their
+defaults, and the replay starts in the session's `start_state` — the first
+annotated `expected_state` only when there is none, since that is the state
+expected *after* its message. All of it is written to the replay's own env
+and observations, never to the session's.
+
 ## 2. State accuracy
 
 Whether the expected state was reached at an annotated point: `100` for a

@@ -91,17 +91,26 @@ def test_signals_decode_reads_the_signals_object_or_an_empty_dict_for_empty_cont
 
 def test_signals_batch_decode_reads_one_row_per_turn_in_order():
 	raw = "mood,engagement\n1,50.2,70\n2,52,68\n[eof]"
-	assert SignalsBatchPrompt(None, expected_turns=2).decode(raw) == [{"mood": 50.2, "engagement": 70.0}, {"mood": 52.0, "engagement": 68.0}]
+	assert SignalsBatchPrompt(None, expected_turns=2, signal_names={"mood", "engagement"}).decode(raw) == [{"mood": 50.2, "engagement": 70.0}, {"mood": 52.0, "engagement": 68.0}]
+
+
+def test_signals_batch_decode_reads_the_requested_signals_in_any_header_order():
+	raw = "engagement,mood\n1,70,50.2\n2,68,52\n[eof]"
+	assert SignalsBatchPrompt(None, expected_turns=2, signal_names={"mood", "engagement"}).decode(raw) == [{"mood": 50.2, "engagement": 70.0}, {"mood": 52.0, "engagement": 68.0}]
 
 
 @pytest.mark.parametrize(("raw", "expected_turns", "mentions"), [
 	("mood,engagement\n1,50.2,70\n3,55.5,71\n[eof]", 3, None),
 	("mood,engagement\n1,50.2,70\nnot-a-turn,1,2\n[eof]", 2, "not-a-turn"),
 	("mood,engagement\n1,50.2,70\n2,52,68", 2, "no [eof] marker"),
-], ids=["missing-row", "non-numeric-row", "no-eof"])
+	("mood,engagement\n1,50.2,70\n2,52\n[eof]", 2, "1 value(s) for 2 signal(s)"),
+	("mood,engagement\n1,50.2,70\n2,52,68,1\n[eof]", 2, "3 value(s) for 2 signal(s)"),
+	("mood\n1,50.2\n2,52\n[eof]", 2, "requested signals"),
+	("mood,engagement,focus\n1,50.2,70,1\n2,52,68,1\n[eof]", 2, "requested signals"),
+], ids=["missing-row", "non-numeric-row", "no-eof", "short-row", "long-row", "missing-signal", "unknown-signal"])
 def test_signals_batch_decode_is_as_strict_as_the_memory_one(raw, expected_turns, mentions):
 	with pytest.raises(MetadataTurnMismatch) as excinfo:
-		SignalsBatchPrompt(None, expected_turns=expected_turns).decode(raw)
+		SignalsBatchPrompt(None, expected_turns=expected_turns, signal_names={"mood", "engagement"}).decode(raw)
 	if mentions is not None:
 		assert mentions in str(excinfo.value)
 

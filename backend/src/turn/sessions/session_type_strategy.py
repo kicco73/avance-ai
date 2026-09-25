@@ -65,6 +65,9 @@ class SessionTypeStrategy(ABC):
         automaton, _ = self.automaton_and_state(project_service, project_id, username)
         return self.policy(automaton).fires_init_action(self.has_ever_run(project_service, project_id, username))
 
+    def fired_init_action(self, automaton: "Automaton", ran_before: bool) -> bool:
+        return self.policy(automaton).fires_init_action(ran_before)
+
     def discard_superseded(self, session_manager: "SessionManager", username: str, project_id: str) -> None:
         return None
 
@@ -205,6 +208,9 @@ class ImportedSessionStrategy(SessionTypeStrategy):
         raise NotImplementedError(
             "An imported session is never created via create_session — it neither resumes nor restarts."
         )
+
+    def fired_init_action(self, automaton: "Automaton", ran_before: bool) -> bool:
+        return True
 
     def revision_for(self, project_service: "ProjectService", project_id: str) -> int:
         raise NotImplementedError(

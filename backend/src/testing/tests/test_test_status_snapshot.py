@@ -38,3 +38,16 @@ def test_get_test_status_carries_the_test_providers_running_token_total(client, 
     body = client.get(f"/api/skills/testing/projects/{hello_project}/status").json()
     assert "tokens" in body
     assert body["tokens"] is None or isinstance(body["tokens"], int)
+
+
+def test_get_test_status_reports_a_saved_result_as_completed_with_no_job_run_since_the_server_started(client, app_db, hello_project):
+    edit_count = app_db.get_project_draft_edit_count(hello_project)
+    revision = app_db.get_project_revision(hello_project)
+    app_db.upsert_test_aggregate_result(hello_project, revision, edit_count, 'state', 'Hello', 'batch_lite', '{}')
+    app_db.upsert_test_aggregate_result(hello_project, revision, edit_count - 1, 'state', 'Old', 'batch_lite', '{}')
+
+    events = client.get(f"/api/skills/testing/projects/{hello_project}/status").json()["events"]
+
+    statuses = {event["key"]: (event["job_status"], event["queue_status"]) for event in events}
+    assert statuses.get("batch_lite:state:Hello") == ("completed", "exited")
+    assert "batch_lite:state:Old" not in statuses

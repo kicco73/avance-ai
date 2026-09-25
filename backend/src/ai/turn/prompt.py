@@ -372,9 +372,10 @@ class SignalsBatchPrompt(Prompt):
 		"\"mood,engagement\\n1,50.2,70\\n2,52.0,68\\n[eof]\", rendered as text."
 	)
 
-	def __init__(self, signal_definition: str | None, expected_turns: int) -> None:
+	def __init__(self, signal_definition: str | None, expected_turns: int, signal_names: Iterable[str]) -> None:
 		super().__init__(signal_definition or "")
 		self.expected_turns = expected_turns
+		self.signal_names = frozenset(signal_names)
 
 	def decode(self, raw: str) -> list[dict[str, float]]:
 		by_turn: dict[int, dict[str, float]] = {}
@@ -382,6 +383,8 @@ class SignalsBatchPrompt(Prompt):
 		rows = [row for row in csv.reader(io.StringIO(raw or "")) if any(cell.strip() for cell in row)]
 		if rows:
 			names = [name.strip() for name in rows[0]]
+			if len(names) != len(set(names)) or set(names) != self.signal_names:
+				_fail(self.channel, f"header {names} does not name exactly the requested signals {sorted(self.signal_names)}", raw)
 			for row in rows[1:]:
 				first_cell = row[0].strip()
 				if first_cell.lower() == BATCH_END_MARKER:
@@ -391,6 +394,8 @@ class SignalsBatchPrompt(Prompt):
 					turn = int(first_cell)
 				except ValueError:
 					_fail(self.channel, f"non-numeric turn index -- row: {row}", raw)
+				if len(row) - 1 != len(names):
+					_fail(self.channel, f"{len(row) - 1} value(s) for {len(names)} signal(s) -- row: {row}", raw)
 				values: dict[str, float] = {}
 				for name, raw_value in zip(names, row[1:]):
 					try:
