@@ -30,6 +30,9 @@ def _automaton(contextual_prompt: str = "hi") -> Automaton:
 
 
 class RecordingAiService:
+    def charged_to(self, account):
+        return self
+
     def __init__(self) -> None:
         self.called = False
 
@@ -143,6 +146,9 @@ async def test_ai_services_own_tool_loop_rejects_a_round_that_exceeds_the_budget
 
 
 class MultiRoundAiService:
+
+    def charged_to(self, account):
+        return self
 
     def is_provider_with_schema(self) -> bool:
         return True

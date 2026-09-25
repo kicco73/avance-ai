@@ -38,6 +38,9 @@ class PlatformSkill(Skill):
             "markdown-guide": "MARKDOWN_GUIDE.md",
         }
 
+    def describe_section(self, snapshot: dict) -> None:
+        snapshot[self.key] = self.section({})
+
     def register_controllers(self, controllers: list) -> None:
         from avance_platform.platform_service import PlatformService
 

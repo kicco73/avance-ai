@@ -39,6 +39,9 @@ def _automaton_with_trigger(trigger_expr: str, target: str = "b") -> Automaton:
 
 
 class FakeSchemaAiService:
+    def charged_to(self, account):
+        return self
+
     def __init__(self, signals: dict) -> None:
         self._signals = signals
 

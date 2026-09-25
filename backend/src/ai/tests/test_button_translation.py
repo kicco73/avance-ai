@@ -57,6 +57,9 @@ def test_the_buttons_queued_for_translation_are_exactly_the_ones_the_state_shows
 
 
 class RecordingSchemaAiService:
+	def charged_to(self, account):
+		return self
+
 	def __init__(self, translations: dict | None) -> None:
 		self._translations = translations
 		self.calls: list[dict[str, str]] = []

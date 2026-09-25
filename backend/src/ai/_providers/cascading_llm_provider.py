@@ -17,6 +17,7 @@ from ai.llm_provider import (
     AIServiceProviderUnavailableError,
     LLMProvider,
     MetadataCallback,
+    PROVIDER_LABEL,
     forward_kwargs,
     SystemPrompt,
     Thought,
@@ -60,7 +61,9 @@ class AutoLiveLLMProvider(LLMProvider):
         self, system_prompt: "str | SystemPrompt", history: list[dict], schema: dict[str, Field], on_metadata: MetadataCallback | None = None,
         tools: list[ToolSpec] | None = None, tool_round: int = 1, required_tools: list[ToolSpec] | None = None,
     ) -> AsyncIterator[str | Thought]:
-        provider = self._cascade.current
+        label, provider = self._cascade.current_entry
+        if on_metadata is not None:
+            on_metadata(PROVIDER_LABEL, label)
         try:
             async for chunk in provider.stream_json(system_prompt, history, schema, **forward_kwargs(on_metadata, tools, tool_round, required_tools)):  # type: ignore
                 yield chunk
@@ -98,8 +101,10 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
     ) -> AsyncIterator[str | Thought]:
         last_error: BaseException | None = None
         for _ in range(len(self._cascade)):
-            provider = self._cascade.current
+            label, provider = self._cascade.current_entry
             index = self._cascade.current_index
+            if on_metadata is not None:
+                on_metadata(PROVIDER_LABEL, label)
             attempt = 0
             yielded = False
             while True:

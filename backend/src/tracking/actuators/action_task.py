@@ -61,6 +61,7 @@ from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from jobs import CancelableJob
 from system.logging_factory import LoggerFactory
 from scheduler import Task
+from system.usage_account import ProjectAccount, SessionAccount, charged
 from system.web_session import WebSession
 from turn.turn_transaction import TurnTransaction
 
@@ -319,11 +320,12 @@ class ScopeHydrator(object):
             chat_namespace = chat_namespace.with_session(firing_session_id)
         firing_session = self._db.get_chat_session(firing_session_id) if firing_session_id is not None else None
         env = env_for_session(TurnTransaction(self._db, firing_session["id"], []), firing_session) if firing_session is not None else Env()
+        account = SessionAccount(firing_session) if firing_session is not None else ProjectAccount(project_id, username)
         builder = EvaluationScopeBuilder(
             env, MetricService(self._db, context),
             SessionFacts(self._db, context), UserFacts(self._db), self._db,
             task_namespace, chat_namespace,
-            ai_service=self._ai_service,
+            ai_service=charged(self._ai_service, account),
         )
         snapshot = payload["snapshot"]
         scope = builder.build(

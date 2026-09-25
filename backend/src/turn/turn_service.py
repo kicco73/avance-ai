@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 import asyncio
 import json
 
@@ -46,6 +48,7 @@ from turn.sessions.session_ownership import SessionOwnership
 from turn.sessions.session_report_task import SessionReportHydrator, SessionReportScheduler, SessionReportTask
 from turn.sessions.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from system.logging_factory import LoggerFactory
+from system.usage_account import SessionAccount, charged
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
 from metrics.metric_service import MetricService
@@ -100,9 +103,9 @@ class TurnService(object):
 		bus.contribute(POINT_TRANSLATABLE_LABELS, self._contribute_choice_labels)
 		bus.subscribe(TURN_TRANSLATION, self._on_translation)
 
-	def _ai_service_for_session(self, session_id: int) -> Any:
-		session = self._db.get_chat_session(session_id)
-		return self._ai_test_service if session is not None and session["type"] in ("test", "preview") else self._ai_service
+	def _ai_service_for_session(self, session: dict) -> Any:
+		service = self._ai_test_service if session["type"] in ("test", "preview") else self._ai_service
+		return charged(service, SessionAccount(session))
 
 	def _inbox(self, session_id: int) -> Inbox:
 		return self._inboxes.setdefault(session_id, Inbox(session_id))
@@ -130,8 +133,9 @@ class TurnService(object):
 	def tracking_service(self) -> TrackingService:
 		return self._tracking_service
 
-	def ai_service_for_session_type(self, session_type: str) -> Any:
-		return self._ai_test_service if session_type == "test" else self._ai_service
+	def ai_service_for_session(self, session: dict) -> Any:
+		service = self._ai_test_service if session["type"] == "test" else self._ai_service
+		return charged(service, SessionAccount(session, turn_id=uuid.uuid4().hex))
 
 	def project_id_for_session(self, session_id: int) -> str:
 		return self._project_id_for_session(session_id)
@@ -186,7 +190,7 @@ class TurnService(object):
 		scope_builder = EvaluationScopeBuilder(
 			env, self.metric_service, session_facts, self._user_facts,
 			transaction, task_namespace, chat_namespace,
-			ai_service=self._ai_service_for_session(session_id), reply=self.outbox(session_id),
+			ai_service=self._ai_service_for_session(session), reply=self.outbox(session_id),
 		)
 		return TrackingEngine(DbTrackingSink(transaction), env, scope_builder), task_namespace
 

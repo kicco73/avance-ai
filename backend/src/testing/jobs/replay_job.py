@@ -7,7 +7,9 @@ from automaton.automaton import Automaton
 from turn.sessions.env_for_session import env_for_session
 from jobs import CancelableJob
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
+from system.usage_account import charged
 from system.web_session import WebSession
+from testing.benchmark_account import BenchmarkAccount
 from testing.data import TestDataBuilder
 from testing.metrics_provider import TestMetricsProvider
 from testing.processor import TestProcessor
@@ -127,8 +129,8 @@ class TestReplayJob(CancelableJob):
         sink = TestObservationSink(self._run['id'])
         tracking_engine = TrackingEngine(sink, env, scope_builder)
         self._signal_source = self._signal_source_cls(
-            self._service._ai_service, self._service._tracking_service, db, self._automaton, session_id,
-            env, messages,
+            charged(self._service._ai_service, BenchmarkAccount(self._run, session)),
+            self._service._tracking_service, db, self._automaton, session_id, env, messages,
         )
         self._processor = TestProcessor(
             db, self._automaton, tracking_engine, env, session_facts, metrics, self._signal_source, sink, messages,

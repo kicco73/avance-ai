@@ -88,6 +88,9 @@ class FakeSchemaAiService:
     can't emit a field it was never asked for, and callers rely on that
     (e.g. a turn that never requests 'signals' must never evaluate them)."""
 
+    def charged_to(self, account):
+        return self
+
     def __init__(self, metadata_per_call: list[dict]) -> None:
         self._metadata_per_call = metadata_per_call
         self.call_count = 0

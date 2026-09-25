@@ -38,6 +38,9 @@ def _automaton() -> Automaton:
 
 
 class UppercasingSchemaAiService:
+	def charged_to(self, account):
+		return self
+
 	def is_provider_with_schema(self) -> bool:
 		return True
 

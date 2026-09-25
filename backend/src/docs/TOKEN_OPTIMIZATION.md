@@ -157,3 +157,34 @@ tool.
 
 Prices and TTLs above are the providers' published ones at the time of
 writing; check them before deriving a number from this page.
+
+## What was spent, and who pays for it
+
+Every model call writes one `AiUsage` row: input, output, thinking, cache
+read and cache creation tokens, each in its own column, never folded into
+one another. Prices differ per provider and per model, so the row carries
+`provider_label` (`driver/model`) of the provider that actually answered —
+when a cascade gives up on one provider and moves to the next inside the
+same call, the tokens go under the one that replied.
+
+A row is charged to an account, and the account decides its `kind`:
+
+| kind           | charged to                                 | columns set                          |
+| -------------- | ------------------------------------------ | ------------------------------------ |
+| `session`      | a conversation: its turns, and the tasks, searches and reports it causes | `session_id`, `username`, `project_id` |
+| `project`      | work on a project outside any conversation | `username`, `project_id`             |
+| `unattributed` | a call made through a service no caller charged | none                            |
+
+A skill may charge its own kind of work under its own `kind`. `session_id`
+and the other identifiers are plain values, not references: deleting a
+session does not delete what it cost.
+
+A caller charges the service it holds with `charged_to(account)` and makes
+its calls through what that returns; every call through it — including the
+ones one call makes internally — lands on that account. A growing
+`unattributed` total is a caller that was never charged.
+
+`Db.get_ai_usage_totals(group_by)` sums the tokens and counts the calls,
+grouped by any of `session_id`, `username`, `project_id`, `test_run_id`,
+and always also by `kind` and `provider_label`, so each line can be priced
+on its own.

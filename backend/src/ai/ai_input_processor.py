@@ -19,7 +19,7 @@ class AiInputProcessor(InputProcessor):
         from ai.turn.tracking_processor_user import TrackingProcessorAfterUserMessage
 
         session_id = session["id"]
-        ai_service = self._turns.ai_service_for_session_type(session["type"])
+        ai_service = self._turns.ai_service_for_session(session)
         reply = self._turns.outbox(session_id)
         tracking_service = self._turns.tracking_service
         scope_builder, env, user_vars = tracking_service.build_turn_scope(

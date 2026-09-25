@@ -17,6 +17,7 @@ from system.try_again_error import TryAgainError
 
 logger = LoggerFactory.get_logger(__name__)
 MetadataCallback = Callable[[str, Any], None]
+PROVIDER_LABEL = "provider_label"
 OPENING_USER_TURN = {"role": "user", "content": "It's your turn to speak."}
 
 
@@ -72,6 +73,9 @@ class AIServiceConfig:
 	max_output_tokens: int = 1024
 	token_budget_per_day: int = 1_000_000
 	modes: tuple[str, ...] = ("live", "test")
+	input_token_ppm: float = 0.0
+	output_token_ppm: float = 0.0
+	thought_token_ppm: float = 0.0
 
 
 class AIServiceError(ProviderError):

@@ -19,6 +19,10 @@ export function getAiUsage() {
   return apiFetch(`${API_URL}/core/settings/services/ai-usage`)
 }
 
+export function getAiCosts() {
+  return apiFetch(`${API_URL}/core/settings/services/ai-costs`)
+}
+
 export function getDbUsage() {
   return apiFetch(`${API_URL}/core/settings/services/db-usage`)
 }

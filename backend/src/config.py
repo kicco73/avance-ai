@@ -143,6 +143,15 @@ class AppConfig:
         return value
 
     @staticmethod
+    def _non_negative_float_in(sub: dict, section: str, field: str, path: Path, default: float) -> float:
+        value = sub.get(field)
+        if value is None:
+            return default
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            raise ConfigError(f"{path}: '{section}.{field}' must be a non-negative number if present.")
+        return float(value)
+
+    @staticmethod
     def _choice_in(sub: dict, section: str, field: str, path: Path, default: str, choices: tuple[str, ...]) -> str:
         value = sub.get(field, default)
         if value not in choices:
@@ -406,3 +415,7 @@ def optional_positive_int(sub: dict, section: str, field: str, path: Path, defau
 
 def optional_non_negative_int(sub: dict, section: str, field: str, path: Path, default: int) -> int:
     return AppConfig._non_negative_int_in(sub, section, field, path, default)
+
+
+def optional_non_negative_float(sub: dict, section: str, field: str, path: Path, default: float) -> float:
+    return AppConfig._non_negative_float_in(sub, section, field, path, default)

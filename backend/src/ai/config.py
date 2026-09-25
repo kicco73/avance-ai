@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from config import ConfigError, optional_positive_int, optional_section, provider_prefix, providers, require_str
+from config import (
+    ConfigError, optional_non_negative_float, optional_positive_int, optional_section, provider_prefix, providers,
+    require_str,
+)
 from ai.llm_provider import AIServiceConfig
 
 SECTION = "ai-service"
@@ -63,6 +66,9 @@ def parse(raw: dict, path: Path) -> list[AIServiceConfig] | None:
             ui_label=ui_label, ui_description=ui_description,
             max_output_tokens=max_output_tokens, modes=modes,
             token_budget_per_day=token_budget_per_day,
+            input_token_ppm=optional_non_negative_float(entry, prefix, "input-token-ppm", path, 0.0),
+            output_token_ppm=optional_non_negative_float(entry, prefix, "output-token-ppm", path, 0.0),
+            thought_token_ppm=optional_non_negative_float(entry, prefix, "thought-token-ppm", path, 0.0),
         ))
     for mode in _MODES:
         matching = [service for service in services if mode in service.modes]
@@ -86,6 +92,8 @@ def public_fields(configs: list[AIServiceConfig] | None) -> dict:
             {
                 "driver": p.driver, "model": p.model, "ui-label": p.ui_label, "ui-description": p.ui_description,
                 "url": p.url, "modes": list(p.modes), "token-budget-per-day": p.token_budget_per_day,
+                "input-token-ppm": p.input_token_ppm, "output-token-ppm": p.output_token_ppm,
+                "thought-token-ppm": p.thought_token_ppm,
             }
             for p in configs
         ],

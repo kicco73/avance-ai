@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import threading
@@ -21,6 +22,7 @@ from ai.llm_provider import (
 	AIServiceRequestError,
 	LLMProvider,
 	MetadataCallback,
+	PROVIDER_LABEL,
 	SystemPrompt,
 	Thought,
 	ToolCallsRequested,
@@ -31,6 +33,7 @@ from ai._providers.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLL
 from ai.stream_deadline import StreamDeadline, StreamStalled
 from ai._providers import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 from db import Db
+from system.usage_account import UNATTRIBUTED, UsageAccount
 from system.web_session import WebSession
 from token_estimate import estimate_tokens
 from system.logging_factory import LoggerFactory
@@ -98,6 +101,11 @@ _PROVIDER_CLASSES : dict[str, object] = {
 	"openai": openai_provider_v2.OpenAICompatibleProvider,
 	"llama.cpp": openai_provider_v2.OpenAICompatibleProvider,
 }
+class _ModelSelection(object):
+	def __init__(self) -> None:
+		self.index: int | None = None
+
+
 class AiService(object):
 
 	def __init__(
@@ -117,7 +125,8 @@ class AiService(object):
 		self._auto_config_indices = (
 			auto_config_indices if auto_config_indices is not None else list(range(len(self._configs)))
 		)
-		self._selected_index: int | None = None
+		self._selection = _ModelSelection()
+		self._account: UsageAccount = UNATTRIBUTED
 		self._input_tokens_cache: LRUCache = LRUCache(maxsize=32)
 		self._input_tokens_cache_lock = threading.Lock()
 		self._db = db
@@ -207,9 +216,9 @@ class AiService(object):
 
 	@property
 	def _active_provider(self) -> LLMProvider:
-		if self._selected_index is None:
+		if self._selection.index is None:
 			return self._auto_provider
-		return self._selectable_providers[self._selected_index]
+		return self._selectable_providers[self._selection.index]
 
 	@property
 	def _current_leaf_provider(self) -> LLMProvider:
@@ -220,8 +229,8 @@ class AiService(object):
 
 	@property
 	def _current_config_index(self) -> int:
-		if self._selected_index is not None:
-			return self._selected_index
+		if self._selection.index is not None:
+			return self._selection.index
 		auto_index = getattr(self._auto_provider, "current_index", 0)
 		if 0 <= auto_index < len(self._auto_config_indices):
 			return self._auto_config_indices[auto_index]
@@ -243,6 +252,11 @@ class AiService(object):
 			return type(self._current_leaf_provider).__name__
 		return f"{config.driver}/{config.model}"
 
+	def charged_to(self, account: UsageAccount) -> "AiService":
+		charged = copy.copy(self)
+		charged._account = account
+		return charged
+
 	def get_max_output_tokens(self) -> int:
 		"""The active provider's configured output-token ceiling (see
 		AIServiceConfig.max_output_tokens) — used by callers that need to
@@ -255,7 +269,7 @@ class AiService(object):
 	def select_model(self, index: int | None) -> None:
 		if index is not None and not (0 <= index < len(self._selectable_providers)):
 			raise ValueError(f"Invalid model index: {index!r}.")
-		self._selected_index = index
+		self._selection.index = index
 
 	def get_total_tokens(self) -> int:
 		return self._active_provider.get_total_tokens()
@@ -276,7 +290,7 @@ class AiService(object):
 		is written down and kept, once per recorded result: the words a
 		page shows a human are not part of what produced an answer."""
 		return {
-			"auto": self._selected_index is None,
+			"auto": self._selection.index is None,
 			"current_index": self._current_config_index,
 			"models": [
 				{"driver": c.driver, "model": c.model, "url": c.url}
@@ -346,10 +360,7 @@ class AiService(object):
 		on_metadata calls) plus the call's duration as one AiUsage row once
 		both input_tokens and output_tokens have arrived — a passthrough
 		when this AiService wasn't built with a `db` (most tests).
-		`provider_label` is the entry-time active provider, not re-read
-		live off the cascade's own pointer: a *different* concurrent call
-		through the same cascade could have already advanced that pointer
-		past a failover by the time these events actually fire. `captured`
+		`captured`
 		is reset right after each write, not just left to accumulate: a
 		tool-calling turn fires this same tap once per round (see
 		generate_stream_with_metadata's own loop below), and without the
@@ -366,7 +377,7 @@ class AiService(object):
 		tool execution never counts against the next round."""
 		if self._db is None:
 			return _UntappedMetadata(on_metadata)
-		return _UsageTap(on_metadata, self._db, provider_label)
+		return _UsageTap(on_metadata, self._db, provider_label, self._account)
 
 	def _enforce_input_budget(
 		self, system_prompt: "str | SystemPrompt", turn_history: list[dict[str, Any]], tool_set: "ToolSet",
@@ -552,7 +563,9 @@ def _outcome_for(exc: Exception) -> str:
 	return "error"
 
 
-_USAGE_KEYS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "thoughts_tokens")
+_USAGE_KEYS = (
+	"input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "thoughts_tokens", PROVIDER_LABEL,
+)
 
 
 class _Emitted:
@@ -611,15 +624,18 @@ class _UntappedMetadata:
 		pass
 
 	def __call__(self, name: str, value: Any) -> None:
+		if name == PROVIDER_LABEL:
+			return
 		self._on_metadata(name, value)
 
 
 class _UsageTap:
-	def __init__(self, on_metadata: MetadataCallback, db: Db, provider_label: str) -> None:
+	def __init__(self, on_metadata: MetadataCallback, db: Db, provider_label: str, account: UsageAccount) -> None:
 		self._on_metadata = on_metadata
 		self._db = db
 		self._provider_label = provider_label
-		self._captured: dict[str, int] = {}
+		self._account = account
+		self._captured: dict[str, Any] = {}
 		self._started = 0.0
 		self._first_chunk_at: float | None = None
 		self._first_thought_at: float | None = None
@@ -656,23 +672,28 @@ class _UsageTap:
 		raised never reported either (see __call__ below, which would
 		have already written and cleared `_captured` had both arrived)."""
 		self._db.record_ai_usage(
-			self._provider_label, 0, 0, 0, 0,
+			self._answering_provider_label(), 0, 0, 0, 0,
 			asyncio.get_running_loop().time() - self._started,
 			time_to_first_chunk=self._time_to_first_chunk(), outcome=_outcome_for(exc),
-			time_to_first_thought=self._time_to_first_thought(),
+			time_to_first_thought=self._time_to_first_thought(), account=self._account.columns(),
 		)
+
+	def _answering_provider_label(self) -> str:
+		return self._captured.get(PROVIDER_LABEL, self._provider_label)
 
 	def __call__(self, name: str, value: Any) -> None:
 		if name in _USAGE_KEYS:
 			self._captured[name] = value
 			if "input_tokens" in self._captured and "output_tokens" in self._captured:
 				self._db.record_ai_usage(
-					self._provider_label, self._captured["input_tokens"], self._captured["output_tokens"],
+					self._answering_provider_label(), self._captured["input_tokens"], self._captured["output_tokens"],
 					self._captured.get("cache_read_tokens", 0), self._captured.get("cache_creation_tokens", 0),
 					asyncio.get_running_loop().time() - self._started,
 					time_to_first_chunk=self._time_to_first_chunk(),
 					thoughts_tokens=self._captured.get("thoughts_tokens", 0),
-					time_to_first_thought=self._time_to_first_thought(),
+					time_to_first_thought=self._time_to_first_thought(), account=self._account.columns(),
 				)
 				self._captured.clear()
+		if name == PROVIDER_LABEL:
+			return
 		self._on_metadata(name, value)

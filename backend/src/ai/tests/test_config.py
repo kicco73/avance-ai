@@ -70,3 +70,28 @@ class TestAiServiceProvidersModes:
     def test_rejects_a_non_list_an_unknown_mode_and_leaving_either_auto_cascade_empty(self, tmp_path, modes, match):
         with pytest.raises(ConfigError, match=match):
             _load(tmp_path, _sole_provider_modes(modes))
+
+
+class TestAiServiceProviderPrices:
+    def _with(self, lines: str) -> str:
+        return _ONE_PROVIDER + lines
+
+    def test_prices_default_to_zero_when_absent_or_left_empty(self, tmp_path):
+        absent, = _load(tmp_path, _ONE_PROVIDER)
+        empty, = _load(tmp_path, self._with("      input-token-ppm:\n      output-token-ppm:\n      thought-token-ppm:\n"))
+
+        for config in (absent, empty):
+            assert (config.input_token_ppm, config.output_token_ppm, config.thought_token_ppm) == (0.0, 0.0, 0.0)
+
+    def test_prices_are_read_as_floats_per_million_tokens(self, tmp_path):
+        config, = _load(tmp_path, self._with(
+            "      input-token-ppm: 0.1\n      output-token-ppm: 0.4\n      thought-token-ppm: 3\n",
+        ))
+
+        assert (config.input_token_ppm, config.output_token_ppm, config.thought_token_ppm) == (0.1, 0.4, 3.0)
+        assert ai_config.public_fields([config])["providers"][0]["thought-token-ppm"] == 3.0
+
+    @pytest.mark.parametrize("value", ["-1", "cheap", "true"])
+    def test_a_negative_or_non_numeric_price_is_refused(self, tmp_path, value):
+        with pytest.raises(ConfigError):
+            _load(tmp_path, self._with(f"      input-token-ppm: {value}\n"))

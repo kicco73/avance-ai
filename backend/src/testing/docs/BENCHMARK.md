@@ -83,6 +83,11 @@ message answers. It saves anything only when assistant replies are long;
 with short replies it costs what `batch` does. A signal that rates the
 *content* of the assistant's replies needs them whole: use `batch`.
 
+**What a benchmark costs.** Every model call a replay makes is charged
+under its own `benchmark` kind, with the run (`test_run_id`), the replayed
+session and the project. It counts toward the project's cost, and it is
+never mixed into the replayed session's own or its user's.
+
 **No turn is rated with hindsight.** Each turn is rated on exactly what
 live tracking saw for it: the history up to and including its user message,
 plus the assistant reply to it when the project tracks after the AI message

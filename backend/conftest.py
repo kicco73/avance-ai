@@ -471,6 +471,9 @@ class FakeAiService:
         self.calls: list[tuple[str, list[dict]]] = []
         self.audio_text: str | None = None
 
+    def charged_to(self, account) -> "FakeAiService":
+        return self
+
     def get_models_info(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
 
@@ -590,7 +593,10 @@ def services_config(tmp_path) -> dict:
         "testing": {"max-concurrent-tests": 4, "max-tests-per-minute": 15, "min-test-interval-ms": 0},
         "ai": {
             "max-output-tokens": 1024,
-            "providers": [{"driver": "fake", "model": "fake-model", "ui-label": "fake", "ui-description": None, "url": None, "modes": ["live", "test"]}],
+            "providers": [{
+                "driver": "fake", "model": "fake-model", "ui-label": "fake", "ui-description": None, "url": None,
+                "modes": ["live", "test"], "input-token-ppm": 1.0, "output-token-ppm": 2.0, "thought-token-ppm": 4.0,
+            }],
         },
         "talk": {"enabled": False, "providers": []},
         "listen": {"enabled": False, "providers": []},

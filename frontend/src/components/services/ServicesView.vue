@@ -5,6 +5,7 @@ import DocInfoButton from '../DocInfoButton.vue'
 import ExplorerSplitView from '../ExplorerSplitView.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import TrendLineChart from './TrendLineChart.vue'
+import AiCostsPanel from './AiCostsPanel.vue'
 import ServicesProviderCard from '../skillkit/ServicesProviderCard.vue'
 import ServicesFieldList from '../skillkit/ServicesFieldList.vue'
 import StatusToggleButton from './StatusToggleButton.vue'
@@ -51,7 +52,8 @@ const chatFieldsMovedToAi = computed(() => Object.keys(services.value?.chat ?? {
 const AI_SUBTABS = [
   { id: 'configuration', label: 'Configuration' },
   { id: 'providers', label: 'Providers' },
-  { id: 'observability', label: 'Observability' }
+  { id: 'observability', label: 'Observability' },
+  { id: 'costs', label: 'Costs' }
 ]
 const aiSubTab = ref(AI_SUBTABS[0].id)
 
@@ -468,6 +470,10 @@ function providerStatusTitle(index) {
                   @click="selectModelWithConfirm(i)"
                 />
               </div>
+            </div>
+
+            <div v-show="aiSubTab === 'costs'" class="services-ai-subpanel">
+              <AiCostsPanel :active="activeTab === 'ai' && aiSubTab === 'costs'" :providers="services.ai.providers" />
             </div>
 
             <div v-show="aiSubTab === 'observability'" class="services-ai-subpanel">

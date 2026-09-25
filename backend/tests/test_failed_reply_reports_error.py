@@ -146,6 +146,9 @@ class _SignalsThenCrash:
 	the first generation reports a signal that fires the transition, the
 	regeneration for the new state raises."""
 
+	def charged_to(self, account):
+		return self
+
 	def __init__(self) -> None:
 		self.calls = 0
 

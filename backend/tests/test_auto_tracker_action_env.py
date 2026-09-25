@@ -40,6 +40,9 @@ def _automaton_with_env(trigger_expr: str, writes: dict | None, target: str = "b
 
 
 class FakeSchemaAiService:
+    def charged_to(self, account):
+        return self
+
     def __init__(self, signals: dict) -> None:
         self._signals = signals
 

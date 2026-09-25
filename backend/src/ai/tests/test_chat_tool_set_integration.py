@@ -25,6 +25,9 @@ class FakeToolAwareAiService:
     ToolSet TrackingProcessor built is the real thing, not a stand-in:
     its own call() resolves against the real automaton/db/session."""
 
+    def charged_to(self, account):
+        return self
+
     def __init__(self, metadata_per_call: list[dict], tool_call: tuple[str, dict] | None = None) -> None:
         self._metadata_per_call = metadata_per_call
         self._tool_call = tool_call

@@ -10,6 +10,7 @@ const ManageUsersView = defineAsyncComponent(() => import('./components/settings
 const AppStoreView = defineAsyncComponent(() => import('./components/appStore/AppStoreView.vue'))
 const EmbedTestChat = defineAsyncComponent(() => import('./components/project/edit/run/EmbedTestChat.vue'))
 const PreviewChatEmbed = defineAsyncComponent(() => import('./components/PreviewChatEmbed.vue'))
+const PlatformServicesTab = defineAsyncComponent(() => import('./components/services/PlatformServicesTab.vue'))
 
 export const key = 'platform'
 
@@ -26,6 +27,8 @@ export const pushedViews = [
   { view: 'manageProjects', component: AdminHome },
   { view: 'appStore', component: AppStoreView },
 ]
+
+export const servicesTabs = [{ id: 'platform', label: 'Platform', component: PlatformServicesTab }]
 
 export const servicesTabActions = [{ id: 'platform-server-ops', tab: 'database', component: ServerOpsActions }]
 

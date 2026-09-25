@@ -25,6 +25,8 @@ from automaton.file_types import ICON_FILE_RE, SNAPSHOT_FILE_RE
 from project.web_import_job import WebImportJob
 from system import bus, skills
 from system.bus import POINT_PROJECT_PUBLISHED
+from system.usage_account import ProjectAccount
+from system.web_session import WebSession
 from system.wiring import construct
 from tracking.sources.url import parse_source_url
 from websearch import WebSearch
@@ -64,6 +66,7 @@ class PlatformService(object):
         from avance_platform.server_admin_controller import ServerAdminController
         from avance_platform.settings_controller import SettingsController
         from avance_platform.deployment_controller import DeploymentController
+        from avance_platform.costs_controller import CostsController
 
         registry = {**core, "platform_service": self}
         self.controllers = [
@@ -76,6 +79,7 @@ class PlatformService(object):
                 SettingsController,
                 DeploymentController,
                 AppStoreController,
+                CostsController,
             )
         ]
         controllers.extend(self.controllers)
@@ -197,7 +201,8 @@ class PlatformService(object):
         if self.ai_service is None:
             raise ValueError("No AI service is configured — an AI web import needs one.")
         return WebImportJob(
-            self.editor, WebSearch(self.ai_service, self.web_crawler), asyncio.get_running_loop(),
+            self.editor, WebSearch(self.ai_service.charged_to(ProjectAccount(project_id, WebSession().user)), self.web_crawler),
+            asyncio.get_running_loop(),
             project_id, source_name, self._source_archive_name(project_id, source_name), query,
         )
 

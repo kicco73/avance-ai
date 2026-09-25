@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from peewee import fn
+from peewee import Expression, fn
 
 from .instrumentation import instrument_queries, write
 from .models import AiUsage
 
 DEFAULT_HISTORY_HOURS = 24
+USAGE_TOTALS_GROUPS = ("session_id", "username", "project_id", "test_run_id")
+_USAGE_TOTALS_TOKENS = ("input_tokens", "output_tokens", "thoughts_tokens", "cache_read_tokens", "cache_creation_tokens")
 ERROR_BUCKET_SECONDS = 60
 
 
@@ -19,14 +21,117 @@ class AiUsageMixin:
         self, provider_label: str, input_tokens: int, output_tokens: int,
         cache_read_tokens: int = 0, cache_creation_tokens: int = 0, duration: float = 0.0,
         time_to_first_chunk: float | None = None, outcome: str = 'success', thoughts_tokens: int = 0,
-        time_to_first_thought: float | None = None,
+        time_to_first_thought: float | None = None, account: dict | None = None,
     ) -> None:
         AiUsage.create(
             provider_label=provider_label, input_tokens=input_tokens, output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens, cache_creation_tokens=cache_creation_tokens, duration=duration,
             time_to_first_chunk=time_to_first_chunk, outcome=outcome, thoughts_tokens=thoughts_tokens,
-            time_to_first_thought=time_to_first_thought,
+            time_to_first_thought=time_to_first_thought, **(account or {}),
         )
+
+    def get_ai_usage_totals(self, group_by: tuple[str, ...]) -> list[dict]:
+        unknown = set(group_by) - set(USAGE_TOTALS_GROUPS)
+        if unknown:
+            raise ValueError(f"Cannot group AI usage by {sorted(unknown)}; allowed: {USAGE_TOTALS_GROUPS}.")
+        keys = [getattr(AiUsage, name) for name in (*group_by, "kind", "provider_label")]
+        sums = [fn.SUM(getattr(AiUsage, name)).alias(name) for name in _USAGE_TOTALS_TOKENS]
+        query = AiUsage.select(*keys, fn.COUNT(AiUsage.id).alias("calls"), *sums).group_by(*keys).dicts()
+        return [dict(row) for row in query]
+
+    def get_ai_usage_by_day(
+        self, days: int, project_id: str | None = None, username: str | None = None,
+        session_id: int | None = None, kinds: tuple[str, ...] | None = None, session_type: str | None = None,
+    ) -> list[dict]:
+        since = (datetime.utcnow() - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day = fn.strftime('%Y-%m-%d', AiUsage.timestamp).coerce(False)
+        query = (
+            AiUsage
+            .select(
+                day.alias("day"), AiUsage.provider_label,
+                fn.SUM(AiUsage.input_tokens).alias("input_tokens"),
+                fn.SUM(AiUsage.output_tokens).alias("output_tokens"),
+                fn.SUM(AiUsage.thoughts_tokens).alias("thoughts_tokens"),
+            )
+            .where(
+                (AiUsage.timestamp >= since)
+                & self._ai_usage_scope(project_id, username, session_id, kinds, session_type)
+            )
+            .group_by(day, AiUsage.provider_label)
+            .order_by(day)
+            .dicts()
+        )
+        return [dict(row) for row in query]
+
+    def get_ai_usage_since(
+        self, since: datetime, project_id: str | None = None, username: str | None = None,
+        session_id: int | None = None, kinds: tuple[str, ...] | None = None, session_type: str | None = None,
+    ) -> list[dict]:
+        query = (
+            AiUsage
+            .select(
+                AiUsage.provider_label,
+                fn.SUM(AiUsage.input_tokens).alias("input_tokens"),
+                fn.SUM(AiUsage.output_tokens).alias("output_tokens"),
+                fn.SUM(AiUsage.thoughts_tokens).alias("thoughts_tokens"),
+            )
+            .where((AiUsage.timestamp >= since) & self._ai_usage_scope(project_id, username, session_id, kinds, session_type))
+            .group_by(AiUsage.provider_label)
+            .dicts()
+        )
+        return [dict(row) for row in query]
+
+    def get_ai_usage_by_turn(
+        self, days: int, project_id: str, kinds: tuple[str, ...], session_type: str | None,
+    ) -> list[dict]:
+        since = (datetime.utcnow() - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+        query = (
+            AiUsage
+            .select(
+                AiUsage.turn_id, AiUsage.provider_label,
+                fn.SUM(AiUsage.input_tokens).alias("input_tokens"),
+                fn.SUM(AiUsage.output_tokens).alias("output_tokens"),
+                fn.SUM(AiUsage.thoughts_tokens).alias("thoughts_tokens"),
+            )
+            .where(
+                (AiUsage.timestamp >= since) & AiUsage.turn_id.is_null(False)
+                & self._ai_usage_scope(project_id, None, None, kinds, session_type)
+            )
+            .group_by(AiUsage.turn_id, AiUsage.provider_label)
+            .dicts()
+        )
+        return [dict(row) for row in query]
+
+    def get_ai_usage_usernames(self, project_id: str, kinds: tuple[str, ...], session_type: str | None) -> list[str]:
+        query = (
+            AiUsage.select(AiUsage.username).distinct()
+            .where(AiUsage.username.is_null(False) & self._ai_usage_scope(project_id, None, None, kinds, session_type))
+            .order_by(AiUsage.username)
+        )
+        return [row.username for row in query]
+
+    def get_ai_usage_session_ids(
+        self, project_id: str, username: str, kinds: tuple[str, ...], session_type: str | None,
+    ) -> list[int]:
+        query = (
+            AiUsage.select(AiUsage.session_id).distinct()
+            .where(AiUsage.session_id.is_null(False) & self._ai_usage_scope(project_id, username, None, kinds, session_type))
+            .order_by(AiUsage.session_id.desc())
+        )
+        return [row.session_id for row in query]
+
+    @staticmethod
+    def _ai_usage_scope(
+        project_id: str | None, username: str | None, session_id: int | None,
+        kinds: tuple[str, ...] | None, session_type: str | None,
+    ) -> Expression:
+        scope: Expression = AiUsage.kind.in_(kinds) if kinds is not None else (AiUsage.id == AiUsage.id)
+        for column, value in (
+            (AiUsage.project_id, project_id), (AiUsage.username, username),
+            (AiUsage.session_id, session_id), (AiUsage.session_type, session_type),
+        ):
+            scope &= (column == value) if value is not None else True
+        return scope
 
     def get_ai_usage_snapshot(self, provider_labels: list[str], hours: int = DEFAULT_HISTORY_HOURS) -> dict:
         """{'today': {label: tokens}, 'today_cache_read': {label:

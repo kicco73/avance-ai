@@ -15,6 +15,7 @@ from automaton.index_yml_formatter import IndexYmlFormatter
 from db import ContentRestored, Db, FileRenamed
 from system import doc_catalog
 from system.logging_factory import LoggerFactory
+from system.usage_account import ProjectAccount
 from system.web_session import WebSession
 from tracking.project_files import PROJECT_FILE_CACHE
 from tracking.sources.websearch import SCHEME as WEBSEARCH_SCHEME, USER_SCOPE
@@ -168,7 +169,7 @@ class ProjectEditor:
         names.sort(key=lambda name: (name != "index.yml", name))
         return names
 
-    async def _run_ai_edit(self, system_prompt_template: str, spec_slug: str, user_turn: str) -> str:
+    async def _run_ai_edit(self, project_id: str, system_prompt_template: str, spec_slug: str, user_turn: str) -> str:
         """Shared by generate_index_yml_ai_edit/generate_index_css_ai_edit
         below: fills `system_prompt_template`'s %%SPEC%% placeholder with
         the text of the document `spec_slug` names, sends `user_turn` as
@@ -185,7 +186,8 @@ class ProjectEditor:
             raise FileNotFoundError(f"This build serves no '{spec_slug}' specification.")
         spec = doc.render()
         system_prompt = system_prompt_template.replace(_SPEC_PLACEHOLDER, spec)
-        reply = await self._ai_service.generate(system_prompt, [{"role": "user", "content": user_turn}])
+        ai_service = self._ai_service.charged_to(ProjectAccount(project_id, WebSession().user))
+        reply = await ai_service.generate(system_prompt, [{"role": "user", "content": user_turn}])
         match = _CODE_FENCE_RE.search(reply)
         return (match.group(1) if match else reply).strip() + "\n"
 
@@ -204,7 +206,7 @@ class ProjectEditor:
             f"{uploads_label} already uploaded under {directory}/: {uploads_line}\n\n"
             f"Requested change:\n{instruction}"
         )
-        return await self._run_ai_edit(system_prompt_template, spec_slug, user_turn)
+        return await self._run_ai_edit(project_id, system_prompt_template, spec_slug, user_turn)
 
     async def generate_index_yml_ai_edit(self, project_id: str, instruction: str) -> str:
         """Backs the "Edit project" index.yml editor's AI button

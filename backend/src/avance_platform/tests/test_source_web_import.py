@@ -42,6 +42,9 @@ class FakeCrawler:
 
 class FakeWebImportAi:
 
+    def charged_to(self, account):
+        return self
+
     def __init__(self, columns: list[str], csv_text: str, step_seconds: float = 0.0) -> None:
         self.columns = columns
         self.csv_text = csv_text

@@ -17,8 +17,10 @@ from __future__ import annotations
 from controllers.base_controller import BaseController, get
 from db import Db
 from scheduler import SchedulerService
+from system.ai_costs import AiCostPricing
 
 APP_NAME = "Avance"
+DEFAULT_COST_DAYS = 30
 
 
 class DeploymentInfoController(BaseController):
@@ -46,6 +48,10 @@ class DeploymentInfoController(BaseController):
         minute over the trailing 24h (see db/ai_usage.py)."""
         labels = [f"{p['driver']}/{p['model']}" for p in self.services_config["ai"]["providers"]]
         return self.db.get_ai_usage_snapshot(labels)
+
+    @get("/api/core/settings/services/ai-costs", role="admin")
+    def get_ai_costs(self, days: int = DEFAULT_COST_DAYS):
+        return AiCostPricing(self.services_config).daily(self.db.get_ai_usage_by_day(days))
 
     @get("/api/core/settings/services/db-usage", role="admin")
     def get_db_usage(self):

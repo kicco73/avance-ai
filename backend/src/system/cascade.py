@@ -81,6 +81,12 @@ class ProviderCascade(Generic[Provider]):
             return self._entries[self._index].provider
 
     @property
+    def current_entry(self) -> tuple[str, Provider]:
+        with self._lock:
+            entry = self._entries[self._index]
+            return entry.label, entry.provider
+
+    @property
     def current_index(self) -> int:
         with self._lock:
             return self._index

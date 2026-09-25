@@ -18,6 +18,7 @@ from system.logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from scheduler import SchedulerService
+from system.usage_account import SessionAccount, charged
 from system.web_session import WebSession
 from tracking.actuators import TaskNamespaceFactory
 from tracking.env import PersistedEnv
@@ -119,7 +120,7 @@ class EventService:
                 env, metrics, session_facts, user_facts, self._db,
                 self._namespace_factory.live(project_id=observer_project_id),
                 chat_namespace=self._namespace_factory.chat_live(project_id=observer_project_id),
-                ai_service=self._ai_service,
+                ai_service=charged(self._ai_service, SessionAccount(session)),
             )
             tracking_engine = TrackingEngine(DbTrackingSink(TurnTransaction(self._db, session["id"], [])), env, scope_builder)
 

@@ -7,6 +7,7 @@ from typing import Any, TYPE_CHECKING
 from jobs import CancelableJob
 from scheduler import Task
 from system.logging_factory import LoggerFactory
+from system.usage_account import SessionAccount
 
 if TYPE_CHECKING:
     from db import Db
@@ -121,13 +122,14 @@ class SessionReportHydrator:
             return
         session = self._db.get_chat_session(session_id)
         assert session is not None
+        ai_service = self._ai_service.charged_to(SessionAccount(session))
         prompt_text = build_session_report_prompt(self._db, session_id)
-        result = await self._ai_service.prompt(prompt_text, channels=["title"])
+        result = await ai_service.prompt(prompt_text, channels=["title"])
         self._db.set_session_summary(session_id, result["text"], title=result.get("title", "").strip())
 
         summaries = self._db.get_recent_session_summaries(session["username"], session["project_id"], limit=3)
         ai_summary_prompt = build_ai_summary_prompt(summaries)
-        ai_summary = await self._ai_service.prompt(ai_summary_prompt)
+        ai_summary = await ai_service.prompt(ai_summary_prompt)
         self._db.set_user_project_ai_summary(session["username"], session["project_id"], ai_summary)
 
 

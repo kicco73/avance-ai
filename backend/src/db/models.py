@@ -319,6 +319,13 @@ class AiUsage(BaseModel):
     time_to_first_chunk = FloatField(null=True)
     time_to_first_thought = FloatField(null=True)
     outcome = CharField(index=True, default='success')
+    kind = CharField(index=True, default='unattributed')
+    session_id = IntegerField(null=True, index=True)
+    session_type = CharField(null=True, index=True)
+    turn_id = CharField(null=True, index=True)
+    test_run_id = IntegerField(null=True, index=True)
+    username = CharField(null=True, index=True)
+    project_id = CharField(null=True, index=True)
 
     class Meta:
         table_name = 'AiUsage'
