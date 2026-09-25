@@ -34,7 +34,7 @@ from automaton.scope import EvaluationScope
 from system.logging_factory import LoggerFactory
 
 from . import analysis
-from .on_exit_expression_analyzer import OnExitExpressionAnalyzer
+from .on_exit_expression_analyzer import OnExitExpressionAnalyzer, OnExitForLoop
 from .trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 if TYPE_CHECKING:
@@ -188,11 +188,44 @@ class _TaskEval(simpleeval.EvalWithCompoundTypes):
             else self.names.get(getattr(node.func, "id", None))
         )
         if not isinstance(callee, LambdaFunction):
-            return super()._eval_call(node)
-        return callee(
-            *(self._eval(argument) for argument in node.args),
-            **dict(self._eval(keyword) for keyword in node.keywords),
-        )
+            callee = self._function(node.func)
+        return callee(*self._expanded(node.args), **self._keywords(node.keywords))
+
+    def _function(self, func: ast.expr) -> Any:
+        if isinstance(func, ast.Attribute):
+            return self._eval(func)
+        if not isinstance(func, ast.Name):
+            raise simpleeval.FeatureNotAvailable("Lambda Functions not implemented")
+        if func.id not in self.functions:
+            raise simpleeval.FunctionNotDefined(func.id, self.expr)
+        function = self.functions[func.id]
+        if function in simpleeval.DISALLOW_FUNCTIONS:
+            raise simpleeval.FeatureNotAvailable("This function is forbidden")
+        return function
+
+    def _expanded(self, elements: list[ast.expr]) -> list[Any]:
+        values: list[Any] = []
+        for element in elements:
+            if isinstance(element, ast.Starred):
+                values.extend(self._eval(element.value))
+            else:
+                values.append(self._eval(element))
+        return values
+
+    def _keywords(self, keywords: list[ast.keyword]) -> dict[str, Any]:
+        values: dict[str, Any] = {}
+        for keyword in keywords:
+            if keyword.arg is None:
+                values.update(self._eval(keyword.value))
+            else:
+                values[keyword.arg] = self._eval(keyword.value)
+        return values
+
+    def _eval_tuple(self, node: ast.Tuple) -> tuple:
+        return tuple(self._expanded(node.elts))
+
+    def _eval_set(self, node: ast.Set) -> set:
+        return set(self._expanded(node.elts))
 
 
 class CoreAutomaton(object):
@@ -356,6 +389,10 @@ class CoreAutomaton(object):
         result: dict[str, Any], snippets: list[str], failures: list[tuple[str, Exception]],
     ) -> None:
         for line_number, statement in statements:
+            loop = OnExitExpressionAnalyzer.for_loop(statement, line_number)
+            if loop is not None:
+                self._run_on_exit_for(action, loop, scope, result, snippets, failures)
+                continue
             branches = OnExitExpressionAnalyzer.if_branches(statement, line_number)
             if branches is not None:
                 self._run_on_exit_if(action, branches, scope, result, snippets, failures)
@@ -395,6 +432,27 @@ class CoreAutomaton(object):
                 continue
             if isinstance(value, JsSnippet):
                 snippets.append(value)
+
+    def _run_on_exit_for(
+        self, action: "Action", loop: OnExitForLoop, scope: EvaluationScope,
+        result: dict[str, Any], snippets: list[str], failures: list[tuple[str, Exception]],
+    ) -> None:
+        try:
+            iterable = self._evaluate_statement(loop.iterable, scope)
+            items = iter(iterable)
+        except Exception as exc:
+            logger.error("on-exit loop evaluation failed for action '%s' ('%s'): %s", action.name, loop.iterable, exc)
+            failures.append((f"for ... in {loop.iterable}", exc))
+            return
+        for item in items:
+            try:
+                bound = loop.binding.values(item)
+            except (TypeError, ValueError) as exc:
+                failures.append((f"for {', '.join(loop.binding.names)} in {loop.iterable}", exc))
+                return
+            for name, value in bound.items():
+                scope[name] = value
+            self._run_on_exit_statements(action, loop.body, scope, result, snippets, failures)
 
     def _run_on_exit_if(
         self, action: "Action", branches: list[tuple[str | None, list[tuple[int, str]]]], scope: EvaluationScope,

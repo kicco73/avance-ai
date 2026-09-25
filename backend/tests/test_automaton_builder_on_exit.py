@@ -329,3 +329,60 @@ def test_build_rejects_an_on_exit_if_whose_condition_or_branch_is_invalid(on_exi
     with pytest.raises(ValueError, match=match):
         _build(_go(f"        on-exit: {on_exit}\n"))
 
+
+
+def _run_on_exit(on_exit: str, env: dict):
+    from automaton.automaton import Action
+    from automaton.scope import EvaluationScope
+    from tracking.actuators.chat_namespace import FakeChatNamespace
+
+    automaton = _build(_go("        on-exit: |\n" + "".join(f"          {line}\n" for line in on_exit.splitlines())))
+    action = Action(name="go", ui_label="go", ui_button="go", target="b", on_exit=on_exit)
+    scope = EvaluationScope({"env": dict(env), "chat": FakeChatNamespace(project_id="p")}, automaton=None, state_key="a")
+    return automaton.eval_action_on_exit(action, scope)
+
+
+def test_eval_action_on_exit_runs_a_for_loop_body_once_per_item():
+    on_exit = (
+        "total = 0\n"
+        "for n in [1, 2, 3]:\n"
+        "    total = total + n\n"
+        "    if n == 2:\n"
+        "        env.flight = 'two'\n"
+        "env.counter = total"
+    )
+
+    assert _run_on_exit(on_exit, {"counter": 0}) == ({"flight": "two", "counter": 6}, None, ())
+
+
+def test_eval_action_on_exit_unpacks_each_item_into_the_loop_s_names():
+    on_exit = (
+        "total = 0\n"
+        "for a, b in zip([1, 2], [10, 20]):\n"
+        "    total = total + a * b\n"
+        "env.counter = total"
+    )
+
+    assert _run_on_exit(on_exit, {"counter": 0}) == ({"counter": 50}, None, ())
+
+
+def test_eval_action_on_exit_expands_starred_arguments_tuples_and_sets():
+    on_exit = (
+        "parts = [[1, 2, 3]]\n"
+        "env.counter = len(*parts) + len((*parts[0], 4)) + len({*[1, 1, 2]})"
+    )
+
+    assert _run_on_exit(on_exit, {"counter": 0}) == ({"counter": 3 + 4 + 2}, None, ())
+
+
+@pytest.mark.parametrize(("on_exit", "match"), [
+    ("|\n          for n in [1]:\n            env.counter = n\n          else:\n            env.counter = 0", r"on-exit line 1.*'else'"),
+    ("|\n          for env.counter in [1]:\n            chat.celebrate()", r"on-exit line 1.*plain names only"),
+    ("|\n          for user in [1]:\n            chat.celebrate()", r"(?s)on-exit line 1.*reserved name"),
+    ("|\n          for n in rows:\n            chat.celebrate()", r"on-exit line 1.*references undefined name\(s\): rows"),
+    ("|\n          for n in [1]:\n            task.send_mail(user.email, 'hi')", r"on-exit line 2.*on-exit only supports"),
+    ("|\n          for n in [1]:\n            last = n\n          env.counter = last", r"on-exit line 3.*references undefined name\(s\): last"),
+])
+def test_build_rejects_an_on_exit_for_loop_that_is_malformed_or_reads_what_it_cannot(on_exit, match):
+    with pytest.raises(ValueError, match=match):
+        _build(_go(f"        on-exit: {on_exit}\n"))

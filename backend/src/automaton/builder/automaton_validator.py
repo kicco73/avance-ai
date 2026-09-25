@@ -309,6 +309,26 @@ class AutomatonValidator:
     ) -> None:
         for line_number, statement in statements:
             line_context = f"{context}, on-exit line {line_number}"
+            try:
+                loop = OnExitExpressionAnalyzer.for_loop(statement, line_number)
+            except ValueError as exc:
+                raise ValueError(f"{line_context}: {exc}") from exc
+            if loop is not None:
+                for name in loop.binding.names:
+                    if name in TriggerExpressionAnalyzer.RESERVED_NAMESPACES or name in metric_names():
+                        raise ValueError(
+                            f"{line_context} ('{statement}'): '{name}' is a reserved name "
+                            "(a namespace or core metric) and can't be used as a loop variable."
+                        )
+                cls.validate_script_expression(
+                    loop.iterable, line_context, archives, registry, sources, frozenset(known_locals), namespaces,
+                    media_doc_ids,
+                )
+                cls._validate_on_exit_statements(
+                    loop.body, context, registry, sources, env_keys, archives, namespaces, media_doc_ids,
+                    set(known_locals) | set(loop.binding.names),
+                )
+                continue
             branches = OnExitExpressionAnalyzer.if_branches(statement, line_number)
             if branches is not None:
                 branch_locals: list[set[str]] = []
@@ -356,7 +376,7 @@ class AutomatonValidator:
             if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") is None:
                 raise ValueError(
                     f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments, "
-                    "'name = expr' locals, a bare 'chat.<method>(...)' call, or an 'if' of them."
+                    "'name = expr' locals, a bare 'chat.<method>(...)' call, or an 'if' or 'for' of them."
                 )
             if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") == "bind_env":
                 cls.validate_env_binding(statement, line_context, env_keys)

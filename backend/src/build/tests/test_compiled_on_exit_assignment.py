@@ -83,3 +83,28 @@ def test_a_compiled_on_exit_if_runs_the_branch_its_condition_picks(db: Db, tmp_p
     ]
 
     assert outcomes == [({"counter": 50}, None, ()), ({"counter": 0}, None, ())]
+
+
+FOR_INDEX = INDEX.replace(
+    "          local = 1 + 1\n          env.counter = local + env.counter\n",
+    "          total = 0\n          for a, b in zip([1, 2], [*[10], 20]):\n            total = total + a * b\n"
+    "          env.counter = total + len((*[1], 2))\n",
+).replace("on_exit_demo", "on_exit_for_demo")
+
+
+def test_a_compiled_on_exit_for_loop_with_starred_values_runs_like_the_interpreted_one(db: Db, tmp_path):
+    project_id = "on_exit_for_demo"
+    db.ensure_project(project_id)
+    db.save_project_files(project_id, {"index.yml": FOR_INDEX.encode()}, {"index.yml": "text/yaml"})
+    db.publish_project(project_id)
+    revision = db.get_project_revision(project_id)
+
+    module_name = module_name_for(project_id)
+    built = compile_contents({"index.yml": FOR_INDEX}, module_name, tmp_path, revision)
+    built.rename(package_dir(tmp_path, module_name, revision))
+
+    automaton = CompiledAutomatonLoader(db, tmp_path).load_at_revision(project_id, revision)
+    action = automaton.states["start"].actions[0]
+    scope = EvaluationScope({"env": {"counter": 0}}, automaton=automaton, state_key="start")
+
+    assert automaton.eval_action_on_exit(action, scope) == ({"counter": 52}, None, ())

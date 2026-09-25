@@ -429,7 +429,7 @@ actions:
 | `target` | no | string | this action's own state | Destination state; must be a real key (or the current state itself). Omitted/self-referential ⇒ self-loop: only the action's own effects happen. Fired manually (a button, a choice) in an `ai` state, nobody answers — no model call, no message, since nothing new was said; in a `system` state the reply is what its `on-exit` wrote (§4.1), as for any action reaching that state. |
 | `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
 | `task` | no | string | `None` | One or more `task.<name>(...)` calls, one per line — side effect of firing, run in the background off the request (§5.4). Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
-| `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, `name = expression` locals and/or bare `chat.<method>(...)` calls, one per line, optionally inside `if`/`elif`/`else` — run synchronously, in this same request. §5.3bis. |
+| `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, `name = expression` locals and/or bare `chat.<method>(...)` calls, one per line, optionally inside `if`/`elif`/`else` or `for` — run synchronously, in this same request. §5.3bis. |
 | `override-target-processor` | no | `none` \| `system` | `none` | `system`: fired manually (a button, a choice), the destination answers as a `system` state would — no model call, the reply is what this action's `on-exit` wrote with `chat.write(...)` (§4.1), which is therefore allowed even when `target` is an `ai` state. The destination keeps its own processor for every later turn. The editor shows it as the action's **Quiet** badge. Not an init-action field. |
 | `ui-label` | no | string | `name` | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, then `name` | Manual-action button text. |
@@ -879,6 +879,18 @@ span several lines, and a `#` comment just works). Each line is
   readable after the block only when every branch, `else` included,
   assigns it. A condition that raises is a failure like any other line,
   and no branch runs.
+- a `for name in iterable:` loop — or `for a, b in iterable:`, one plain
+  name per element of each item — whose body holds lines of these same
+  shapes, `if` and nested `for` included, run once per item with the loop
+  names readable as locals. No `else`, `break` or `continue`. A local
+  assigned in the body, the loop names included, is not readable after
+  the loop, since the body may never run. An iterable that raises, or an
+  item that doesn't unpack into the loop's names, is a failure like any
+  other line and ends the loop there.
+
+Every expression may spread a sequence with `*`, and a call may spread a
+mapping with `**`: `len(*groups)`, `(*first, last)`, `{*tags}`,
+`chat.notify(**message)`.
 
 Unlike `task` (§5.4), no `task.<name>(...)` calls: `task:`'s own
 `task.<name>(...)` calls stay off-limits, that remains `task`'s own
