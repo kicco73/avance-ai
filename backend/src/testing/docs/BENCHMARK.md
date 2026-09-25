@@ -67,7 +67,11 @@ expected *after* its message. All of it is written to the replay's own env
 and observations, never to the session's.
 
 **What each strategy shows the model.** `turn_by_turn` makes one call per
-turn, with the history up to that turn, as live tracking does. `batch` and
+turn, with the history up to that turn, as live tracking does, and asks
+for exactly the signals the replay's current state tracks — never those of
+the annotated state or of the state the original session was in. A signal
+the replay did not compute at a point has no value there and is not scored
+there, as live would not have computed it. `batch` and
 `batch_lite` cover several turns per call with the transcript embedded in
 the prompt, each covered turn labelled `[Turn N]` right before its user
 message. `batch` shows both sides in full. `batch_lite` shows both sides

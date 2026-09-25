@@ -42,15 +42,6 @@ class TurnByTurnSignalSource:
     async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict, dict]:
         kit = _kit()
         signal_names = set(self._automaton.tracked_signal_names(current_state))
-
-        expected_row = self._db.get_signal_row_by_message(message_id)
-        if expected_row is not None and expected_row['expected_state']:
-            signal_names |= self._automaton.tracked_signal_names(expected_row['expected_state'])
-
-        real_state = self._db.nearest_tracked_state_by_message(self._session_id, message_id)
-        if real_state:
-            signal_names |= self._automaton.tracked_signal_names(real_state)
-
         signal_definition = Signals(FixedProjectContext(self._automaton), self._db).get_definition(signal_names)
 
         state = self._automaton.get_state(current_state)

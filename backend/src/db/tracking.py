@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 
-from peewee import Expression, fn
+from peewee import Expression
 
 from system.logging_factory import LoggerFactory
 
@@ -165,22 +165,6 @@ class TrackingMixin:
             .distinct()
         )
         return {row.session_id for row in rows}
-
-    def nearest_tracked_state_by_message(self, session_id: int, message_id: int) -> str | None:
-        """The state the nearest real (production) Tracking row to
-        `message_id` left the conversation in, by message-id proximity —
-        never by timestamp: a test replay's turns don't share
-        production's timeline."""
-        row = (
-            Tracking
-            .select()
-            .where((Tracking.session == session_id) & Tracking.message.is_null(False))
-            .order_by(fn.ABS(Tracking.message - message_id))
-            .first()
-        )
-        if row is None:
-            return None
-        return row.new_state or row.old_state
 
     @write
     def set_signal_expected_state(self, signal_row_id: int, expected_state: str | None) -> None:
