@@ -196,7 +196,7 @@ class StructuredReply:
 
 	def feed(self, chunk: str) -> str:
 		self._raw += chunk
-		parsed = partial_json_parser.parse_json(self._raw)
+		parsed = self._parsed()
 		if not isinstance(parsed, dict) or not parsed:
 			return ""
 		still_streaming = next(reversed(parsed))
@@ -208,7 +208,7 @@ class StructuredReply:
 		return delta
 
 	def finish(self) -> None:
-		parsed = partial_json_parser.parse_json(self._raw) if self._raw else None
+		parsed = self._parsed()
 		if isinstance(parsed, dict) and parsed:
 			last = next(reversed(parsed))
 			self._emit(last, parsed[last])
@@ -222,6 +222,15 @@ class StructuredReply:
 
 	def raw(self) -> str:
 		return self._raw
+
+	def _parsed(self) -> Any:
+		if not self._raw.strip():
+			return None
+		try:
+			return partial_json_parser.parse_json(self._raw)
+		except ValueError as exc:
+			logger.error(f"reply is not a JSON object: {exc} -- raw: {self._raw!r}")
+			raise AIServiceProviderMalformedReplyError(f"the reply is not a JSON object: {exc}") from exc
 
 	def _emit(self, name: str, value: Any) -> None:
 		if name in self._emitted:
