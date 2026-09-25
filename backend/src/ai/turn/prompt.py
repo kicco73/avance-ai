@@ -341,17 +341,19 @@ class SignalsPrompt(Prompt):
 EMBED_SIGNAL_BATCH_TAG_PROMPT = """
 Definition of signals metadata:
 	- a small CSV table, as plain text (not a JSON object).
-	- first row: the signal names, comma-separated, e.g. "mood,engagement".
-	- one data row per turn, each starting with that turn's own number — the same
-	  number shown on its "[Turn N]" marker in the conversation transcript —
-	  followed by that turn's values. The transcript's turn numbers always run
+	- first row: the column names, comma-separated: the word turn, then the
+	  signal names, e.g. "turn,mood,engagement".
+	- one data row per turn, with exactly one cell per column: first that
+	  turn's own number — the same number shown on its "[Turn N]" marker in
+	  the conversation transcript — then that turn's value for each signal,
+	  in the header's order. The transcript's turn numbers always run
 	  1, 2, 3, ... with no gaps, so with 3 marked turns you write exactly 3 rows.
 	- it is vitally important to always calculate and return a value for each and any
 	  signal specified in the list below, for every turn marked in the transcript —
 	  never skip one, never merge two into one row.
 	- after the last turn's row, write one final row whose only cell is the
 	  text [eof], exactly:
-	  mood,engagement
+	  turn,mood,engagement
 	  1,50.2,70
 	  2,52.0,68
 	  3,60.0,75
@@ -362,14 +364,17 @@ Always fill in the 'signals' field of your structured response:
 """
 
 
+BATCH_TURN_COLUMN = "turn"
+
+
 class SignalsBatchPrompt(Prompt):
 	channel = "signals"
 	definition = EMBED_SIGNAL_BATCH_TAG_PROMPT
 	schema_description = (
-		"CSV table of calculated signal values: header row of signal names, then one row per turn "
-		"marked in the transcript, each starting with that turn's own [Turn N] number (always 1, 2, "
-		"3, ... with no gaps), then a final row whose only cell is the text [eof], e.g. "
-		"\"mood,engagement\\n1,50.2,70\\n2,52.0,68\\n[eof]\", rendered as text."
+		"CSV table of calculated signal values: header row of the word turn then the signal names, then "
+		"one row per turn marked in the transcript with one cell per header column, starting with that "
+		"turn's own [Turn N] number (always 1, 2, 3, ... with no gaps), then a final row whose only cell "
+		"is the text [eof], e.g. \"turn,mood,engagement\\n1,50.2,70\\n2,52.0,68\\n[eof]\", rendered as text."
 	)
 
 	def __init__(self, signal_definition: str | None, expected_turns: int, signal_names: Iterable[str]) -> None:
@@ -382,9 +387,10 @@ class SignalsBatchPrompt(Prompt):
 		terminated = False
 		rows = [row for row in csv.reader(io.StringIO(raw or "")) if any(cell.strip() for cell in row)]
 		if rows:
-			names = [name.strip() for name in rows[0]]
-			if len(names) != len(set(names)) or set(names) != self.signal_names:
-				_fail(self.channel, f"header {names} does not name exactly the requested signals {sorted(self.signal_names)}", raw)
+			header = [name.strip() for name in rows[0]]
+			names = header[1:]
+			if header[0].lower() != BATCH_TURN_COLUMN or len(names) != len(set(names)) or set(names) != self.signal_names:
+				_fail(self.channel, f"header {header} is not '{BATCH_TURN_COLUMN}' then exactly the requested signals {sorted(self.signal_names)}", raw)
 			for row in rows[1:]:
 				first_cell = row[0].strip()
 				if first_cell.lower() == BATCH_END_MARKER:

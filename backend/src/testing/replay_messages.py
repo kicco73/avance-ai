@@ -1,7 +1,3 @@
-"""Shared by TestProcessor (deciding which message a tracking row links to)
-and BatchLiteSignalSource (deciding which message's content represents a
-turn) — both need the same "what comes right after this user message"
-lookup."""
 from __future__ import annotations
 
 

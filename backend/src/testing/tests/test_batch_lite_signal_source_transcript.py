@@ -1,11 +1,3 @@
-"""BatchLiteSignalSource is BatchSignalSource with only its transcript-
-building hooks overridden (_tag_instructions/_transcript_role/
-_anchor_message_id) — these tests drive prepare_batch() and read the
-transcript back out of the one system prompt it actually sends, pinning
-down exactly which messages and labels reach the model under each
-autotracking_on_ai_message mode. BatchSignalSource's own transcript is
-covered here too, as a regression guard proving the refactor didn't
-change its output."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -13,7 +5,10 @@ from datetime import datetime
 import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State
-from testing.signal_sources import BATCH_LITE_TAG_INSTRUCTIONS_TEMPLATE, BatchLiteSignalSource, BatchSignalSource
+from testing.signal_sources import (
+    ASSISTANT_EXCERPT_CHARS, BATCH_LITE_TAG_INSTRUCTIONS, TURN_HORIZON_INSTRUCTIONS, BatchLiteSignalSource,
+    BatchSignalSource,
+)
 from tracking.env import Env
 
 pytestmark = pytest.mark.contract
@@ -23,8 +18,9 @@ PROJECT_ID = "proj"
 
 
 class _RecordingAiService:
-    def __init__(self) -> None:
+    def __init__(self, signals_csv: str | None = None) -> None:
         self.system_prompts: list[str] = []
+        self._signals_csv = signals_csv
 
     def is_provider_with_schema(self) -> bool:
         return True
@@ -36,6 +32,8 @@ class _RecordingAiService:
         self, system_prompt, history, on_metadata, schema, tool_set=None, force_required_tools=False,
     ):
         self.system_prompts.append(system_prompt.full_text())
+        if self._signals_csv is not None:
+            on_metadata("signals", self._signals_csv)
         yield ""
 
 
@@ -61,13 +59,12 @@ def _session_id(db) -> int:
     )
 
 
-def _seed_conversation(db, session_id: int) -> list[int]:
-    """Three user/assistant exchanges — returns the three user message ids,
-    the same "turn_ids" TestReplayJob would hand to prepare_batch()."""
+def _seed_conversation(db, session_id: int, assistant_replies=None) -> list[int]:
+    replies = assistant_replies or [f"assistant replies {i}" for i in range(3)]
     user_ids = []
-    for i in range(3):
+    for i, reply in enumerate(replies):
         user_ids.append(db.save_message("user", f"user says {i}", session_id))
-        db.save_message("assistant", f"assistant replies {i}", session_id)
+        db.save_message("assistant", reply, session_id)
     return user_ids
 
 
@@ -107,50 +104,87 @@ async def test_batch_signal_source_keeps_both_roles_labeled_at_the_user_message(
     )
 
 
-async def test_batch_lite_keeps_only_user_messages_when_tracking_before_ai_reply(db):
+@pytest.mark.parametrize("autotracking_on_ai_message", [False, True])
+async def test_batch_lite_shows_both_sides_labeled_at_the_user_message_whatever_the_tracking_mode(
+    db, autotracking_on_ai_message,
+):
+    automaton = _automaton(autotracking_on_ai_message=autotracking_on_ai_message)
+    session_id = _session_id(db)
+    turn_ids = _seed_conversation(db, session_id)
+
+    prompt = await _prompt_sent_for(BatchLiteSignalSource, db, automaton, session_id, turn_ids)
+
+    assert _transcript_in(prompt).startswith(
+        "[Turn 1]\n"
+        "User: user says 0\n"
+        "Assistant: assistant replies 0\n"
+        "[Turn 2]\n"
+        "User: user says 1\n"
+        "Assistant: assistant replies 1\n"
+        "[Turn 3]\n"
+        "User: user says 2"
+    )
+    assert BATCH_LITE_TAG_INSTRUCTIONS in prompt
+
+
+async def test_batch_lite_shortens_a_long_assistant_message_to_its_head_and_tail_and_keeps_a_short_one(db):
+    head, middle, tail = "H" * ASSISTANT_EXCERPT_CHARS, "M" * 50, "T" * ASSISTANT_EXCERPT_CHARS
+    at_threshold = "S" * (2 * ASSISTANT_EXCERPT_CHARS + 1)
+    automaton = _automaton(autotracking_on_ai_message=True)
+    session_id = _session_id(db)
+    turn_ids = _seed_conversation(db, session_id, [head + middle + tail, at_threshold, "short"])
+
+    prompt = await _prompt_sent_for(BatchLiteSignalSource, db, automaton, session_id, turn_ids)
+
+    assert _transcript_in(prompt) == (
+        "[Turn 1]\n"
+        "User: user says 0\n"
+        f"Assistant: {head}…{tail}\n"
+        "[Turn 2]\n"
+        "User: user says 1\n"
+        f"Assistant: {at_threshold}\n"
+        "[Turn 3]\n"
+        "User: user says 2\n"
+        "Assistant: short"
+    )
+
+
+async def test_batch_lite_puts_each_returned_row_on_its_own_user_message(db):
+    automaton = _automaton(autotracking_on_ai_message=True)
+    session_id = _session_id(db)
+    turn_ids = _seed_conversation(db, session_id)
+    ai_service = _RecordingAiService(signals_csv="turn,mood\n1,10\n2,20\n3,30\n[eof]")
+    source = _source(BatchLiteSignalSource, db, automaton, session_id, ai_service)
+
+    await source.prepare_batch(turn_ids)
+
+    moods = [(await source.get_turn_data(turn_id, ""))[0] for turn_id in turn_ids]
+    assert moods == [{"mood": 10.0}, {"mood": 20.0}, {"mood": 30.0}]
+
+
+@pytest.mark.parametrize("cls", [BatchSignalSource, BatchLiteSignalSource])
+async def test_the_prompt_tells_the_model_to_rate_each_turn_without_what_comes_after_it(db, cls):
     automaton = _automaton(autotracking_on_ai_message=False)
     session_id = _session_id(db)
     turn_ids = _seed_conversation(db, session_id)
 
-    prompt = await _prompt_sent_for(BatchLiteSignalSource, db, automaton, session_id, turn_ids)
+    prompt = await _prompt_sent_for(cls, db, automaton, session_id, turn_ids)
 
-    assert _transcript_in(prompt) == (
-        "[Turn 1]\nUser: user says 0\n"
-        "[Turn 2]\nUser: user says 1\n"
-        "[Turn 3]\nUser: user says 2"
-    )
-    assert BATCH_LITE_TAG_INSTRUCTIONS_TEMPLATE.format(shown_role="user", other_role="assistant") in prompt
+    assert TURN_HORIZON_INSTRUCTIONS in prompt
 
 
-async def test_batch_lite_keeps_only_assistant_messages_when_tracking_after_ai_reply(db):
-    automaton = _automaton(autotracking_on_ai_message=True)
+@pytest.mark.parametrize("cls", [BatchSignalSource, BatchLiteSignalSource])
+@pytest.mark.parametrize(("autotracking_on_ai_message", "last_line"), [
+    (True, "Assistant: assistant replies 2"),
+    (False, "User: user says 2"),
+])
+async def test_the_last_turns_reply_is_shown_only_when_tracking_runs_after_the_ai_message(
+    db, cls, autotracking_on_ai_message, last_line,
+):
+    automaton = _automaton(autotracking_on_ai_message=autotracking_on_ai_message)
     session_id = _session_id(db)
     turn_ids = _seed_conversation(db, session_id)
 
-    prompt = await _prompt_sent_for(BatchLiteSignalSource, db, automaton, session_id, turn_ids)
+    prompt = await _prompt_sent_for(cls, db, automaton, session_id, turn_ids)
 
-    assert _transcript_in(prompt) == (
-        "[Turn 1]\nAssistant: assistant replies 0\n"
-        "[Turn 2]\nAssistant: assistant replies 1\n"
-        "[Turn 3]\nAssistant: assistant replies 2"
-    )
-    assert BATCH_LITE_TAG_INSTRUCTIONS_TEMPLATE.format(shown_role="assistant", other_role="user") in prompt
-
-
-async def test_batch_lite_skips_the_label_for_a_turn_with_no_assistant_reply_yet(db):
-    """The trailing user message of an in-progress session has no
-    assistant reply to anchor on in "after AI message" mode — that turn's
-    label is dropped rather than crashing or mislabeling another line."""
-    automaton = _automaton(autotracking_on_ai_message=True)
-    session_id = _session_id(db)
-    turn_ids = _seed_conversation(db, session_id)
-    trailing_user_id = db.save_message("user", "user says 3, unanswered", session_id)
-    turn_ids = turn_ids + [trailing_user_id]
-
-    prompt = await _prompt_sent_for(BatchLiteSignalSource, db, automaton, session_id, turn_ids)
-
-    assert _transcript_in(prompt) == (
-        "[Turn 1]\nAssistant: assistant replies 0\n"
-        "[Turn 2]\nAssistant: assistant replies 1\n"
-        "[Turn 3]\nAssistant: assistant replies 2"
-    )
+    assert _transcript_in(prompt).splitlines()[-1] == last_line

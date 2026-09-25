@@ -66,6 +66,34 @@ annotated `expected_state` only when there is none, since that is the state
 expected *after* its message. All of it is written to the replay's own env
 and observations, never to the session's.
 
+**What each strategy shows the model.** `turn_by_turn` makes one call per
+turn, with the history up to that turn, as live tracking does. `batch` and
+`batch_lite` cover several turns per call with the transcript embedded in
+the prompt, each covered turn labelled `[Turn N]` right before its user
+message. `batch` shows both sides in full. `batch_lite` shows both sides
+too, the user's messages in full, but shortens every assistant message
+longer than `2 × ASSISTANT_EXCERPT_CHARS + 1` characters to its first and
+last `ASSISTANT_EXCERPT_CHARS` (100) with `…` between them — the head
+carries the reaction to the user, the tail usually the question the next
+message answers. It saves anything only when assistant replies are long;
+with short replies it costs what `batch` does. A signal that rates the
+*content* of the assistant's replies needs them whole: use `batch`.
+
+**No turn is rated with hindsight.** Each turn is rated on exactly what
+live tracking saw for it: the history up to and including its user message,
+plus the assistant reply to it when the project tracks after the AI message
+(live, the signals come in the same call as that reply). In a batch
+transcript that is everything before the next turn's `[Turn N+1]` label,
+and everything shown for the last turn of the call — which is why, when
+tracking runs after the AI message, the transcript also carries the reply
+to the last covered turn. `turn_by_turn` enforces this structurally: its
+call never contains a later message. `batch` and `batch_lite` enforce it by
+instruction only — the later turns are in the transcript so one call can
+cover several, and the model is told to rate each turn as if they did not
+exist yet. A model that ignores that instruction lets the rest of the
+session leak backwards into earlier turns; if a benchmark shows it, the
+remedies are fewer turns per call or `turn_by_turn`.
+
 ## 2. State accuracy
 
 Whether the expected state was reached at an annotated point: `100` for a
