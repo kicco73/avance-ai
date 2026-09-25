@@ -417,7 +417,6 @@ class AutomatonValidator:
         namespaces: TriggerNamespaces,
     ) -> None:
         kind = INPUT_PROCESSOR_KINDS[state.input_processor]
-        registry = kind.script_registry(registry)
         registry_for_triggers = IdentifierRegistry.for_triggers(registry)
         registry_for_task = IdentifierRegistry.for_task(registry)
         self._cursor.at(state.line, f"states.{key}")
@@ -431,10 +430,7 @@ class AutomatonValidator:
                     f"State '{state.key}', action '{action.name}': "
                     f"target '{action.target}' is not a valid state"
                 )
-            target_kind = INPUT_PROCESSOR_KINDS.get(
-                action.override_target_processor, INPUT_PROCESSOR_KINDS[states[action.target].input_processor],
-            )
-            registry_for_on_exit = IdentifierRegistry.for_on_exit(target_kind.on_exit_registry(registry))
+            registry_for_on_exit = IdentifierRegistry.for_on_exit(registry)
             namespaces.check_action(state, action, env_keys)
             if action.trigger:
                 self.validate_namespaced_expression(

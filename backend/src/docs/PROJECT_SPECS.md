@@ -279,9 +279,11 @@ states:
 `ai` is the model: everything else in this section applies as written.
 
 `system` is the automaton alone. No turn runs in such a state: no model
-call, no auto-tracking, no signals — `signal.*` is not defined in any of
-its scripts (`trigger`, `on-exit`, `task`), and a build refuses a
-reference to it. A chat message is refused as in any `chat-enabled:
+call, no auto-tracking. Its scripts (`trigger`, `on-exit`, `task`) still
+read `signal.*`: the values of the session's last evaluation, taken
+whole — a signal that evaluation did not compute, because it was not
+relevant there or because no evaluation has run yet, is `None`, never an
+older value. A chat message is refused as in any `chat-enabled:
 false` state; what moves the conversation on is a manual action or a
 choice (§5.2, `choice.<key>`), whose triggers are evaluated when the
 button is pressed. The reply of the state is what the `on-exit` of the
@@ -430,7 +432,7 @@ actions:
 | `trigger` | no | string (expression) | `None` | Boolean expression over signal/metric names — §5.2. Absent ⇒ manual-only (never auto-fired). |
 | `task` | no | string | `None` | One or more `task.<name>(...)` calls, one per line — side effect of firing, run in the background off the request (§5.4). Per-action, not per-destination-state: two actions landing on the same state can each carry a different (or no) value. |
 | `on-exit` | no | string | `None` | One or more `env.<key> = expression` lines, `name = expression` locals and/or bare `chat.<method>(...)` calls, one per line, optionally inside `if`/`elif`/`else` or `for` — run synchronously, in this same request. §5.3bis. |
-| `override-target-processor` | no | `none` \| `system` | `none` | `system`: fired manually (a button, a choice), the destination answers as a `system` state would — no model call, the reply is what this action's `on-exit` wrote with `chat.write(...)` (§4.1), which is therefore allowed even when `target` is an `ai` state. The destination keeps its own processor for every later turn. The editor shows it as the action's **Quiet** badge. Not an init-action field. |
+| `override-target-processor` | no | `none` \| `system` | `none` | `system`: fired manually (a button, a choice), the destination answers as a `system` state would — no model call, the reply is what this action's `on-exit` wrote with `chat.write(...)` (§4.1). The destination keeps its own processor for every later turn. The editor shows it as the action's **Quiet** badge. Not an init-action field. |
 | `ui-label` | no | string | `name` | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, then `name` | Manual-action button text. |
 | `ui-description` | no | string | `None` | Shown in the frontend. |
@@ -962,13 +964,16 @@ action**, never hibernated as a background job: `chat.*` has no
 model/network call of its own to keep off the event-loop thread, so
 there's nothing to defer. Ten methods exist:
 
-- `chat.write(body_md)` — the reply of the `system` state (§4.1) this
-  action leads to: `body_md` is saved as the assistant's message and
-  published as one, exactly like a model's reply; several calls in one
-  exchange join as paragraphs. Only available in the `on-exit` of an
-  action (or the init-action) whose target declares `input-processor:
-  system` — on the way into an `ai` state, a self-loop included, it is
-  an undefined name, since the model answers there.
+- `chat.write(body_md)` — a message of the automaton's own: `body_md` is
+  saved as an assistant message and published as one; several calls in
+  one exchange join as paragraphs. On the way into a `system` state
+  (§4.1) it is that state's reply. On the way into an `ai` state, a
+  self-loop included, it is a message of its own next to the model's
+  reply — before it when the action fired before the model answered (a
+  button, a choice, a trigger evaluated on the person's message), after
+  it when the action fired on the model's answer — and its `output.text`
+  frame says `"answer": false`, so a reader shows it in a bubble of its
+  own rather than in the one the model's reply streamed into.
 - `chat.write_table(table)` — `chat.write` of a markdown table: `table`
   is a dict `{column name: [cells]}`, one column per key in order, cells
   strings, numbers or booleans — exactly what `source.<name>.select_subtable(...)`
@@ -976,8 +981,7 @@ there's nothing to defer. Ten methods exist:
   or `chat.write_table({'Name': ['Alice', 'Bob'], 'Score': [7.5, 4]})`.
   An empty dict writes nothing. A short column is padded with empty
   cells; a `|` or a newline inside a cell is escaped so the table
-  survives it. Same availability as `chat.write`: only on the way into
-  a `system` state.
+  survives it. Same placement as `chat.write`.
 - `chat.celebrate()` / `chat.notify(title, body_md)` / `chat.show(body_md)` —
   compile straight to `taskActions.js` locals of the same name
   (confetti / toast / dialog). Nothing runs server-side beyond building
@@ -1319,9 +1323,6 @@ of how you're likely to hit them:
   YAML happily parses that as its own separate, invalid state).
 - Every state declares `input-processor`, `ai` or `system` (§4.1).
 - Every `ai` state has a `contextual-prompt`.
-- No script of a `system` state references `signal.*`.
-- `chat.write(...)` / `chat.write_table(...)` appear only in the
-  `on-exit` of an action whose target is a `system` state.
 - No state declares `fixed-message` — refused naming its replacement.
 - Every state's `transition-log-level`, if given, is a valid level.
 - Every state's `signal-tracking-strategy`, if given, is `relevant` or `all`.

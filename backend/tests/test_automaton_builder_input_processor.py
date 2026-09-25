@@ -1,8 +1,3 @@
-"""Every state says who answers in it. `ai` is the model, and needs a
-prompt. `system` is the automaton alone: no model reads its prompt, no
-model computes signals for its scripts, and the reply is what an action
-reaching it writes with chat.write — which is why chat.write exists only
-on the way into a system state."""
 from __future__ import annotations
 
 import pytest
@@ -111,8 +106,8 @@ def test_fixed_message_is_gone_and_says_what_replaced_it():
     ("b_on_exit", "env.step = signal.mood"),
     ("b_task", "task.send_mail(user.email, str(signal.mood))"),
 ])
-def test_no_script_of_a_system_state_can_read_a_signal(slot, expression):
-    assert "references undefined name(s): signal.mood" in _refused(**{slot: expression})
+def test_every_script_of_a_system_state_can_read_a_signal(slot, expression):
+    assert _build(**{slot: expression}) is not None
 
 
 def test_an_ai_state_reads_signals_in_every_script():
@@ -148,12 +143,11 @@ def test_an_action_overrides_its_target_s_processor_only_with_system():
 
 
 @pytest.mark.parametrize("slot", ["init_on_exit", "b_on_exit"])
-@pytest.mark.parametrize("call", ["chat.write('nobody reads this')", "chat.write_table({'h': ['nobody reads this']})"])
-def test_chat_write_has_no_reader_on_the_way_into_an_ai_state_a_self_loop_included(slot, call):
+@pytest.mark.parametrize("call", ["chat.write('Step 1')", "chat.write_table({'h': ['Step 1']})"])
+def test_chat_write_is_allowed_on_the_way_into_an_ai_state_a_self_loop_included(slot, call):
     ai_b = "    input-processor: ai\n    contextual-prompt: hi"
-    message = _refused(b=ai_b, **{slot: call})
 
-    assert f"references undefined name(s): {call.split('(')[0]}" in message
+    assert _build(b=ai_b, **{slot: call}) is not None
 
 
 def test_chat_write_takes_exactly_one_argument():

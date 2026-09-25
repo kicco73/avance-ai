@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from automaton.automaton import Action, Automaton, EnvKey, State
+from automaton.automaton import Signal, Action, Automaton, EnvKey, State
 from automaton.choice import ChoiceSelection
 from db.models import Tracking
 from system import bus
@@ -43,7 +43,7 @@ class _FakeProvider:
         return 4096
 
 
-def _automaton(trigger: str = "choice.slot != ''") -> Automaton:
+def _automaton(trigger: str = "choice.slot != ''", signals: tuple = (), input_processor: str = "ai") -> Automaton:
     manual = Action(name="manual", ui_label="Manual", ui_button="Manual", target="a")
     auto = Action(name="auto", ui_label="Auto", ui_button="Auto", target="a", trigger="False")
     book = Action(
@@ -52,12 +52,12 @@ def _automaton(trigger: str = "choice.slot != ''") -> Automaton:
     )
     init_action = Action(name="init-action", ui_label="init-action", ui_button="", target="a")
     state_a = State(
-        input_processor="ai", key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[manual, auto, book], choice_keys=("slot",),
+        input_processor=input_processor, key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[manual, auto, book], choice_keys=("slot",),
     )
     return Automaton(
         init_action=init_action,
         states={"": State(input_processor="ai", key="", ui_label="", final=False, actions=[init_action]), "a": state_a},
-        general_prompt="", signals=[], general_attachments=(), autotracking_on_ai_message=False,
+        general_prompt="", signals=list(signals), general_attachments=(), autotracking_on_ai_message=False,
         project_id=PROJECT_ID,
         env_keys=[
             EnvKey(name="slot", type="list", ai_definition="The appointment slot."),
@@ -231,3 +231,22 @@ async def test_a_key_the_state_does_not_read_is_refused_even_when_env_holds_opti
 
     with pytest.raises(ValueError, match="not a choice offered in state 'a'"):
         await turn_service.apply_choice(ChoiceSelection(key="unread", option="x"), session_id)
+
+
+@pytest.mark.parametrize(("last_evaluation", "fires"), [({"mood": 70}, True), ({}, False)])
+async def test_a_choice_in_a_system_state_reads_the_signals_of_the_session_s_last_evaluation(
+    turn_service_for, last_evaluation, fires,
+):
+    db = turn_service_for.db
+    automaton = _automaton(
+        "choice.slot != '' and signal.mood > 50",
+        signals=(Signal(name="mood", ui_label="Mood", definition="How they feel."),), input_processor="system",
+    )
+    turn_service = turn_service_for(automaton, _FakeProvider())
+    session_id = await _session_with_options(turn_service, db, ["morning", "evening"])
+    db.save_signal_snapshot({"mood": 80}, session_id)
+    db.save_signal_snapshot(last_evaluation, session_id)
+
+    frames = await _press(turn_service, db, session_id, "choice:slot:1")
+
+    assert any(frame.type == "state.changed" for frame in frames) is fires

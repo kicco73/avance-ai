@@ -148,8 +148,9 @@ class TrackingEngine:
 
     def evaluate_choice(
         self, automaton: Automaton, state_key: str, selection: ChoiceSelection, session_id: int,
+        signal_values: dict | None = None,
     ) -> Action | None:
-        scope = self._scope_builder.build(automaton, state_key, None, selection, session_id=session_id)
+        scope = self._scope_builder.build(automaton, state_key, signal_values, selection, session_id=session_id)
         return automaton.evaluate_triggers_action(state_key, scope)
 
     def apply_transition(

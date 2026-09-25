@@ -487,6 +487,15 @@ export function createChatStore({
           if (text) statusHold.show(text)
           else statusHold.hide()
         },
+        aside: (said) => {
+          if (!mine()) return
+          if (messages.value.some((m) => m.messageId === said.id)) return
+          const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+          messages.value.splice(idx === -1 ? messages.value.length : idx, 0, {
+            id: ++nextMessageId, role: 'assistant', content: said.content, messageId: said.id,
+            timestamp: said.timestamp ?? new Date().toISOString(), statusText: ''
+          })
+        },
         said: (said) => finishExchange(said),
         failed: (frame) => failExchange(frame)
       }

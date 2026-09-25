@@ -44,6 +44,7 @@ class AiInputProcessor(InputProcessor):
 
     @classmethod
     def reply_after_transition(cls, processor, state, on_metadata) -> AsyncIterator[str]:
+        processor.keep_written_before_reply()
         return processor.regenerate_reply(state, on_metadata)
 
     @classmethod

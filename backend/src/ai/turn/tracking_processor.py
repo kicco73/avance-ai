@@ -21,7 +21,7 @@ from tracking.actuators import MutedReply, ReplySink
 from tracking.spoken_reply import SpokenReply
 from tracking.user_variables import UserVariables
 from ai.ai_talker import AiTalker
-from turn.input_processor import processors
+from turn.input_processor import AnswerMessage, AsideMessage, processors
 
 if TYPE_CHECKING:
 	from talker import BaseTalker
@@ -175,6 +175,10 @@ class TrackingProcessor(object):
 		self._tracking_engine = TrackingEngine(DbTrackingSink(transaction), env, scope_builder)
 		self._pending_translatable_labels: dict[str, tuple[str, str]] = {}
 		self.reply_sink: ReplySink = reply if reply is not None else MutedReply()
+		self._written_before_reply: list[str] = []
+
+	def keep_written_before_reply(self) -> None:
+		self._written_before_reply.extend(filter(None, [self.reply_sink.take()]))
 
 	def reply_after_transition(self, state: State, on_metadata: MetadataCallback) -> AsyncIterator[str]:
 		return processors()[state.input_processor].reply_after_transition(self, state, on_metadata)
@@ -246,16 +250,20 @@ class TrackingProcessor(object):
 
 		self.metadata = Metadata(on_metadata or (lambda key, value: None), {}, {})
 		self.metadata.on_metadata("typing", None)
+		self.keep_written_before_reply()
 		self.out = await self._get_ai_reply()
+		written_after_reply = list(filter(None, [self.reply_sink.take()]))
 		await self._publish_translation_events()
 
 		logger.info(
 			"process() got metadata.audio=%r for session %s", self.metadata.audio, self.user.session_id,
 		)
+		before = [self.transaction.save_message("assistant", text, self.user.session_id) for text in self._written_before_reply]
 		assistant_message = self.transaction.save_message(
 			"assistant", self.out.reply, self.user.session_id,
 			audio_text=self.metadata.audio, tokens=self.metadata.output_tokens,
 		)
+		after = [self.transaction.save_message("assistant", text, self.user.session_id) for text in written_after_reply]
 		self._memory_scopes[self.out.state.ai_memory_scope].merge(
 			self, self.metadata.memory, message_id=assistant_message,
 			declared_keys=self.user.automaton.declared_env_key_names(),
@@ -276,7 +284,7 @@ class TrackingProcessor(object):
 		if self.metadata.input_tokens is not None and user_message is not None:
 			self.transaction.set_message_tokens(user_message, self.metadata.input_tokens, self.metadata.cache_read_tokens or 0)
 
-		return self._build_turn_response(user_message, assistant_message)
+		return self._build_turn_response(user_message, assistant_message, before, after)
 
 	def _blank_output(self, state: State) -> None:
 		self.metadata.output = {}
@@ -645,10 +653,19 @@ class TrackingProcessor(object):
 		return [{"role": m["role"], "content": m["content"]} for m in history]
 
 
-	def _build_turn_response(self, user_message: RowHandle | None, assistant_message: RowHandle) -> dict:
+	def _build_turn_response(
+		self, user_message: RowHandle | None, assistant_message: RowHandle,
+		before: list[RowHandle], after: list[RowHandle],
+	) -> dict:
 		action = self.out.action
+		reply_messages = [
+			*(AsideMessage(message) for message in before),
+			AnswerMessage(assistant_message),
+			*(AsideMessage(message) for message in after),
+		]
 		return {
-			"reply": [self.transaction.get_message(assistant_message)],
+			"reply": [message for message in (reply.read(self.transaction) for reply in reply_messages) if message],
+			"reply_messages": reply_messages,
 			"user_message_id": user_message,
 			"assistant_message_id": assistant_message,
 			"user_message_reaction": self.metadata.reaction if user_message is not None else None,

@@ -56,8 +56,13 @@ export class ChatExchange {
   }
 
   _said(frame) {
+    const said = { id: frame.assistant_message_id, content: frame.text, timestamp: frame.timestamp }
+    if (frame.answer === false) {
+      this._bubble.aside(said)
+      return
+    }
     this.stop()
-    this._bubble.said({ id: frame.assistant_message_id, content: frame.text, timestamp: frame.timestamp })
+    this._bubble.said(said)
   }
 
   _failed(frame) {

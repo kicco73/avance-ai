@@ -1,15 +1,13 @@
 """Which processor answers in a state, as far as a build can tell.
 
-`ai` is the model: the state's prompt is read, its signals are computed,
-and `chat.write` has no reader. `system` is the automaton alone: nothing
-computes signals for its scripts, and what an action reaching it writes
-with `chat.write` is the reply. The kind answers those questions at build
-time; what runs a turn is turn/input_processor.py, keyed the same way."""
+`ai` is the model: the state's prompt is read and its signals are
+computed. `system` is the automaton alone: what an action reaching it
+writes with `chat.write` is the reply. The kind answers those questions at
+build time; what runs a turn is turn/input_processor.py, keyed the same way."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from automaton.identifier_registry import IdentifierRegistry
 
 if TYPE_CHECKING:
     from automaton.automaton import State
@@ -30,12 +28,6 @@ class InputProcessorKind:
     def check_prompt(self, key: str, contextual_prompt: str | None) -> None:
         raise NotImplementedError
 
-    def script_registry(self, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        raise NotImplementedError
-
-    def on_exit_registry(self, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        raise NotImplementedError
-
     def model_visible_io(self, state: "State") -> tuple[tuple[str, tuple[str, ...]], ...]:
         raise NotImplementedError
 
@@ -50,16 +42,6 @@ class AiKind(InputProcessorKind):
         for _ in filter(None, [contextual_prompt is None]):
             raise ValueError(PROMPT_REQUIRED.format(key=key))
 
-    def script_registry(self, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        return registry
-
-    def on_exit_registry(self, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        chat = {
-            method: text for method, text in registry.get("chat", {}).items()
-            if method not in IdentifierRegistry.REPLY_METHODS
-        }
-        return {**registry, "chat": chat}
-
     def model_visible_io(self, state: "State") -> tuple[tuple[str, tuple[str, ...]], ...]:
         return (("input", tuple(state.input)), ("output", tuple(state.output)))
 
@@ -72,12 +54,6 @@ class SystemKind(InputProcessorKind):
 
     def check_prompt(self, key: str, contextual_prompt: str | None) -> None:
         return None
-
-    def script_registry(self, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        return IdentifierRegistry.excluding(registry, ("signal",))
-
-    def on_exit_registry(self, registry: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        return registry
 
     def model_visible_io(self, state: "State") -> tuple[tuple[str, tuple[str, ...]], ...]:
         return ()

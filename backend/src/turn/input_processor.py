@@ -26,12 +26,29 @@ if TYPE_CHECKING:
     from turn.turn_service import TurnService
 
 
+class AnswerMessage(object):
+
+    def __init__(self, handle: RowHandle | None) -> None:
+        self.handle = handle
+
+    def read(self, transaction: TurnTransaction) -> dict | None:
+        return next((transaction.get_message(handle) for handle in filter(None, [self.handle])), None)
+
+
+class AsideMessage(AnswerMessage):
+
+    def read(self, transaction: TurnTransaction) -> dict | None:
+        message = super().read(transaction)
+        return None if message is None else {**message, "answer": False}
+
+
 def plain_reply_result(
     session_id: int, automaton: Automaton, state: State, assistant_message: RowHandle | None,
     user_messages: list[PendingMessage] | None, buttons: list[dict], ai_model: dict,
 ) -> dict:
     return {
         "reply": [],
+        "reply_messages": [AnswerMessage(assistant_message)],
         "user_message_id": (user_messages or [None])[-1],
         "user_message_reaction": None,
         "assistant_message_id": assistant_message,
@@ -49,9 +66,9 @@ def plain_reply_result(
 
 def committed(transaction: TurnTransaction, turn_result: dict) -> dict:
     assistant_message = turn_result["assistant_message_id"]
-    found = (transaction.get_message(handle) for handle in filter(None, [assistant_message]))
+    found = (message.read(transaction) for message in turn_result["reply_messages"])
     return {
-        **turn_result,
+        **{key: value for key, value in turn_result.items() if key != "reply_messages"},
         "reply": [message for message in found if message is not None],
         "assistant_message_id": row_id(assistant_message),
         "user_message_id": row_id(turn_result["user_message_id"]),
@@ -116,10 +133,10 @@ class InputProcessor(object):
                 raise ValueError(f"'{selection.option}' is not among the current options of '{selection.key}'.")
             transaction = self._turns.exchange(session["id"], [])
             tracking_engine, _ = self._turns.tracking_engine_for(session["id"], transaction)
-            action = tracking_engine.evaluate_choice(automaton, source_state.key, selection, session["id"])
+            signals = transaction.get_latest_session_signal_snapshot(session["id"])
+            action = tracking_engine.evaluate_choice(automaton, source_state.key, selection, session["id"], signals)
             if action is None:
                 return None
-            signals = transaction.get_latest_session_signal_snapshot(session["id"])
             async with transaction:
                 _, env_changed = tracking_engine.apply_transition(
                     automaton, source_state, action, signals, selection, session["id"],

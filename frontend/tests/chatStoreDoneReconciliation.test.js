@@ -46,6 +46,26 @@ describe('the answer reconciles the streaming bubble it was being written into',
     expect(assistant.messageId).toBe(77)
   })
 
+  it('puts a message the automaton wrote before the answer in a bubble of its own, ahead of the streamed one', async () => {
+    chatStore.currentSessionId.value = 1
+    await chatStore.handleSend('hi')
+    deliver({ type: 'output.text_stream', session_id: 1, text: 'Model reply' })
+    deliver({
+      type: 'output.text', session_id: 1, assistant_message_id: 90, answer: false,
+      text: 'Step 2 of 5', timestamp: '2026-01-01T00:00:00Z',
+    })
+    deliver({
+      type: 'output.text', session_id: 1, assistant_message_id: 91,
+      text: 'Model reply, complete.', timestamp: '2026-01-01T00:00:01Z',
+    })
+
+    const assistants = chatStore.messages.value.filter((m) => m.role === 'assistant')
+    expect(assistants.map((m) => [m.messageId, m.content])).toEqual([
+      [90, 'Step 2 of 5'],
+      [91, 'Model reply, complete.'],
+    ])
+  })
+
   it('re-creates the bubble from the answer if it was removed from `messages` mid-turn', async () => {
     chatStore.currentSessionId.value = 1
     await chatStore.handleSend('hi again')

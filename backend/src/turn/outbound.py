@@ -90,6 +90,7 @@ class Outbound(object):
                 "text": str(message.get("content") or ""),
                 "assistant_message_id": message.get("id"),
                 "timestamp": message.get("timestamp"),
+                "answer": message.get("answer", True),
             })
 
     def reacted(self, result: dict) -> None:
