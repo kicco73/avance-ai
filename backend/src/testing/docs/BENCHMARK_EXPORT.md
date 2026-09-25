@@ -87,7 +87,8 @@ The explorer tree, one branch per root node.
   "end_state": "Goodbye",
   "turns": 7,
   "stale": false,
-  "results": { "<metric>": <statistics> }
+  "results": { "<metric>": <statistics> },
+  "messages": [<message>, ...]
 }
 ```
 
@@ -96,6 +97,36 @@ The explorer tree, one branch per root node.
 - `stale` is `true` when the project has changed since the test ran;
   `null` when it has not run.
 - `results` is the latest completed test under the strategy.
+- `messages` is the whole recorded conversation, in order.
+
+### A message
+
+```json
+{
+  "role": "user",
+  "text": "I've been sleeping badly since the move.",
+  "timestamp": "2026-09-20T09:01:12+00:00",
+  "expected": {
+    "state": "core",
+    "signals": { "empathy": 65 },
+    "comment": null
+  },
+  "replay": {
+    "signals": { "empathy": 40.0, "partnership": 35.0 },
+    "old_state": "opening",
+    "action": "count_turn",
+    "new_state": "opening"
+  }
+}
+```
+
+- `expected` is what the expert annotated on this message; `null` when
+  nothing was.
+- `replay` is what the test computed on this message: the signal values
+  and the transition it took. It sits on the message the project evaluates
+  on (the user message, or the AI reply after it), so it may be on a
+  different message of the same turn than `expected`; `null` on the others
+  and when the session has not been tested.
 
 ### Statistics
 

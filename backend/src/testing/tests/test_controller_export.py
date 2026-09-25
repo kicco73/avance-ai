@@ -57,6 +57,11 @@ def test_export_holds_metric_definitions_and_the_tree_with_every_completed_resul
     assert set(session["results"]) <= set(export["metrics"])
     assert session["results"]
 
+    user_messages = [message for message in session["messages"] if message["role"] == "user"]
+    assert [message["text"] for message in user_messages] == ["hi", "again"]
+    assert all(message["replay"] is not None for message in user_messages)
+    assert all(set(message) == {"role", "text", "timestamp", "expected", "replay"} for message in session["messages"])
+
     assert run["states"]["results"] is None
     assert run["users"]["results"] is None
 

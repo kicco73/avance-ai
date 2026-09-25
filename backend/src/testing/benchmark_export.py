@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -95,6 +96,45 @@ class BenchmarkExport:
             'turns': sum(1 for message in self._db.get_messages(int(row['id'])) if message['role'] == 'user'),
             'stale': run['stale'] if run is not None else None,
             'results': self._keyed(run['results'] if run is not None else None),
+            'messages': self._messages(int(row['id']), run),
+        }
+
+    def _messages(self, session_id: int, run: dict | None) -> list[dict]:
+        annotations = {
+            row['message_id']: row for row in self._db.get_signals(session_id) if row['message_id'] is not None
+        }
+        observations = self._db.get_test_observations(run['id'], [session_id]) if run is not None else []
+        replayed = {row['message_id']: row for row in observations if row['message_id'] is not None}
+        return [
+            {
+                'role': message['role'],
+                'text': message['content'],
+                'timestamp': message['timestamp'],
+                'expected': self._expected(annotations.get(message['id'])),
+                'replay': self._replayed(replayed.get(message['id'])),
+            }
+            for message in self._db.get_messages(session_id)
+        ]
+
+    @staticmethod
+    def _expected(row: dict | None) -> dict | None:
+        if row is None or not (row['expected_state'] or row['expected_values'] or row['comment']):
+            return None
+        return {
+            'state': row['expected_state'],
+            'signals': json.loads(row['expected_values']) if row['expected_values'] else None,
+            'comment': row['comment'],
+        }
+
+    @staticmethod
+    def _replayed(row: dict | None) -> dict | None:
+        if row is None:
+            return None
+        return {
+            'signals': json.loads(row['values']) if row['values'] else None,
+            'old_state': row['old_state'],
+            'action': row['action'],
+            'new_state': row['new_state'],
         }
 
     @staticmethod
