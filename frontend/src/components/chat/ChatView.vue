@@ -7,7 +7,7 @@ import MessageBubble from './MessageBubble.vue'
 import ChatWaitingPanel from './ChatWaitingPanel.vue'
 import SessionRating from './SessionRating.vue'
 import ChartDialog from './ChartDialog.vue'
-import ProgressToast from './ProgressToast.vue'
+import ChatToastStack from './ChatToastStack.vue'
 import SelectProfileDialog from './SelectProfileDialog.vue'
 import { ProfileSelection, ProjectMedia, splitProfileChoices } from './profileChoices.js'
 import ProjectsMenu from '../ProjectsMenu.vue'
@@ -290,7 +290,7 @@ watch(
     />
     <template v-else>
     <ErrorBanner />
-    <ProgressToast :progress="progress" />
+    <ChatToastStack :progress="progress" />
     <div class="chat-header">
       <div class="chat-header-icon"></div>
     </div>

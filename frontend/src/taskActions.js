@@ -1,5 +1,5 @@
 import { celebrate } from './confetti.js'
-import { notify } from './toastStore.js'
+import { notifyInChat } from './components/chat/chatNotifications.js'
 import { infoDialog } from './dialogStore.js'
 import { mediaKindFromUrl } from './mediaKind.js'
 import { resolveApiUrl } from './api/core.js'
@@ -23,7 +23,7 @@ export function runTaskScript(script, { playBackgroundAudio, clearTranscript } =
   try {
     const taskLocals = {
       celebrate,
-      notify,
+      notify: notifyInChat,
       show,
       show_media: (url) => show_media(url, { playBackgroundAudio }),
       clear: () => clearTranscript?.(),

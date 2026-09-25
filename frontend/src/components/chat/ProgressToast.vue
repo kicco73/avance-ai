@@ -1,5 +1,6 @@
 <script setup>
 import { onBeforeUnmount, ref, watch } from 'vue'
+import ChatToastCard from './ChatToastCard.vue'
 
 const SHOWN_MS = 5000
 
@@ -43,8 +44,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Transition name="progress-toast">
-    <div
+  <Transition name="chat-toast">
+    <ChatToastCard
       v-if="visible"
       class="progress-toast"
       role="progressbar"
@@ -60,31 +61,11 @@ onBeforeUnmount(() => {
       <div class="progress-toast-track">
         <div class="progress-toast-fill" :style="{ width: width + '%' }"></div>
       </div>
-    </div>
+    </ChatToastCard>
   </Transition>
 </template>
 
 <style scoped>
-.progress-toast {
-  position: absolute;
-  top: calc(var(--chat-header-height, 70px) + 0.75rem);
-  left: 50%;
-  z-index: 20;
-  --progress-toast-shadow-blur: 16px;
-  box-sizing: border-box;
-  width: min(22rem, calc(95vw - 2 *var(--progress-toast-shadow-blur)));
-  transform: translateX(-50%);
-  padding: 0.85rem 1rem 0.95rem;
-  border-radius: 1rem;
-  background: rgba(22, 24, 30, 0.72);
-  backdrop-filter: blur(14px) saturate(160%);
-  -webkit-backdrop-filter: blur(14px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 6px var(--progress-toast-shadow-blur) rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.18);
-  color: #fff;
-  pointer-events: none;
-}
-
 .progress-toast-head {
   display: flex;
   align-items: baseline;
@@ -142,17 +123,6 @@ onBeforeUnmount(() => {
   }
 }
 
-.progress-toast-enter-active,
-.progress-toast-leave-active {
-  transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.progress-toast-enter-from,
-.progress-toast-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(-0.75rem) scale(0.97);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .progress-toast-fill {
     transition: none;
@@ -160,11 +130,6 @@ onBeforeUnmount(() => {
 
   .progress-toast-fill::after {
     animation: none;
-  }
-
-  .progress-toast-enter-active,
-  .progress-toast-leave-active {
-    transition: opacity 0.2s ease;
   }
 }
 </style>

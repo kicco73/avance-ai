@@ -3,7 +3,7 @@ import { ref } from 'vue'
 export const toasts = ref([])
 
 let nextId = 0
-const AUTO_DISMISS_MS = 30000
+export const AUTO_DISMISS_MS = 30000
 
 export function dismissToast(id) {
   const idx = toasts.value.findIndex((t) => t.id === id)

@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/confetti.js', () => ({ celebrate: vi.fn() }))
-vi.mock('../src/toastStore.js', () => ({ notify: vi.fn() }))
+vi.mock('../src/components/chat/chatNotifications.js', () => ({ notifyInChat: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ infoDialog: vi.fn(), customDialog: vi.fn() }))
 
 describe('runTaskScript', () => {
   let taskActions
   let confetti
-  let toastStore
+  let chatNotifications
   let playBackgroundAudio
   let dialogStore
   let consoleErrorSpy
@@ -16,7 +16,7 @@ describe('runTaskScript', () => {
     vi.resetModules()
     taskActions = await import('../src/taskActions.js')
     confetti = await import('../src/confetti.js')
-    toastStore = await import('../src/toastStore.js')
+    chatNotifications = await import('../src/components/chat/chatNotifications.js')
     dialogStore = await import('../src/dialogStore.js')
     playBackgroundAudio = vi.fn()
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -31,7 +31,7 @@ describe('runTaskScript', () => {
     taskActions.runTaskScript(null)
     taskActions.runTaskScript('')
     expect(confetti.celebrate).not.toHaveBeenCalled()
-    expect(toastStore.notify).not.toHaveBeenCalled()
+    expect(chatNotifications.notifyInChat).not.toHaveBeenCalled()
   })
 
   it('calls celebrate() when the script is exactly that', () => {
@@ -41,13 +41,13 @@ describe('runTaskScript', () => {
 
   it('calls notify(title, body) with the script\'s own arguments', () => {
     taskActions.runTaskScript("notify('Nice!', 'You reached **state B**.')")
-    expect(toastStore.notify).toHaveBeenCalledWith('Nice!', 'You reached **state B**.')
+    expect(chatNotifications.notifyInChat).toHaveBeenCalledWith('Nice!', 'You reached **state B**.')
   })
 
   it('runs multiple statements in one script', () => {
     taskActions.runTaskScript("celebrate(); notify('Nice!', 'Done')")
     expect(confetti.celebrate).toHaveBeenCalledTimes(1)
-    expect(toastStore.notify).toHaveBeenCalledWith('Nice!', 'Done')
+    expect(chatNotifications.notifyInChat).toHaveBeenCalledWith('Nice!', 'Done')
   })
 
   it('blanks the transcript when the script is clear()', () => {
