@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { deleteInstallApp, driveFileContentUrl, getDriveFiles, getProjectSignals, getUserLatestSignals } from '../../api.js'
+import { deleteDriveFile, driveFileContentUrl, getDriveFiles, getProjectSignals, getUserLatestSignals } from '../../api.js'
 import { getAppSessionSummaries } from '../../api/appStore.js'
 import { busChannel } from '../../../../busChannel.js'
 import { confirmDialog } from '../../../../dialogStore.js'
@@ -8,6 +8,7 @@ import { renderMarkdown } from '../../../../markdown.js'
 import { openMediaDialog } from '../../../../openMediaDialog.js'
 import InspectorSignalList from '../inspector/InspectorSignalList.vue'
 import TimelineChart from '../settings/TimelineChart.vue'
+import AppIdentityHeader from './AppIdentityHeader.vue'
 import { valuesToSignalValues } from '../../../../testTimeline.js'
 
 const props = defineProps({
@@ -17,12 +18,10 @@ const props = defineProps({
 
 const emit = defineEmits(['open'])
 
-const uninstalling = ref(false)
-const uninstallMenuOpen = ref(false)
-const uninstallMenuRootEl = ref(null)
 const sessionSummaries = ref([])
+const sessionSummariesLoading = ref(true)
 
-const tabs = [{ id: 'summary', label: 'Summary' }, { id: 'docs', label: 'Drive' }, { id: 'signals', label: 'Signals' }]
+const tabs = [{ id: 'summary', label: 'Summary', ai: true }, { id: 'signals', label: 'Signals', ai: true }, { id: 'docs', label: 'Drive' }]
 const activeTab = ref('summary')
 
 const driveFiles = ref([])
@@ -67,6 +66,25 @@ function openDriveFile(file) {
   openMediaDialog(driveFileContentUrl(props.app.id, file.path))
 }
 
+const deletingPath = ref(null)
+
+async function deleteFile(file) {
+  const ok = await confirmDialog({
+    title: 'Delete file',
+    body: `Delete "${file.path}" from your drive? This cannot be undone.`,
+    okLabel: 'Delete',
+    danger: true
+  })
+  if (!ok) return
+  deletingPath.value = file.path
+  try {
+    await deleteDriveFile(props.app.id, file.path)
+  } catch {
+  } finally {
+    deletingPath.value = null
+  }
+}
+
 function formatFileSize(bytes) {
   return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
 }
@@ -92,6 +110,8 @@ onMounted(async () => {
   try {
     sessionSummaries.value = (await getAppSessionSummaries(props.app.id)).sessions
   } catch {
+  } finally {
+    sessionSummariesLoading.value = false
   }
 })
 
@@ -106,47 +126,13 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => unsubscribeDrive?.())
-
-function appTitle(app) {
-  return app?.ui_label || app?.id || ''
-}
-
-function toggleUninstallMenu() {
-  uninstallMenuOpen.value = !uninstallMenuOpen.value
-}
-
-function handleUninstallMenuDocumentClick(event) {
-  if (uninstallMenuOpen.value && uninstallMenuRootEl.value && !uninstallMenuRootEl.value.contains(event.target)) {
-    uninstallMenuOpen.value = false
-  }
-}
-
-document.addEventListener('click', handleUninstallMenuDocumentClick, true)
-
-onBeforeUnmount(() => document.removeEventListener('click', handleUninstallMenuDocumentClick, true))
-
-async function selectUninstallFromMenu() {
-  uninstallMenuOpen.value = false
-  const app = props.app
-  const ok = await confirmDialog({
-    title: 'Uninstall',
-    body: `Uninstall "${appTitle(app)}"? You'll also permanently lose all data recorded for it.`,
-    okLabel: 'Uninstall',
-    danger: true
-  })
-  if (!ok) return
-  uninstalling.value = true
-  try {
-    await deleteInstallApp(app.id)
-    app.installed = false
-  } catch {
-  } finally {
-    uninstalling.value = false
-  }
-}
 </script>
 
 <template>
+  <AppIdentityHeader :app="app">
+    <button type="button" class="customer-app-detail-chat-now-btn" @click="emit('open', app.id)">Open</button>
+  </AppIdentityHeader>
+
   <div class="customer-app-detail-tabbar">
     <button
       v-for="tab in tabs"
@@ -155,30 +141,26 @@ async function selectUninstallFromMenu() {
       class="customer-app-detail-tab"
       :class="{ 'customer-app-detail-tab-active': activeTab === tab.id }"
       @click="activeTab = tab.id"
-    >{{ tab.label }}</button>
+    >
+      <span v-if="tab.ai" class="customer-app-detail-tab-ai-icon" title="Produced by the AI">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+      </span>{{ tab.label }}
+    </button>
   </div>
 
   <template v-if="activeTab === 'summary'">
-    <div class="customer-app-detail-header-row">
-      <div class="customer-app-detail-menu" ref="uninstallMenuRootEl">
-        <button type="button" class="customer-app-detail-menu-btn" title="More actions" @click="toggleUninstallMenu">⋮</button>
-        <Transition name="customer-app-detail-menu-panel">
-          <ul v-if="uninstallMenuOpen" class="customer-app-detail-menu-list">
-            <li>
-              <button type="button" class="customer-app-detail-menu-item" :disabled="uninstalling" @click="selectUninstallFromMenu">Uninstall</button>
-            </li>
-          </ul>
-        </Transition>
-      </div>
-    </div>
-
     <div v-if="app.ai_summary" class="customer-app-detail-ai-summary" v-html="renderMarkdown(app.ai_summary)"></div>
+    <p v-else class="customer-app-detail-status">
+      No summary yet. This is where you'll find a summary of your activity across all your sessions in this app, updated as you use it.
+    </p>
 
-    <button type="button" class="customer-app-detail-chat-now-btn" @click="emit('open', app.id)">Open</button>
-
-    <hr v-if="sessionSummaries.length" class="customer-app-detail-divider" />
-    <h3 v-if="sessionSummaries.length" class="customer-app-detail-subtitle">Last sessions</h3>
-    <div v-if="sessionSummaries.length" class="customer-app-detail-session-summaries">
+    <hr class="customer-app-detail-divider" />
+    <h3 class="customer-app-detail-subtitle">Last sessions</h3>
+    <p v-if="sessionSummariesLoading" class="customer-app-detail-status">Loading…</p>
+    <p v-else-if="!sessionSummaries.length" class="customer-app-detail-status">
+      No sessions yet. Once you start using the app, a summary of each session's activity will appear here.
+    </p>
+    <div v-else class="customer-app-detail-session-summaries">
       <div v-for="session in sessionSummaries" :key="session.id" class="customer-app-detail-session-summary">
         <div class="customer-app-detail-session-summary-header">
           <span class="customer-app-detail-session-summary-title">{{ session.title }}</span>
@@ -190,16 +172,11 @@ async function selectUninstallFromMenu() {
   </template>
 
   <div v-else-if="activeTab === 'signals'" class="customer-app-detail-signals-tab">
-    <p v-if="!signalsUsername" class="customer-app-detail-status">Your profile has no email on file.</p>
+    <p v-if="latestSignalsLoading" class="customer-app-detail-status">Loading…</p>
+    <p v-else-if="!relevantSignals.length" class="customer-app-detail-status">This app doesn't use signals.</p>
     <template v-else>
       <TimelineChart :project-id="app.id" :username="signalsUsername" @colors="signalColorMap = $event" />
-      <p v-if="latestSignalsLoading" class="customer-app-detail-status">Loading…</p>
-      <p v-else-if="!latestSignals.last_session" class="customer-app-detail-status">
-        You have no live sessions in this app yet.
-      </p>
-      <p v-else-if="!relevantSignals.length" class="customer-app-detail-status">No signals computed yet.</p>
       <InspectorSignalList
-        v-else
         :signals="relevantSignals"
         :signal-values="latestSignalValues"
         :signal-colors="signalColorMap"
@@ -209,13 +186,22 @@ async function selectUninstallFromMenu() {
 
   <div v-else-if="activeTab === 'docs'" class="customer-app-detail-docs-tab">
     <p v-if="driveFilesLoading" class="customer-app-detail-status">Loading…</p>
-    <p v-else-if="!driveFiles.length" class="customer-app-detail-status">Nothing has been saved here yet.</p>
+    <p v-else-if="!driveFiles.length" class="customer-app-detail-status">
+      Whenever the app saves a file for you, it will appear in this section, always available to download.
+    </p>
     <ul v-else class="customer-app-detail-docs-list">
-      <li v-for="file in driveFiles" :key="file.path">
+      <li v-for="file in driveFiles" :key="file.path" class="customer-app-detail-docs-row">
         <button type="button" class="customer-app-detail-docs-item" @click="openDriveFile(file)">
           <span class="customer-app-detail-docs-path">{{ file.path }}</span>
           <span class="customer-app-detail-docs-meta">{{ formatFileSize(file.size) }} · {{ formatClosedAt(file.updated_at) }}</span>
         </button>
+        <button
+          type="button"
+          class="customer-app-detail-docs-delete"
+          title="Delete this file"
+          :disabled="deletingPath === file.path"
+          @click="deleteFile(file)"
+        >×</button>
       </li>
     </ul>
   </div>
@@ -238,6 +224,13 @@ async function selectUninstallFromMenu() {
   cursor: pointer;
   font-size: 0.82rem;
   color: #666;
+}
+
+.customer-app-detail-tab-ai-icon {
+  display: inline-flex;
+  vertical-align: -1px;
+  margin-right: 0.2rem;
+  color: #8b5cf6;
 }
 
 .customer-app-detail-tab:hover {
@@ -264,14 +257,6 @@ async function selectUninstallFromMenu() {
   color: #666;
 }
 
-.customer-app-detail-header-row {
-  flex-shrink: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
 .customer-app-detail-divider {
   width: 100%;
   margin: 0.6rem 0 0;
@@ -283,71 +268,6 @@ async function selectUninstallFromMenu() {
   margin: 0.4rem 0 0;
   font-size: 0.9rem;
   color: #555;
-}
-
-.customer-app-detail-menu {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.customer-app-detail-menu-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.8rem;
-  height: 1.8rem;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  background: white;
-  color: #555;
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.customer-app-detail-menu-btn:hover {
-  background: #f0f0f0;
-}
-
-.customer-app-detail-menu-list {
-  position: absolute;
-  top: calc(100% + 0.3rem);
-  right: 0;
-  min-width: 140px;
-  list-style: none;
-  margin: 0;
-  padding: 0.3rem 0;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  z-index: 10;
-}
-
-.customer-app-detail-menu-item {
-  width: 100%;
-  text-align: left;
-  padding: 0.5rem 0.9rem;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: #c62828;
-}
-
-.customer-app-detail-menu-item:hover {
-  background: #fbeaea;
-}
-
-.customer-app-detail-menu-panel-enter-active,
-.customer-app-detail-menu-panel-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-.customer-app-detail-menu-panel-enter-from,
-.customer-app-detail-menu-panel-leave-to {
-  opacity: 0;
-  transform: translateY(-6px) scale(0.96);
 }
 
 .customer-app-detail-chat-now-btn {
@@ -432,7 +352,39 @@ async function selectUninstallFromMenu() {
   gap: 0.4rem;
 }
 
+.customer-app-detail-docs-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.customer-app-detail-docs-delete {
+  flex-shrink: 0;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #777;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.customer-app-detail-docs-delete:hover:not(:disabled) {
+  background: #fbeaea;
+  color: #c62828;
+}
+
+.customer-app-detail-docs-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .customer-app-detail-docs-item {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   display: flex;
   align-items: baseline;

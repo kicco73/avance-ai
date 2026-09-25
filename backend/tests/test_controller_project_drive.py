@@ -127,6 +127,28 @@ def test_saving_after_downloading_does_not_reset_the_counter(client, app_db):
     assert response.json() == {"path": "media/report.pdf", "downloads": 1}
 
 
+def test_deleting_a_file_removes_it_from_the_callers_drive_and_announces_it(client, app_db):
+    project_id = _published_with_media(app_db)
+    client.post(f"/api/core/projects/{project_id}/drive/save-media", json={"file_name": "media/report.pdf"})
+    recorded = RecordedMessages(OUTPUT_DRIVE)
+
+    response = client.delete(f"/api/core/projects/{project_id}/drive/media/report.pdf")
+
+    assert response.status_code == 200, response.text
+    assert client.get(f"/api/core/projects/{project_id}/drive").json() == {"files": []}
+    assert client.get(f"/api/core/projects/{project_id}/drive/media/report.pdf").status_code == 404
+    (message,) = recorded.of_type(OUTPUT_DRIVE)
+    assert message.body == {"path": "media/report.pdf"}
+
+
+def test_deleting_a_file_that_is_not_there_is_a_404(client):
+    project_id = _published(client)
+
+    response = client.delete(f"/api/core/projects/{project_id}/drive/nothing.md")
+
+    assert response.status_code == 404
+
+
 def test_save_media_and_download_media_require_at_least_customer():
     """The `app`/`client` fixtures never wire AuthMiddleware in (see
     auth.tests.test_auth_middleware for where that gate itself is
@@ -135,3 +157,4 @@ def test_save_media_and_download_media_require_at_least_customer():
     here directly."""
     assert ProjectController.post_save_media_to_drive.__required_role__ == "customer"
     assert ProjectController.post_download_media_to_drive.__required_role__ == "customer"
+    assert ProjectController.delete_drive_file.__required_role__ == "customer"

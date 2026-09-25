@@ -95,6 +95,9 @@ class ProjectService(object):
     def record_drive_download(self, project_id: str, user_id: str, path: str) -> int:
         return self.db.record_drive_download(project_id, user_id, path)
 
+    def delete_drive_file(self, project_id: str, user_id: str, path: str) -> bool:
+        return self.db.delete_drive_file(project_id, user_id, path)
+
     def invalidate_automaton(self, project_id: str, revision: int) -> None:
         self.automaton_loader.invalidate(project_id, revision)
 

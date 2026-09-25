@@ -4,13 +4,13 @@ import ChatWaitingPanel from '../../../../components/chat/ChatWaitingPanel.vue'
 import AppSnapshotGallery from './AppSnapshotGallery.vue'
 import AppStoreFrozenPreview from './AppStoreFrozenPreview.vue'
 import PreviewChatFrame from '../PreviewChatFrame.vue'
-import { postInstallApp, deleteInstallApp, postTrialSession, appStoreFileContentUrl } from '../../api.js'
+import { postInstallApp, deleteInstallApp, postTrialSession } from '../../api.js'
 import { confirmDialog } from '../../../../dialogStore.js'
 import { holdSkin } from '../../../../chatSkin.js'
 import { AppSkinSource } from '../../appSkinSource.js'
 import { setPreviewApp, appStorePreviewStore, currentSessionId, historyLoaded, restartPreviewSession, stopPreviewSession, endPreviewSession } from '../../appStorePreviewStore.js'
 import { usePreviewExpiry } from '../../../../composables/usePreviewExpiry.js'
-import avanceLogoUrl from '../../../../assets/avance-logo.png'
+import AppIdentityHeader from './AppIdentityHeader.vue'
 
 const props = defineProps({
   app: { type: Object, required: true },
@@ -25,7 +25,6 @@ const installing = ref(false)
 const previewing = ref(false)
 const startingTrial = ref(false)
 const trialError = ref(null)
-const iconFailed = ref(false)
 
 const trialsLeft = ref(props.app.trials_left ?? 0)
 watch(() => props.app.trials_left, (left) => { trialsLeft.value = left ?? 0 })
@@ -40,9 +39,6 @@ function appTitle(app) {
   return app?.ui_label || app?.id || ''
 }
 
-const iconUrl = computed(() => (
-  props.app.icon_file && !iconFailed.value ? appStoreFileContentUrl(props.app.id, props.app.icon_file) : avanceLogoUrl
-))
 
 const uninstallMenuOpen = ref(false)
 const uninstallMenuRootEl = ref(null)
@@ -171,16 +167,7 @@ onBeforeUnmount(async () => {
 </script>
 
 <template>
-  <div class="app-detail-header">
-    <img :src="iconUrl" class="app-detail-icon" alt="" @error="iconFailed = true" />
-
-    <div class="app-detail-identity">
-      <h2 class="app-detail-title">{{ appTitle(app) }}</h2>
-      <div class="app-detail-badges">
-        <span v-for="skill in appSkills" :key="skill.key" class="app-store-badge">{{ skill.ui_label }}</span>
-        <span v-if="app.reactions_enabled" class="app-store-badge">REACTIONS</span>
-      </div>
-    </div>
+  <AppIdentityHeader :app="app">
 
     <div class="app-detail-actions">
       <template v-if="previewing && !expired">
@@ -250,7 +237,7 @@ onBeforeUnmount(async () => {
         </Transition>
       </div>
     </div>
-  </div>
+  </AppIdentityHeader>
 
   <div class="app-detail-body">
     <div class="app-detail-stage">
@@ -321,42 +308,6 @@ onBeforeUnmount(async () => {
 </template>
 
 <style scoped>
-.app-detail-header {
-  flex-shrink: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 0.9rem;
-}
-
-.app-detail-icon {
-  flex-shrink: 0;
-  width: 56px;
-  height: 56px;
-  border-radius: 13px;
-  object-fit: cover;
-}
-
-.app-detail-identity {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.app-detail-title {
-  margin: 0;
-  font-size: 1.2rem;
-  color: #333;
-}
-
-.app-detail-badges {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 1.2rem;
-}
-
 .app-detail-actions {
   flex-shrink: 0;
   display: flex;
@@ -487,17 +438,6 @@ onBeforeUnmount(async () => {
 
 .app-detail-trial-hint {
   font-weight: 500;
-}
-
-.app-store-badge {
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  background: #eef3fa;
-  color: #4a6fa5;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 
 .app-store-preview-desc {

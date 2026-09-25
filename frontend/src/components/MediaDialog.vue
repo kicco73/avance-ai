@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import VuePdfEmbed from 'vue-pdf-embed'
 import { renderMarkdown } from '../markdown.js'
 import { getDriveFiles, getMe, postDownloadMediaToDrive, postRecordDriveDownload, postSaveMediaToDrive } from '../api.js'
@@ -12,6 +12,7 @@ const props = defineProps({
 })
 
 const closeDialog = inject('closeDialog')
+const setDialogPending = inject('setDialogPending', () => {})
 
 const kind = ref(null)
 const pdfData = ref(null)
@@ -19,6 +20,8 @@ const markdownHtml = ref('')
 const blobUrl = ref(null)
 const ready = ref(false)
 const failed = ref(false)
+
+watch(ready, (isReady) => setDialogPending(!isReady), { immediate: true })
 
 function markReady() {
   ready.value = true
@@ -173,7 +176,7 @@ onBeforeUnmount(() => {
         <img v-else-if="kind === 'image'" :key="url" :src="blobUrl" class="media-dialog-image" @load="markReady" @error="markFailed" />
       </div>
     </div>
-    <div class="media-dialog-actions">
+    <div v-show="ready" class="media-dialog-actions">
       <button v-if="canSave" type="button" class="media-dialog-action-btn" :disabled="saving" @click="handleSave">Save</button>
       <button v-if="canDownload" type="button" class="media-dialog-action-btn" :disabled="downloading" @click="handleDownload">Download</button>
       <button type="button" class="media-dialog-action-btn media-dialog-close-btn" @click="closeDialog()">Close</button>

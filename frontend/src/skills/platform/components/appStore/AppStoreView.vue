@@ -53,9 +53,16 @@ function deselectApp() {
   selectedId.value = null
 }
 
+const stackedLayout = window.matchMedia?.('(max-width: 640px)')
+
+function defaultAppId() {
+  if (stackedLayout?.matches) return null
+  return visibleApps.value[0]?.id ?? null
+}
+
 watch(() => selectedApp.value?.installed, (installed, wasInstalled) => {
   if (props.subscribedOnly && wasInstalled && installed === false) {
-    selectedId.value = visibleApps.value.length ? visibleApps.value[0].id : null
+    selectedId.value = defaultAppId()
   }
 })
 
@@ -63,7 +70,7 @@ async function load() {
   loading.value = true
   try {
     apps.value = (await getAppStoreApps(searchQuery.value)).apps
-    if (selectedId.value == null && visibleApps.value.length) selectApp(visibleApps.value[0].id)
+    if (selectedId.value == null) selectedId.value = defaultAppId()
   } catch {
   } finally {
     loading.value = false
@@ -95,6 +102,7 @@ defineExpose({ refresh: load })
         <button type="button" class="app-header-icon-btn app-store-back-list-btn" title="Back to list" @click="deselectApp">«</button>
         <SettingsMenu
           v-if="canOpenSettings"
+          class="app-store-settings-menu"
           role="admin"
           @manage-projects="emit('manage-projects')"
           @manage-users="emit('manage-users')"
@@ -104,7 +112,6 @@ defineExpose({ refresh: load })
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M20 4H4v2h16V4zM4 20h4v-6h8v6h4v-8H4v8zm16-10l-.67-3.35a2.011 2.011 0 0 0-1.96-1.65H6.63c-.96 0-1.79.68-1.96 1.65L4 10v1c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2c0 1.1.9 2 2 2s2-.9 2-2v-1z" />
           </svg>
-          <span>Store</span>
         </button>
       </template>
       <template #center>
@@ -211,8 +218,6 @@ defineExpose({ refresh: load })
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 1rem;
-  padding: 1rem;
 }
 
 .app-store-list {
@@ -221,13 +226,15 @@ defineExpose({ refresh: load })
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  padding: 0 5px;
+  background: #f2f2f7;
 }
 
 .app-store-search {
   flex-shrink: 0;
   box-sizing: border-box;
-  width: 100%;
+  width: auto;
+  margin: 0.5rem 0.5rem 0;
   padding: 0.5rem 0.7rem;
   border: 1px solid #ccc;
   border-radius: 6px;
@@ -240,8 +247,6 @@ defineExpose({ refresh: load })
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  background: #f2f2f7;
-  border-radius: 10px;
   padding-bottom: 0.75rem;
 }
 
@@ -388,6 +393,7 @@ defineExpose({ refresh: load })
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
+  padding: 1rem;
   overflow: hidden;
 }
 
@@ -420,14 +426,11 @@ defineExpose({ refresh: load })
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.8rem;
+  padding: 0.4rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
-  font-size: 0.85rem;
-  font-weight: 600;
   cursor: pointer;
 }
 
@@ -450,7 +453,6 @@ defineExpose({ refresh: load })
     inset: 0;
     width: 100%;
     max-width: none;
-    padding: 1rem;
     box-sizing: border-box;
     transition: transform 0.3s ease;
   }
@@ -475,7 +477,8 @@ defineExpose({ refresh: load })
     transform: translateX(0);
   }
 
-  .app-store-detail-active .app-store-back-exit-btn {
+  .app-store-detail-active .app-store-back-exit-btn,
+  .app-store-detail-active .app-store-settings-menu {
     display: none;
   }
 

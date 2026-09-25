@@ -76,6 +76,12 @@ export function driveFileContentUrl(projectId, path) {
   return `${API_URL}/core/projects/${encodeURIComponent(projectId)}/drive/${encodeURIComponent(path)}`
 }
 
+export function deleteDriveFile(projectId, path) {
+  return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/drive/${encodeURIComponent(path)}`, {
+    method: 'DELETE'
+  })
+}
+
 export function postSaveMediaToDrive(projectId, fileName) {
   return apiFetch(`${API_URL}/core/projects/${encodeURIComponent(projectId)}/drive/save-media`, {
     method: 'POST',

@@ -16,7 +16,7 @@ from fastapi import HTTPException, Request, Response
 
 from automaton.file_types import ProjectFileTypes
 from auth.roles import role_satisfies
-from controllers.base_controller import BaseController, get, post
+from controllers.base_controller import BaseController, delete, get, post
 from schemas import SaveMediaToDriveRequest
 from system import bus
 from system.bus import OUTPUT_DRIVE, Message
@@ -82,6 +82,16 @@ class ProjectController(BaseController):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"'{path}' not found in your drive.")
         content, content_type = found
         return Response(content=content, media_type=content_type)
+
+    @delete("/api/core/projects/{project_id}/drive/{path:path}", role="customer")
+    async def delete_drive_file(self, project_id: str, path: str):
+        if not self.project_service.delete_drive_file(project_id, WebSession().user, path):
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"'{path}' not found in your drive.")
+        await bus.publish(Message(
+            type=OUTPUT_DRIVE, username=WebSession().user, project_id=project_id,
+            session_id=None, body={"path": path},
+        ))
+        return {"path": path}
 
     @post("/api/core/projects/{project_id}/drive/save-media", role="customer")
     async def post_save_media_to_drive(self, project_id: str, req: SaveMediaToDriveRequest):

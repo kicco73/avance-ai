@@ -10,6 +10,7 @@ const DOC_READING_WIDTH = 'min(68ch, 90vw)'
 const dialogEl = ref(null)
 const inputEl = ref(null)
 const cardVisible = ref(false)
+const contentPending = ref(false)
 
 const promptValue = ref('')
 
@@ -38,6 +39,7 @@ function measuredDocWidth() {
 
 watch(activeDialog, async (dialog) => {
   if (!dialog) return
+  contentPending.value = false
   promptValue.value = TEXT_INPUT_KINDS.includes(dialog.kind) ? (dialog.initialValue ?? '') : ''
   await nextTick()
   dialogEl.value?.showModal()
@@ -58,6 +60,7 @@ function onNativeClose() {
 }
 
 provide('closeDialog', (value = null) => closeWith(value))
+provide('setDialogPending', (pending) => { contentPending.value = pending })
 
 const dismissible = computed(() => activeDialog.value?.kind !== 'blocking')
 
@@ -96,17 +99,17 @@ function chooseOption(id) {
     v-if="activeDialog"
     ref="dialogEl"
     class="app-dialog"
-    :class="{ 'app-dialog-wide': activeDialog.wide, 'app-dialog-doc': activeDialog.markdown }"
+    :class="{ 'app-dialog-wide': activeDialog.wide, 'app-dialog-doc': activeDialog.markdown, 'app-dialog-pending': contentPending }"
     @cancel="onCancel"
     @close="onNativeClose"
     @click="onBackdropClick"
   >
     <div
       class="dialog-card"
-      :class="{ 'dialog-card-visible': cardVisible, 'dialog-card-about': activeDialog.kind === 'about' }"
+      :class="{ 'dialog-card-visible': cardVisible, 'dialog-card-about': activeDialog.kind === 'about', 'dialog-card-pending': contentPending }"
     >
       <button
-        v-if="dismissible"
+        v-if="dismissible && !contentPending"
         type="button"
         class="dialog-close-btn"
         title="Close"
@@ -235,7 +238,16 @@ function chooseOption(id) {
   padding: 1.2rem 1.4rem;
   opacity: 0;
   transform: scale(0.94) translateY(6px);
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity 0.18s ease, transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.dialog-card-pending {
+  background: transparent;
+  border-color: transparent;
+}
+
+.app-dialog-pending {
+  box-shadow: none;
 }
 
 .dialog-card-visible {
@@ -248,6 +260,7 @@ function chooseOption(id) {
 
 .dialog-close-btn {
   position: absolute;
+  z-index: 1;
   top: 0.6rem;
   right: 0.6rem;
   width: 1.8rem;
