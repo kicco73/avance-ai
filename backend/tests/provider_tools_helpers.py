@@ -278,7 +278,7 @@ class OpenAIHarness:
     def provider(self, responses: list, errors: list | None = None) -> tuple[OpenAICompatibleProvider, _OpenAIAsyncClient]:
         provider = OpenAICompatibleProvider(AIServiceConfig("openai", "gpt-x", "k", None, "x"))
         fake_client = _OpenAIAsyncClient(responses, errors)
-        provider._client = fake_client  # type: ignore[assignment]
+        provider._client_for_current_loop = lambda: fake_client  # type: ignore[method-assign]
         return provider, fake_client
 
     def text_response(self, json_text: str, finish_reason: str = "stop") -> list[OpenAIChunk]:
