@@ -2,6 +2,7 @@ from __future__ import annotations
 
 COST_CURRENCY = "EUR"
 TOKENS_PER_MILLION = 1_000_000
+PRICE_KEYS = ("input-token-ppm", "output-token-ppm", "thought-token-ppm")
 
 
 class AiCostPricing(object):
@@ -22,13 +23,18 @@ class AiCostPricing(object):
             + row["thoughts_tokens"] * price["thought-token-ppm"]
         ) / TOKENS_PER_MILLION
 
+    def is_priced(self, provider_label: str) -> bool:
+        price = self._prices.get(provider_label)
+        return price is not None and any(price[key] for key in PRICE_KEYS)
+
     def daily(self, rows: list[dict]) -> dict:
         history: dict[str, dict[str, float]] = {}
         unpriced: set[str] = set()
         for row in rows:
             cost = self.cost(row)
-            if cost is None:
+            if not self.is_priced(row["provider_label"]):
                 unpriced.add(row["provider_label"])
+            if cost is None:
                 continue
             history.setdefault(row["day"], {})[row["provider_label"]] = cost
         return {

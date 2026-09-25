@@ -47,7 +47,7 @@ watch(() => props.active, (active) => { if (active) load() }, { immediate: true 
       </TrendLineChart>
     </div>
     <p v-if="costs.unpriced_providers.length" class="ai-costs-note">
-      Not priced, no longer configured: {{ costs.unpriced_providers.join(', ') }}
+      No price set, counted as zero: {{ costs.unpriced_providers.join(', ') }}
     </p>
   </div>
 </template>

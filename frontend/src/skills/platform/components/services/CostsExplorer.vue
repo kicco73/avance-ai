@@ -181,7 +181,7 @@ onMounted(async () => {
           </template>
         </template>
         <p v-if="series.unpriced_providers.length" class="costs-note">
-          Not priced, no longer configured: {{ series.unpriced_providers.join(', ') }}
+          No price set, counted as zero: {{ series.unpriced_providers.join(', ') }}
         </p>
       </template>
     </div>

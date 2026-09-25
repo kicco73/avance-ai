@@ -111,3 +111,19 @@ def test_the_app_distribution_spreads_every_other_cost_evenly_over_the_live_turn
 
 def test_a_distribution_for_a_scope_that_has_none_is_refused(client, hello_project):
     assert client.get("/api/skills/platform/costs/turns", params={"project_id": hello_project, "scope": "test"}).status_code == 400
+
+
+def test_the_last_24_hours_are_a_rolling_window_not_the_calendar_day(client, hello_project):
+    AiUsage.create(
+        provider_label=LABEL, timestamp=datetime.utcnow() - timedelta(hours=20), input_tokens=1_000_000, output_tokens=0,
+        kind="session", session_type="live", project_id=hello_project, username="alice", session_id=1,
+    )
+    AiUsage.create(
+        provider_label=LABEL, timestamp=datetime.utcnow() - timedelta(hours=25), input_tokens=2_000_000, output_tokens=0,
+        kind="session", session_type="live", project_id=hello_project, username="alice", session_id=1,
+    )
+
+    summary = client.get(SERIES, params={"project_id": hello_project}).json()["summary"]
+
+    assert summary["last_24_hours"] == 1.0
+    assert summary["last_7_days"] == 3.0

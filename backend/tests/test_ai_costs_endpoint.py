@@ -36,3 +36,15 @@ def test_ai_costs_leave_out_days_older_than_asked(client):
     )
 
     assert client.get("/api/core/settings/services/ai-costs", params={"days": 30}).json()["history"] == []
+
+
+def test_a_provider_used_with_no_price_set_is_named_rather_than_silently_free(client, services_config):
+    services_config["ai"]["providers"].append({
+        "driver": "free", "model": "unset", "input-token-ppm": 0.0, "output-token-ppm": 0.0, "thought-token-ppm": 0.0,
+    })
+    AiUsage.create(provider_label="free/unset", timestamp=datetime.utcnow(), input_tokens=1_000_000, output_tokens=0)
+
+    body = client.get("/api/core/settings/services/ai-costs").json()
+
+    assert body["unpriced_providers"] == ["free/unset"]
+    assert body["history"][-1]["values"] == {"free/unset": 0.0}
