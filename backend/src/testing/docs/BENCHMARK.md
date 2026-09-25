@@ -136,6 +136,16 @@ planConcreteness      63
 
 — so a good overall score cannot hide one consistently poor signal.
 
+A signal is scored at a point only if the state the replay is actually in
+there tracks it. An annotated signal that state does not track is not an
+observation — no accuracy, no error, not in stability or consistency —
+because the state mismatch behind it is already scored by state accuracy,
+and counting it again here would measure the automaton's path rather than
+how well the model rates what it was asked for. A signal the state does
+track but that came back without a value scores `0`: that is a real
+failure of the model. Where the replay's state at a point is unknown,
+every annotated signal is scored.
+
 ## 4. Transition responsiveness
 
 Correctness says nothing about **when** the expected state was reached.

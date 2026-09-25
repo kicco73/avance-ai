@@ -156,7 +156,10 @@ class BenchmarkMetricsTest(unittest.TestCase):
         self.assertEqual(transition.sample_count, 0)
 
     @staticmethod
-    def _turns(roles: list[str], expected_states: dict[int, str], evaluations: list[dict], annotations: list[dict]) -> BenchmarkData:
+    def _turns(
+        roles: list[str], expected_states: dict[int, str], evaluations: list[dict], annotations: list[dict],
+        tracked_signals_by_state: dict[str, frozenset[str]] | None = None,
+    ) -> BenchmarkData:
         messages = pd.DataFrame([
             {
                 "id": index + 1, "session_id": 1, "role": role,
@@ -190,6 +193,7 @@ class BenchmarkMetricsTest(unittest.TestCase):
         return BenchmarkData(
             messages=messages, sessions=sessions, signals=signals,
             transitions=signals.loc[signals["new_state"].notna()].copy(),
+            tracked_signals_by_state=tracked_signals_by_state,
         )
 
     @staticmethod
@@ -249,6 +253,48 @@ class BenchmarkMetricsTest(unittest.TestCase):
         result = SignalAccuracyMetric().calculate(self._observations_of(data))
 
         self.assertEqual((result.value, result.sample_count), (100.0, 1))
+
+    def _two_turns_scored_in_state_a(self, tracked: frozenset[str], second_value: str = '{"score": 80}') -> BenchmarkData:
+        return self._turns(
+            ["user", "assistant", "user", "assistant"],
+            expected_states={},
+            evaluations=[
+                {"message_id": 1, "values": '{"score": 20}', "new_state": "a"},
+                {"message_id": 3, "values": second_value, "new_state": "a"},
+            ],
+            annotations=[
+                {"message_id": 1, "expected_values": '{"score": 80}'},
+                {"message_id": 3, "expected_values": '{"score": 80}'},
+            ],
+            tracked_signals_by_state={"a": tracked},
+        )
+
+    def test_a_signal_the_replays_state_does_not_track_is_not_scored(self) -> None:
+        observations = self._observations_of(self._two_turns_scored_in_state_a(frozenset({"other"})))
+
+        assert all(observation.signal_agreements == {} for observation in observations)
+        self.assertEqual(SignalAccuracyMetric().calculate(observations).sample_count, 0)
+
+    def test_a_tracked_signal_without_a_value_still_scores_zero(self) -> None:
+        observations = self._observations_of(self._two_turns_scored_in_state_a(frozenset({"score"}), second_value="{}"))
+
+        result = SignalAccuracyMetric().calculate(observations)
+        self.assertEqual((result.value, result.sample_count), (20.0, 2))
+
+    def test_a_tracked_signal_with_a_value_is_scored_as_before(self) -> None:
+        observations = self._observations_of(self._two_turns_scored_in_state_a(frozenset({"score"})))
+
+        result = SignalAccuracyMetric().calculate(observations)
+        self.assertEqual((result.value, result.sample_count), (70.0, 2))
+
+    def test_stability_and_consistency_ignore_an_untracked_signal(self) -> None:
+        tracked = self._observations_of(self._two_turns_scored_in_state_a(frozenset({"score"})))
+        untracked = self._observations_of(self._two_turns_scored_in_state_a(frozenset({"other"})))
+
+        self.assertLess(BenchmarkStabilityMetric().calculate(tracked).components["signal_error"], 100.0)
+        self.assertEqual(BenchmarkStabilityMetric().calculate(untracked).components["signal_error"], 100.0)
+        self.assertIn("score", BenchmarkConsistencyMetric(BenchmarkConfiguration()).calculate(tracked).components)
+        self.assertNotIn("score", BenchmarkConsistencyMetric(BenchmarkConfiguration()).calculate(untracked).components)
 
     def test_all_results_are_normalized(self) -> None:
         observations = BenchmarkObservationBuilder(BenchmarkConfiguration()).build(self._data())

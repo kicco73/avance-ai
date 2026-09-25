@@ -88,7 +88,7 @@ class _AggregationJob(CancelableJob):
         run = self._service._db.get_test(run_id)
         if run is None:
             return []
-        data = TestDataBuilder.build(self._service._db, run)
+        data = TestDataBuilder.build(self._service._db, run, self._service._load_automaton(self._project_id))
         return BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data)
 
     def _observations_for(self, run_ids: list[int]) -> list:

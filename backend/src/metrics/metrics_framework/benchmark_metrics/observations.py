@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,6 +17,12 @@ class BenchmarkData(object):
     sessions: pd.DataFrame
     signals: pd.DataFrame
     transitions: pd.DataFrame
+    tracked_signals_by_state: Mapping[str, frozenset[str]] | None = None
+
+
+class _EverySignal(object):
+    def __contains__(self, name: object) -> bool:
+        return True
 
 
 class BenchmarkObservationBuilder(object):
@@ -53,8 +60,11 @@ class BenchmarkObservationBuilder(object):
             signal_errors: dict[str, float] = {}
             signal_signed_errors: dict[str, float] = {}
             actual_values = self._parse_values(row.get("actual_values"))
+            tracked = self._tracked_signals(data.tracked_signals_by_state, actual_state)
             for name, expected in expected_values.items():
                 if not isinstance(expected, (int, float)) or isinstance(expected, bool):
+                    continue
+                if name not in tracked:
                     continue
                 actual = actual_values.get(name)
                 agreement = BenchmarkNormalizer.signal_agreement(
@@ -126,6 +136,12 @@ class BenchmarkObservationBuilder(object):
                 )
             )
         return tuple(observations)
+
+    @staticmethod
+    def _tracked_signals(
+        tracked_signals_by_state: Mapping[str, frozenset[str]] | None, actual_state: str | None,
+    ) -> frozenset[str] | _EverySignal:
+        return (tracked_signals_by_state or {}).get(actual_state, _EverySignal())
 
     @staticmethod
     def _parse_values(value: object) -> dict[str, Any]:

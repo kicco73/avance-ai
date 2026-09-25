@@ -4,6 +4,7 @@ from typing import Any
 
 import pandas as pd
 
+from automaton.automaton import Automaton
 from db import Db
 from metrics.metrics_framework.timeline import records_frame
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
@@ -17,7 +18,7 @@ class TestDataBuilder:
     _SIGNALS_COLUMNS = ["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"]
 
     @classmethod
-    def build(cls, db: Db, run: dict) -> BenchmarkData:
+    def build(cls, db: Db, run: dict, automaton: Automaton) -> BenchmarkData:
         calculator = BenchmarkCalculator(db, run['username'], run['project_id'], session_id=run['session_id'])
 
         sessions_rows = calculator._load_sessions()
@@ -31,7 +32,14 @@ class TestDataBuilder:
         signals = cls._load_run_signals(db, run['id'], session_ids, signal_rows_by_session)
         transitions = signals.loc[signals["new_state"].notna()].copy() if not signals.empty else cls._empty_signals()
 
-        return BenchmarkData(messages=messages, sessions=sessions, signals=signals, transitions=transitions)
+        return BenchmarkData(
+            messages=messages, sessions=sessions, signals=signals, transitions=transitions,
+            tracked_signals_by_state=cls.tracked_signals_by_state(automaton),
+        )
+
+    @staticmethod
+    def tracked_signals_by_state(automaton: Automaton) -> dict[str, frozenset[str]]:
+        return {key: frozenset(automaton.tracked_signal_names(key)) for key in automaton.states}
 
     @classmethod
     def _load_run_signals(

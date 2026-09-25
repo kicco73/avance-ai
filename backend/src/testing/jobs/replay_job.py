@@ -102,7 +102,7 @@ class TestReplayJob(CancelableJob):
         db = self._service._db
         current_run = db.get_test(self._run['id'])
         assert current_run is not None, f"Test {self._run['id']}: vanished before its own run could finalize"
-        data = TestDataBuilder.build(db, current_run)
+        data = TestDataBuilder.build(db, current_run, self._automaton)
 
         if current_run['session_id'] is not None or current_run['username'] is None:
             calculator = BenchmarkCalculator.from_data(data)

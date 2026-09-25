@@ -35,12 +35,14 @@ class PooledAggregationJob(_AggregationJob):
             return []
         db = self._service._db
         runs = [run for run_id in self._sub_run_ids if (run := db.get_test(run_id)) is not None]
-        frames = [TestDataBuilder.build(db, run) for run in runs]
+        automaton = self._service._load_automaton(self._project_id)
+        frames = [TestDataBuilder.build(db, run, automaton) for run in runs]
         pooled = BenchmarkData(
             messages=pd.concat([f.messages for f in frames], ignore_index=True),
             sessions=pd.concat([f.sessions for f in frames], ignore_index=True),
             signals=pd.concat([f.signals for f in frames], ignore_index=True),
             transitions=pd.concat([f.transitions for f in frames], ignore_index=True),
+            tracked_signals_by_state=TestDataBuilder.tracked_signals_by_state(automaton),
         )
         unfiltered_metrics = BenchmarkCalculator(db, None, self._project_id).default_metrics()
         calculator = BenchmarkCalculator.from_data(pooled, metrics=unfiltered_metrics)
