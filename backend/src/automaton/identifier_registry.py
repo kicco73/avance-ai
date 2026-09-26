@@ -42,7 +42,7 @@ class IdentifierRegistry:
 
     CHAT: dict[str, str] = {
         "celebrate": "Plays a confetti animation in the frontend — e.g. chat.celebrate(). Only available in an action's own on-exit script.",
-        "notify": "Shows a toast in the frontend — e.g. chat.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown. Only available in an action's own on-exit script.",
+        "notify": "Shows a toast in the chat — e.g. chat.notify('Nice!', 'You reached **state B**.') or chat.notify('Nice!', 'You reached **state B**.', icon_url=media.trophy.url()). `body_md` is markdown. `icon_url`, optional, is an image shown at 48×48 px to the left of the title and text. Only available in an action's own on-exit script.",
         "show": "Shows a dialog in the frontend with body_md as its content — e.g. chat.show('**Full** details here.'). `body_md` is markdown. Only available in an action's own on-exit script.",
         "show_media": "Shows one of this project's own media/ files in the frontend — e.g. chat.show_media(media.report.url()). An image, PDF, or Markdown file opens in a dialog; an audio file plays in a looping background player instead. `url` is a media file's own download url, e.g. media.<doc_id>.url(). Only available in an action's own on-exit script, and only takes effect in webchat.",
         "clear": "Blanks the chat window — e.g. chat.clear(). Purely what is on screen: every message scrolls away and whatever is said next opens the window as its first message. Nothing is deleted — the transcript is unchanged, and reopening or reloading the conversation shows it whole again. Only available in an action's own on-exit script, and only takes effect in webchat.",

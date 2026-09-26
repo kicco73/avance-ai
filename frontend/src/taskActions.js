@@ -23,7 +23,7 @@ export function runTaskScript(script, { playBackgroundAudio, clearTranscript } =
   try {
     const taskLocals = {
       celebrate,
-      notify: notifyInChat,
+      notify: (title, body, iconUrl) => notifyInChat(title, body, iconUrl ? resolveApiUrl(iconUrl) : null),
       show,
       show_media: (url) => show_media(url, { playBackgroundAudio }),
       clear: () => clearTranscript?.(),

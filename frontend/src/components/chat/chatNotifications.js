@@ -9,8 +9,8 @@ export function dismissChatNotification(id) {
   chatNotifications.value = chatNotifications.value.filter((notification) => notification.id !== id)
 }
 
-export function notifyInChat(title, body) {
+export function notifyInChat(title, body, iconUrl = null) {
   const id = ++nextId
-  chatNotifications.value = [...chatNotifications.value, { id, title, body }]
+  chatNotifications.value = [...chatNotifications.value, { id, title, body, iconUrl }]
   setTimeout(() => dismissChatNotification(id), AUTO_DISMISS_MS)
 }

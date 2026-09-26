@@ -14,8 +14,13 @@ import { renderMarkdown } from '../../markdown.js'
       title="Dismiss"
       @click="dismissChatNotification(notification.id)"
     >
-      <div class="chat-notification-title">{{ notification.title }}</div>
-      <div class="chat-notification-body" v-html="renderMarkdown(notification.body)"></div>
+      <div class="chat-notification-layout">
+        <img v-if="notification.iconUrl" :src="notification.iconUrl" alt="" class="chat-notification-icon" />
+        <div class="chat-notification-text">
+          <div class="chat-notification-title">{{ notification.title }}</div>
+          <div class="chat-notification-body" v-html="renderMarkdown(notification.body)"></div>
+        </div>
+      </div>
     </ChatToastCard>
   </TransitionGroup>
 </template>
@@ -31,6 +36,25 @@ import { renderMarkdown } from '../../markdown.js'
 .chat-notification {
   pointer-events: auto;
   cursor: pointer;
+}
+
+.chat-notification-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.chat-notification-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 0.6rem;
+  object-fit: cover;
+}
+
+.chat-notification-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .chat-notification-title {

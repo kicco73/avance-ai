@@ -11774,10 +11774,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.1,
+    "runs": 19,
+    "seconds": 0.134,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_for_loop_that_is_malformed_or_reads_what_it_cannot[|\\n          for env.counter in [1]:\\n            chat.celebrate()-on-exit line 1.*plain names only]": {
@@ -11785,10 +11785,10 @@
     "first_run": "2026-09-25T21:02:19+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 6,
-    "seconds": 0.031,
+    "runs": 8,
+    "seconds": 0.041,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_for_loop_that_is_malformed_or_reads_what_it_cannot[|\\n          for n in [1]:\\n            env.counter = n\\n          else:\\n            env.counter = 0-on-exit line 1.*'else']": {
@@ -11796,10 +11796,10 @@
     "first_run": "2026-09-25T21:02:19+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.004,
-    "runs": 6,
-    "seconds": 0.032,
+    "runs": 8,
+    "seconds": 0.046,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_for_loop_that_is_malformed_or_reads_what_it_cannot[|\\n          for n in [1]:\\n            last = n\\n          env.counter = last-on-exit line 3.*references undefined name\\\\(s\\\\): last]": {
@@ -11807,10 +11807,10 @@
     "first_run": "2026-09-25T21:02:19+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.006,
-    "runs": 6,
-    "seconds": 0.037,
+    "runs": 8,
+    "seconds": 0.049,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_for_loop_that_is_malformed_or_reads_what_it_cannot[|\\n          for n in [1]:\\n            task.send_mail(user.email, 'hi')-on-exit line 2.*on-exit only supports]": {
@@ -11818,10 +11818,10 @@
     "first_run": "2026-09-25T21:02:19+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.006,
-    "runs": 6,
-    "seconds": 0.036,
+    "runs": 8,
+    "seconds": 0.045,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_for_loop_that_is_malformed_or_reads_what_it_cannot[|\\n          for n in rows:\\n            chat.celebrate()-on-exit line 1.*references undefined name\\\\(s\\\\): rows]": {
@@ -11829,10 +11829,10 @@
     "first_run": "2026-09-25T21:02:19+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 6,
-    "seconds": 0.033,
+    "runs": 8,
+    "seconds": 0.042,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_for_loop_that_is_malformed_or_reads_what_it_cannot[|\\n          for user in [1]:\\n            chat.celebrate()-(?s)on-exit line 1.*reserved name]": {
@@ -11840,10 +11840,10 @@
     "first_run": "2026-09-25T21:02:30+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 5,
-    "seconds": 0.027,
+    "runs": 7,
+    "seconds": 0.036,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_if_whose_condition_or_branch_is_invalid[|\\n          if env.counter:\\n            env.unknown_key = 1-on-exit line 2.*env key 'unknown_key' is not declared]": {
@@ -11851,10 +11851,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.093,
+    "runs": 19,
+    "seconds": 0.107,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_if_whose_condition_or_branch_is_invalid[|\\n          if env.counter:\\n            task.send_mail(user.email, 'hi')-on-exit line 2.*on-exit only supports]": {
@@ -11862,10 +11862,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.101,
+    "runs": 19,
+    "seconds": 0.111,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_if_whose_condition_or_branch_is_invalid[|\\n          if row > 1:\\n            chat.celebrate()-on-exit line 1.*references undefined name\\\\(s\\\\): row]": {
@@ -11873,10 +11873,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.093,
+    "runs": 19,
+    "seconds": 0.103,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_on_exit_if_whose_condition_or_branch_is_invalid[|\\n          if user.name > 3:\\n            chat.celebrate()-on-exit line 1]": {
@@ -11884,10 +11884,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.101,
+    "runs": 19,
+    "seconds": 0.111,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_an_undeclared_env_key_on_the_init_action_too": {
@@ -11895,10 +11895,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.084,
+    "runs": 19,
+    "seconds": 0.096,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[chat = 1-'chat' is a reserved name]": {
@@ -11906,10 +11906,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.004,
-    "runs": 17,
-    "seconds": 0.09,
+    "runs": 19,
+    "seconds": 0.102,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[chat.celebrate(1)-chat.celebrate\\\\(\\\\.\\\\.\\\\.\\\\) too many positional arguments]": {
@@ -11917,10 +11917,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.004,
-    "runs": 17,
-    "seconds": 0.1,
+    "runs": 19,
+    "seconds": 0.113,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[chat.chart('Score', top=100)-unexpected keyword argument 'top']": {
@@ -11928,10 +11928,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.006,
-    "runs": 17,
-    "seconds": 0.102,
+    "runs": 19,
+    "seconds": 0.113,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[counter-on-exit only supports 'env.<key> = expr' assignments]": {
@@ -11939,10 +11939,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.096,
+    "runs": 19,
+    "seconds": 0.106,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[env = 1-'env' is a reserved name]": {
@@ -11950,10 +11950,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.004,
-    "runs": 17,
-    "seconds": 0.094,
+    "runs": 19,
+    "seconds": 0.103,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[env.counter = row + 1-references undefined name\\\\(s\\\\): row]": {
@@ -11961,10 +11961,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.092,
+    "runs": 19,
+    "seconds": 0.103,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[env.counter = user.name-is a string, but 'counter' is declared number]": {
@@ -11972,10 +11972,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.095,
+    "runs": 19,
+    "seconds": 0.104,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[env.unknown_key = 1-env key 'unknown_key' is not declared]": {
@@ -11983,10 +11983,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.089,
+    "runs": 19,
+    "seconds": 0.098,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[task.send_mail(user.email, 'hi')-on-exit only supports 'env.<key> = expr' assignments]": {
@@ -11994,10 +11994,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.093,
+    "runs": 19,
+    "seconds": 0.109,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[|\\n          env.counter = 1\\n          env.unknown_key = 2-on-exit line 2.*env key 'unknown_key' is not declared]": {
@@ -12005,10 +12005,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.099,
+    "runs": 19,
+    "seconds": 0.108,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_build_rejects_non_assignment_undeclared_mistyped_or_wrongly_called_on_exit_lines[|\\n          env.counter = row\\n          row = 1-on-exit line 1.*references undefined name\\\\(s\\\\): row]": {
@@ -12016,10 +12016,20 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.004,
-    "runs": 17,
-    "seconds": 0.095,
+    "runs": 19,
+    "seconds": 0.105,
+    "skips": 0
+  },
+  "tests/test_automaton_builder_on_exit.py::test_chat_notify_carries_an_icon_url_when_given_and_builds_with_it": {
+    "failures": 1,
+    "first_run": "2026-09-26T06:48:46+00:00",
+    "last_failed": "2026-09-26T06:48:46+00:00",
+    "last_outcome": "passed",
+    "last_run": "2026-09-26T06:49:06+00:00",
+    "runs": 2,
+    "seconds": 0.02,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_declared_env_key_names_and_tracked_signal_names_include_on_exit_writes": {
@@ -12027,21 +12037,21 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.006,
-    "runs": 17,
-    "seconds": 0.114,
+    "runs": 19,
+    "seconds": 0.125,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_eval_action_on_exit_collects_chat_snippets_alongside_env_updates": {
-    "failures": 0,
+    "failures": 1,
     "first_run": "2026-09-25T11:22:21+00:00",
-    "last_failed": null,
+    "last_failed": "2026-09-26T06:48:46+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.004,
-    "runs": 17,
-    "seconds": 0.1,
+    "runs": 19,
+    "seconds": 0.114,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_eval_action_on_exit_discards_an_assignment_whose_value_is_not_of_the_keys_declared_type": {
@@ -12049,10 +12059,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.096,
+    "runs": 19,
+    "seconds": 0.106,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_eval_action_on_exit_env_write_lands_in_place_for_a_later_line": {
@@ -12060,10 +12070,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.084,
+    "runs": 19,
+    "seconds": 0.093,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_eval_action_on_exit_evaluates_assignments_against_scope_and_skips_bad_ones": {
@@ -12071,10 +12081,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.09,
+    "runs": 19,
+    "seconds": 0.099,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_eval_action_on_exit_expands_starred_arguments_tuples_and_sets": {
@@ -12082,21 +12092,21 @@
     "first_run": "2026-09-25T21:02:19+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.006,
-    "runs": 6,
-    "seconds": 0.042,
+    "runs": 8,
+    "seconds": 0.054,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_eval_action_on_exit_keeps_a_local_for_the_script_and_drops_it_afterwards": {
-    "failures": 0,
+    "failures": 1,
     "first_run": "2026-09-25T11:22:21+00:00",
-    "last_failed": null,
+    "last_failed": "2026-09-26T06:48:46+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.004,
-    "runs": 17,
-    "seconds": 0.116,
+    "runs": 19,
+    "seconds": 0.126,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_eval_action_on_exit_runs_a_for_loop_body_once_per_item": {
@@ -12104,10 +12114,10 @@
     "first_run": "2026-09-25T21:02:19+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.006,
-    "runs": 6,
-    "seconds": 0.044,
+    "runs": 8,
+    "seconds": 0.058,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_eval_action_on_exit_runs_only_the_branch_whose_condition_holds": {
@@ -12115,10 +12125,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.009,
-    "runs": 17,
-    "seconds": 0.171,
+    "runs": 19,
+    "seconds": 0.192,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_eval_action_on_exit_unpacks_each_item_into_the_loop_s_names": {
@@ -12126,10 +12136,10 @@
     "first_run": "2026-09-25T21:02:19+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.006,
-    "runs": 6,
-    "seconds": 0.044,
+    "runs": 8,
+    "seconds": 0.056,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_accepts_a_chart_written_as_one_bar_per_argument_with_a_full_scale": {
@@ -12137,10 +12147,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.006,
-    "runs": 17,
-    "seconds": 0.108,
+    "runs": 19,
+    "seconds": 0.119,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_accepts_a_comprehension_whose_loop_variables_are_its_own": {
@@ -12148,10 +12158,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.009,
-    "runs": 17,
-    "seconds": 0.292,
+    "runs": 19,
+    "seconds": 0.317,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_accepts_a_local_assigned_before_the_lines_that_read_it": {
@@ -12159,10 +12169,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.11,
+    "runs": 19,
+    "seconds": 0.125,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_accepts_a_mix_of_env_assignments_and_bare_chat_calls": {
@@ -12170,10 +12180,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.006,
-    "runs": 17,
-    "seconds": 0.113,
+    "runs": 19,
+    "seconds": 0.127,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_accepts_chat_clear": {
@@ -12181,10 +12191,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.005,
-    "runs": 17,
-    "seconds": 0.093,
+    "runs": 19,
+    "seconds": 0.108,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_accepts_chat_switch_to_human_and_switch_to_ai": {
@@ -12192,10 +12202,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.009,
-    "runs": 17,
-    "seconds": 0.169,
+    "runs": 19,
+    "seconds": 0.186,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_accepts_several_assignments_one_per_line_on_actions_and_the_init_action_alike": {
@@ -12203,10 +12213,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.014,
-    "runs": 17,
-    "seconds": 0.235,
+    "runs": 19,
+    "seconds": 0.259,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_belongs_to_the_action_not_its_target_state_and_is_none_when_absent": {
@@ -12214,10 +12224,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.009,
-    "runs": 17,
-    "seconds": 0.178,
+    "runs": 19,
+    "seconds": 0.199,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_if_lets_a_later_line_read_a_local_only_when_every_branch_assigns_it": {
@@ -12225,10 +12235,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.01,
-    "runs": 17,
-    "seconds": 0.188,
+    "runs": 19,
+    "seconds": 0.214,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit.py::test_on_exit_may_reference_signal_env_and_chat_but_not_task": {
@@ -12236,10 +12246,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.014,
-    "runs": 17,
-    "seconds": 0.255,
+    "runs": 19,
+    "seconds": 0.282,
     "skips": 0
   },
   "tests/test_automaton_builder_on_exit_env_checks.py::test_a_key_stored_without_a_type_takes_a_write_of_any_kind": {
@@ -19045,21 +19055,21 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.036,
-    "runs": 13,
-    "seconds": 0.567,
+    "runs": 15,
+    "seconds": 0.657,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_a_mixed_on_exit_script_writes_env_and_pushes_a_chat_notification_synchronously": {
-    "failures": 0,
+    "failures": 1,
     "first_run": "2026-09-25T11:22:21+00:00",
-    "last_failed": null,
+    "last_failed": "2026-09-26T06:48:46+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.038,
-    "runs": 13,
-    "seconds": 0.638,
+    "runs": 15,
+    "seconds": 0.754,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_show_from_on_exit_is_pushed_to_the_firing_session": {
@@ -19067,10 +19077,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.043,
-    "runs": 13,
-    "seconds": 0.556,
+    "runs": 15,
+    "seconds": 0.676,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_switch_to_ai_from_on_exit_clears_a_previously_set_operator": {
@@ -19078,10 +19088,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.036,
-    "runs": 13,
-    "seconds": 0.54,
+    "runs": 15,
+    "seconds": 0.618,
     "skips": 0
   },
   "tests/test_on_exit_chat_switch.py::test_switch_to_human_from_on_exit_records_the_operator_and_pages_them": {
@@ -19089,10 +19099,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.037,
-    "runs": 13,
-    "seconds": 0.546,
+    "runs": 15,
+    "seconds": 0.667,
     "skips": 0
   },
   "tests/test_openai_compatible_provider_errors.py::test_a_reply_opening_with_whitespace_before_its_json_is_read_like_any_other": {
@@ -22653,21 +22663,21 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.001,
-    "runs": 13,
-    "seconds": 0.018,
+    "runs": 15,
+    "seconds": 0.02,
     "skips": 0
   },
   "tests/test_tracking_engine_events.py::test_apply_action_env_pushes_a_chat_clear_ahead_of_what_the_same_script_says_after_it": {
-    "failures": 0,
+    "failures": 1,
     "first_run": "2026-09-25T11:22:21+00:00",
-    "last_failed": null,
+    "last_failed": "2026-09-26T06:48:46+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.001,
-    "runs": 13,
-    "seconds": 0.24,
+    "runs": 15,
+    "seconds": 0.242,
     "skips": 0
   },
   "tests/test_tracking_engine_events.py::test_apply_action_env_pushes_a_chat_notification_when_an_on_exit_expression_fails": {
@@ -22675,21 +22685,21 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.002,
-    "runs": 13,
-    "seconds": 0.022,
+    "runs": 15,
+    "seconds": 0.024,
     "skips": 0
   },
   "tests/test_tracking_engine_events.py::test_apply_action_env_pushes_on_exits_own_chat_snippets_through_the_scopes_chat_namespace": {
-    "failures": 0,
+    "failures": 1,
     "first_run": "2026-09-25T11:22:21+00:00",
-    "last_failed": null,
+    "last_failed": "2026-09-26T06:48:46+00:00",
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.001,
-    "runs": 13,
-    "seconds": 0.02,
+    "runs": 15,
+    "seconds": 0.022,
     "skips": 0
   },
   "tests/test_tracking_engine_events.py::test_apply_action_env_returns_every_key_it_wrote": {
@@ -22697,10 +22707,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.001,
-    "runs": 13,
-    "seconds": 0.023,
+    "runs": 15,
+    "seconds": 0.025,
     "skips": 0
   },
   "tests/test_tracking_engine_events.py::test_apply_action_env_returns_nothing_for_an_action_that_writes_nothing": {
@@ -22708,10 +22718,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.001,
-    "runs": 13,
-    "seconds": 0.013,
+    "runs": 15,
+    "seconds": 0.015,
     "skips": 0
   },
   "tests/test_tracking_engine_events.py::test_apply_transition_records_the_move_and_hands_back_what_its_action_wrote": {
@@ -22719,10 +22729,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.001,
-    "runs": 13,
-    "seconds": 0.015,
+    "runs": 15,
+    "seconds": 0.018,
     "skips": 0
   },
   "tests/test_tracking_engine_events.py::test_apply_transition_requires_an_origin": {
@@ -22730,10 +22740,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.001,
-    "runs": 13,
-    "seconds": 0.037,
+    "runs": 15,
+    "seconds": 0.039,
     "skips": 0
   },
   "tests/test_tracking_engine_events.py::test_apply_transition_with_no_action_writes_nothing": {
@@ -22741,10 +22751,10 @@
     "first_run": "2026-09-25T11:22:21+00:00",
     "last_failed": null,
     "last_outcome": "passed",
-    "last_run": "2026-09-25T21:36:08+00:00",
+    "last_run": "2026-09-26T06:49:06+00:00",
     "last_seconds": 0.001,
-    "runs": 13,
-    "seconds": 0.015,
+    "runs": 15,
+    "seconds": 0.017,
     "skips": 0
   },
   "tests/test_trigger_into_a_state_that_takes_no_messages.py::test_a_state_that_takes_messages_still_waits_for_the_person": {

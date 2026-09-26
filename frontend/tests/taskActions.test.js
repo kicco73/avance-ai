@@ -41,13 +41,13 @@ describe('runTaskScript', () => {
 
   it('calls notify(title, body) with the script\'s own arguments', () => {
     taskActions.runTaskScript("notify('Nice!', 'You reached **state B**.')")
-    expect(chatNotifications.notifyInChat).toHaveBeenCalledWith('Nice!', 'You reached **state B**.')
+    expect(chatNotifications.notifyInChat).toHaveBeenCalledWith('Nice!', 'You reached **state B**.', null)
   })
 
   it('runs multiple statements in one script', () => {
     taskActions.runTaskScript("celebrate(); notify('Nice!', 'Done')")
     expect(confetti.celebrate).toHaveBeenCalledTimes(1)
-    expect(chatNotifications.notifyInChat).toHaveBeenCalledWith('Nice!', 'Done')
+    expect(chatNotifications.notifyInChat).toHaveBeenCalledWith('Nice!', 'Done', null)
   })
 
   it('blanks the transcript when the script is clear()', () => {

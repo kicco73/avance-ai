@@ -386,3 +386,10 @@ def test_eval_action_on_exit_expands_starred_arguments_tuples_and_sets():
 def test_build_rejects_an_on_exit_for_loop_that_is_malformed_or_reads_what_it_cannot(on_exit, match):
     with pytest.raises(ValueError, match=match):
         _build(_go(f"        on-exit: {on_exit}\n"))
+
+
+def test_chat_notify_carries_an_icon_url_when_given_and_builds_with_it():
+    assert _run_on_exit("chat.notify('Nice!', 'Done.', icon_url='/api/core/projects/p/files/media/trophy.png/content')", {}) == (
+        {}, 'notify("Nice!", "Done.", "/api/core/projects/p/files/media/trophy.png/content")', (),
+    )
+    assert _run_on_exit("chat.notify('Nice!', 'Done.')", {}) == ({}, 'notify("Nice!", "Done.")', ())

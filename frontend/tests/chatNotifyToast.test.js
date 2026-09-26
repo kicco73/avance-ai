@@ -33,4 +33,31 @@ describe('chat.notify', () => {
     await nextTick()
     expect(chatNotifications.value).toEqual([])
   })
+
+  it('shows the icon at 48x48 in the left column, title and text to its right', async () => {
+    runTaskScript("notify('Trophy', 'Well done', '/api/core/projects/p/files/media/trophy.png/content')")
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    createApp({ setup: () => () => h(ChatToastStack, { progress: null }) }).mount(host)
+    await nextTick()
+
+    const layout = host.querySelector('.chat-notification-layout')
+    const icon = layout.firstElementChild
+    expect(icon.tagName).toBe('IMG')
+    expect(icon.classList.contains('chat-notification-icon')).toBe(true)
+    expect(icon.getAttribute('src')).toMatch(/\/core\/projects\/p\/files\/media\/trophy\.png\/content$/)
+    expect(layout.querySelector('.chat-notification-text').textContent).toContain('Trophy')
+  })
+
+  it('draws no icon column when no icon is given', async () => {
+    runTaskScript("notify('Plain', 'No icon')")
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    createApp({ setup: () => () => h(ChatToastStack, { progress: null }) }).mount(host)
+    await nextTick()
+
+    expect(host.querySelector('.chat-notification-icon')).toBeNull()
+  })
 })

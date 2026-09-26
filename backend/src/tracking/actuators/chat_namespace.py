@@ -88,8 +88,9 @@ class ChatNamespace(ABC):
     def celebrate(self) -> JsSnippet | None:
         return JsSnippet("celebrate()")
 
-    def notify(self, title: str, body_md: str) -> JsSnippet | None:
-        return JsSnippet(f"notify({json.dumps(title)}, {json.dumps(body_md)})")
+    def notify(self, title: str, body_md: str, icon_url: str | None = None) -> JsSnippet | None:
+        arguments = [title, body_md, *filter(None, [icon_url])]
+        return JsSnippet(f"notify({', '.join(json.dumps(argument) for argument in arguments)})")
 
     def show(self, body_md: str) -> JsSnippet | None:
         return JsSnippet(f"show({json.dumps(body_md)})")

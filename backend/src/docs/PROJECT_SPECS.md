@@ -982,11 +982,14 @@ there's nothing to defer. Ten methods exist:
   An empty dict writes nothing. A short column is padded with empty
   cells; a `|` or a newline inside a cell is escaped so the table
   survives it. Same placement as `chat.write`.
-- `chat.celebrate()` / `chat.notify(title, body_md)` / `chat.show(body_md)` —
+- `chat.celebrate()` / `chat.notify(title, body_md, icon_url=None)` / `chat.show(body_md)` —
   compile straight to `taskActions.js` locals of the same name
   (confetti / toast / dialog). Nothing runs server-side beyond building
   that JS snippet — the tunnel is exact, e.g. `chat.notify('Nice!', 'Well done')`
-  reaches the browser as literal `notify("Nice!", "Well done")`. `show`
+  reaches the browser as literal `notify("Nice!", "Well done")`. The
+  toast is the chat's own, drawn like the progress bar's. `icon_url`,
+  when given — typically `media.<id>.url()` — is an image shown at
+  48×48 px in the toast's left column, title and text to its right. `show`
   renders `body_md` (markdown) in the app's existing generic dialog
   (DialogHost.vue) rather than a toast — no title, closed via its × button.
   Every `on-exit:` line's own joined snippet text reaches the browser
