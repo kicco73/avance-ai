@@ -82,9 +82,14 @@ These are the whole of what a compiled automaton replaces.
 | `render_task` → `render_task_script` | a `task:` script |
 
 Two properties of `_eval_trigger` any replacement must preserve: a
-trigger whose referenced signals are not computed yet returns `False`
-silently, and any other failure returns `False` with a warning rather
-than propagating.
+referenced signal with no value this turn is bound to a sentinel that
+makes false only what uses it — every comparison on it is `False`,
+arithmetic on it returns the sentinel, `bool()` of it is `False` — so the
+rest of the expression still counts, silently; and any other failure
+returns `False` with a warning rather than propagating. The sentinel is
+bound in `_eval_trigger` itself, on a copy of the scope, before
+`_evaluate_expression` runs, so a compiled automaton that overrides only
+`_evaluate_expression` inherits it.
 
 All three are dispatched polymorphically from their call sites, so
 overriding them in a subclass is enough — no caller branches on which

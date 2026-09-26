@@ -36,6 +36,7 @@ from system.logging_factory import LoggerFactory
 from . import analysis
 from .on_exit_expression_analyzer import OnExitExpressionAnalyzer, OnExitForLoop
 from .trigger_expression_analyzer import TriggerExpressionAnalyzer
+from .missing_signal import MISSING_SIGNAL
 
 if TYPE_CHECKING:
     from .model import Action, EnvKey, MemoryArchive, Reaction, Signal, Source, State
@@ -546,21 +547,18 @@ class CoreAutomaton(object):
 
     @classmethod
     def _referenced_signal_names(cls, expression: str) -> set[str]:
-        """Which declared signals `expression` reads — asked before
-        evaluating a trigger, so that one still None short-circuits to
-        False silently instead of raising."""
         return TriggerExpressionAnalyzer.signal_names(expression)
 
     @classmethod
     def _eval_trigger(cls, expression: str, scope: dict[str, Any]) -> bool:
-        """A malformed expression never crashes the caller: failures
-        return False with a warning. A `signal.*` still None (not
-        computed yet) short-circuits to False silently instead."""
         try:
             signal_values = scope.get("signal", {})
-            if any(signal_values.get(name) is None for name in cls._referenced_signal_names(expression)):
-                return False
-            return bool(cls._evaluate_expression(expression, scope))
+            missing = {
+                name: MISSING_SIGNAL for name in cls._referenced_signal_names(expression)
+                if signal_values.get(name) is None
+            }
+            trigger_scope = {**scope, "signal": {**signal_values, **missing}} if missing else scope
+            return bool(cls._evaluate_expression(expression, trigger_scope))
         except Exception as exc:
             logger.warning("Trigger evaluation failed for expression '%s': %s", expression, exc)
             return False

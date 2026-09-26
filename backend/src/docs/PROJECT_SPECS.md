@@ -648,10 +648,18 @@ declared, `env.<name>` must be set by some action somewhere,
 must be one that source's own driver actually implements,
 `session`/`user` names must be from the fixed lists, bare names must be
 a recognized metric) — anything else fails with an "undefined name(s)"
-or parse error. At evaluation time: a referenced `signal.<name>`
-still `None` short-circuits the whole expression to `false`; any other
-failure (e.g. an `env.<name>` never actually set) is logged and also
-treated as `false` — a trigger can never crash a turn.
+or parse error. Every trigger of the state is evaluated every turn,
+whichever signals that turn computed (§3.1). A `signal.<name>` with no
+value this turn — not computed, not returned, or malformed — makes
+false only what uses it: every comparison on it is `false`, arithmetic
+on it stays valueless (`(signal.a + signal.b) / 2 <= 20` is `false`), and
+used as a boolean it is `false`; `and`/`or`/`not`/`if … else` then work
+as usual, so `(signal.mood < 20 and env.turns > 3) or env.walked_out`
+fires on `env.walked_out` alone. Silently: a missing signal is a normal
+state of a turn. Any other failure (e.g. an `env.<name>` never actually
+set) is logged and treated as `false` — a trigger can never crash a turn.
+Only triggers behave this way: an `on-exit` or `task` expression using a
+signal with no value fails and is reported.
 
 A `signal.<name>` matched against a literal no signal value can ever be —
 a string, a boolean, or a number outside 0–100 — is rejected at build
