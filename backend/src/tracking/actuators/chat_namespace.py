@@ -6,10 +6,9 @@ from abc import ABC, abstractmethod
 from typing import Protocol, TYPE_CHECKING
 
 from automaton.automaton import JsSnippet
-from automaton.core import EnvBinding
 from system.logging_factory import LoggerFactory
 from system import bus
-from system.bus import ENV_BOUND, ENV_UNBOUND, OUTPUT_CHART, OUTPUT_PROGRESS, SESSION_TAKEN_OVER, UI_NOTIFICATION, Message
+from system.bus import OUTPUT_CHART, OUTPUT_PROGRESS, SESSION_TAKEN_OVER, UI_NOTIFICATION, Message
 from system.web_session import WebSession
 
 from .actuator_set import _run_sync
@@ -100,12 +99,6 @@ class ChatNamespace(ABC):
 
     def clear(self) -> JsSnippet | None:
         return JsSnippet("clear()")
-
-    def bind_env(self, variable: EnvBinding) -> None:
-        self._publish(ENV_BOUND, {"key": variable.key, "value": variable.value})
-
-    def unbind_env_all(self) -> None:
-        self._publish(ENV_UNBOUND, {})
 
     def _publish(self, message_type: str, body: dict) -> None:
         if self._factory is None or self._session_id is None:

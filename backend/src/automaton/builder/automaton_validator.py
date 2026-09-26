@@ -5,7 +5,6 @@ import inspect
 from automaton.builder.archive_resolver import ProjectArchives
 from automaton.automaton import EnvKey, Source, State
 from automaton.builder.build_cursor import BuildCursor
-from automaton.choice_namespace import list_key_names
 from automaton.core import TASK_FUNCTION_NAMES, TRIGGER_FUNCTION_NAMES, AttachmentTemplate
 from automaton.env_types import STORED_ENV_TYPES
 from automaton.file_types import attachment_doc_id_for, media_doc_id_for
@@ -378,26 +377,10 @@ class AutomatonValidator:
                     f"{line_context} ('{statement}'): on-exit only supports 'env.<key> = expr' assignments, "
                     "'name = expr' locals, a bare 'chat.<method>(...)' call, or an 'if' or 'for' of them."
                 )
-            if TriggerExpressionAnalyzer.bare_namespace_call(statement, "chat") == "bind_env":
-                cls.validate_env_binding(statement, line_context, env_keys)
-                continue
             cls.validate_script_expression(
                 statement, line_context, archives, registry, sources, frozenset(known_locals), namespaces, media_doc_ids,
             )
             cls.validate_chat_arity(statement, line_context)
-
-    @staticmethod
-    def validate_env_binding(statement: str, context: str, env_keys: dict[str, EnvKey]) -> None:
-        env_key = TriggerExpressionAnalyzer.env_binding(statement)
-        if env_key is None:
-            raise ValueError(f"{context} ('{statement}'): chat.bind_env takes exactly one env.<key>, e.g. chat.bind_env(env.mood).")
-        if env_key not in env_keys:
-            raise ValueError(
-                f"{context} ('{statement}'): env key '{env_key}' is not declared in the project's own "
-                "'env' section — declare it there first."
-            )
-        if env_key in list_key_names(env_keys):
-            raise ValueError(f"{context} ('{statement}'): '{env_key}' is a list, and a list can't be bound with chat.bind_env.")
 
     @staticmethod
     def validate_expression_types(expression: str, context: str) -> None:

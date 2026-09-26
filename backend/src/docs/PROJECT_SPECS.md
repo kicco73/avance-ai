@@ -691,6 +691,9 @@ env:
   pnr:
     type: string
     ai-definition: The 6-character record locator the customer gives you; empty until they do.
+  mood:
+    type: string
+    ui-binding: true
   slot:
     type: list
     ai-definition: The appointment slots on offer.
@@ -700,6 +703,7 @@ env:
 | --- | --- | --- | --- | --- |
 | `type` | **yes** | `number` \| `string` \| `bool` \| `list` | — | What the key holds, declared once: a number (`int` or `float`, never a bool), a string, a bool, or a `list` — a list of strings, the options a script writes and the person picks from (see **List keys** below). A key without `type`, or with any other value, fails the build naming the key and the four admitted values. |
 | `ai-definition` | conditionally | string | `None` | What this variable means, written *for the model* — and the only description an env key has: the editor shows this one too. **Required** (build error) whenever some state lists this key in its own `input`/`output` (§4.3) — same requirement a source exposed to the model gets; optional otherwise. Becomes that field's own description in the prompt's env block / output schema. |
+| `ui-binding` | no | bool | `false` | Binds the key to the chat window's look: the window carries the CSS class `env-<key>-<value>` and follows every later change of the key, so a skin can style the window by its value (SKIN_SPECS.md). A chat entering a conversation is told the current value of every such key first. A `list` key can't be bound, and a value that is not a bool fails the build. |
 
 A key declares what it holds and nothing else: it takes no `value`, and a
 `value` field fails the build like any other unknown one. Every key starts
@@ -1004,17 +1008,6 @@ there's nothing to defer. Ten methods exist:
   model sees with a state's own `history-cutoff` (§4.2) instead — the
   two are independent, and only a state that declares both blanks the
   window and forgets at once.
-- `chat.bind_env(env.<key>)` — binds one env key to the chat window's
-  look: from then on the window carries the CSS class
-  `env-<key>-<value>`, following every later `env.changed` of that key,
-  so a skin can style the window by its value. The argument must be
-  `env.<key>` itself, a declared key that is not a `list` — both checked
-  when the project is built. Several calls bind several keys. A
-  `taskActions.js` local like `clear`, carrying the key and its value as
-  this script left it.
-- `chat.unbind_env_all()` — drops every `chat.bind_env` binding, and the
-  classes with them. Moving the window to another conversation drops
-  them too.
 - `chat.switch_to_human(user_id)` — hands the session to a person:
   `user_id` (their username/email) is pushed a notification with a link
   to take over this session's next turns as the human, in place of the
@@ -1071,7 +1064,7 @@ conversation unless actuators are explicitly enabled for it — while off
 (the default there) `switch_to_human` is suppressed and reported back
 as a `notify(...)` toast describing what would have happened instead,
 same suppress-and-report contract `task:`'s own real side effects get
-(§5.4). `celebrate`/`notify`/`show`/`show_media`/`switch_to_ai`/`chart`/`progress`/`bind_env`/`unbind_env_all`
+(§5.4). `celebrate`/`notify`/`show`/`show_media`/`switch_to_ai`/`chart`/`progress`
 have no real-world side effect to suppress, so they always run.
 
 **5.4 Action `task`.** One or more statements, one per non-blank

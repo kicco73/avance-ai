@@ -83,6 +83,7 @@ class TurnInput(object):
             announcement.informed(
                 session, self._turn_service.services_for(session["id"]), kind, self._turn_service.reply_silence_seconds,
             )
+            announcement.bound(self._turn_service.ui_bindings_for(session["id"]))
             announcement.recalled(said)
             announcement.offered(self._turn_service.buttons_for(session["id"], session["state"]))
             await announcement.flush()

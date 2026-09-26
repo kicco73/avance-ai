@@ -48,12 +48,6 @@ class JsSnippet(str):
 
 
 @dataclass(frozen=True)
-class EnvBinding:
-    key: str
-    value: Any
-
-
-@dataclass(frozen=True)
 class TaskOutcome:
 
     snippets: str | None = None
@@ -416,10 +410,6 @@ class CoreAutomaton(object):
                 elif self._accepts_env_value(action, key, value):
                     result[key] = value
                     scope["env"][key] = value
-                continue
-            bound_key = TriggerExpressionAnalyzer.env_binding(statement)
-            if bound_key is not None:
-                scope["chat"].bind_env(EnvBinding(bound_key, scope["env"].get(bound_key)))
                 continue
             try:
                 value = self._evaluate_statement(statement, scope)

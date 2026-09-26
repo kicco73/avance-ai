@@ -702,6 +702,11 @@ class TurnService(object):
 			key: list(options) for key, options in current.items() if key in declared and isinstance(options, list)
 		}
 
+	def ui_bindings_for(self, session_id: int) -> dict[str, Any]:
+		automaton = self.__project_service.get_automaton_for_session(session_id)
+		env = self._env_for_session(session_id)
+		return {env_key.name: env.get(env_key.name) for env_key in automaton.env_keys if env_key.ui_binding}
+
 	def is_actuators_enabled(self, session_id: int) -> bool:
 		self._ownership.require_own_session(session_id)
 		return self._namespace_factory.is_enabled_for_test_session(session_id)

@@ -24,11 +24,13 @@ const expandedName = ref(null)
 const editName = ref('')
 const editType = ref('string')
 const editAiDefinition = ref('')
+const editUiBinding = ref(false)
 
 function resetEditBuffers(envKey) {
   editName.value = envKey?.name ?? ''
   editType.value = envKey?.type ?? 'string'
   editAiDefinition.value = envKey?.ai_definition ?? ''
+  editUiBinding.value = envKey?.ui_binding ?? false
 }
 
 let nameInputEl = null
@@ -78,6 +80,11 @@ function commitField(field, currentValue, originalValue) {
   if (currentValue === originalValue) return
   emit('set-field', expandedName.value, field, currentValue)
 }
+
+function toggleUiBinding() {
+  editUiBinding.value = !editUiBinding.value
+  emit('set-field', expandedName.value, 'ui-binding', editUiBinding.value)
+}
 </script>
 
 <template>
@@ -110,6 +117,14 @@ function commitField(field, currentValue, originalValue) {
               <CardMenu>
                 <button type="button" class="card-menu-item-danger" @click="handleDeleteEnvKey(envKey.name)">Delete</button>
               </CardMenu>
+            </div>
+            <div class="inspector-detail-badges">
+              <span
+                class="inspector-detail-badge inspector-detail-badge-toggle inspector-env-ui-binding-badge"
+                :class="editUiBinding ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+                title="The chat window carries env-<key>-<value> as a CSS class, following every change. Click to toggle"
+                @click.stop="toggleUiBinding"
+              >UI</span>
             </div>
             <label class="inspector-signal-form-label">
               <span class="inspector-ai-field-icon" title="Read by the AI">
@@ -173,6 +188,10 @@ function commitField(field, currentValue, originalValue) {
 .inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-env { background: #00838f; }
+.inspector-detail-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+.inspector-detail-badge-toggle { cursor: pointer; }
+.inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
+.inspector-detail-badge-toggle-on { background: #4a6fa5; }
 .inspector-env-type-tag { flex-shrink: 0; font-size: 0.72rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; color: #00838f; }
 .inspector-env-type { display: flex; flex-direction: column; align-items: flex-start; }
 .inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }

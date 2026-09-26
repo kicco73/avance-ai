@@ -61,6 +61,7 @@ class PayloadsMixin(object):
             "name": env_key.name,
             "type": env_key.type,
             "ai_definition": env_key.ai_definition,
+            "ui_binding": env_key.ui_binding,
         }
 
     @staticmethod

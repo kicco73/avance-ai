@@ -32,7 +32,7 @@ STATE_EDITABLE_FIELDS = {
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "target", "trigger", "task", "on-exit", "override-target-processor"}
 INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger", "override-target-processor"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
-ENV_KEY_EDITABLE_FIELDS = {"name", "type", "ai-definition"}
+ENV_KEY_EDITABLE_FIELDS = {"name", "type", "ai-definition", "ui-binding"}
 SOURCE_EDITABLE_FIELDS = {"name", "ui-label", "ui-description", "ai-definition"}
 PROJECT_EDITABLE_FIELDS = {
     "id", "ui-label", "ui-description", "signal-tracking-on-ai-message", "new-session-strategy", "general-prompt",
@@ -282,6 +282,8 @@ class EditProjectController(BaseController):
                 status_code=HTTPStatus.BAD_REQUEST,
                 detail=f"'{req.value}' is not an env key type — expected one of {ENV_TYPE_NAMES}.",
             )
+        if field == "ui-binding" and not isinstance(req.value, bool):
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="'ui-binding' is true or false.")
         self.project_service.ensure_project_not_broken(project_id)
         return await self.project_service.set_env_key_field(
             project_id, env_key_name, field, req.value

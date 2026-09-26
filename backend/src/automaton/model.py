@@ -110,6 +110,7 @@ class EnvKey:
     name: str
     type: str
     ai_definition: str | None = None
+    ui_binding: bool = False
 
 
 def env_defaults_action(env_keys: list[EnvKey]) -> Action:
@@ -175,6 +176,7 @@ class EnvKeyPayload(TypedDict):
     name: str
     type: str
     ai_definition: str | None
+    ui_binding: bool
 
 class SourcePayload(TypedDict):
     name: str

@@ -15,6 +15,11 @@ export class EnvClassBinding {
     busChannel.subscribe('env.bindings', (frame) => {
       this._bound.value = { sessionId: frame.session_id, values: frame.values ?? {} }
     })
+    busChannel.subscribe('env.changed', (frame) => {
+      const bound = this._bound.value
+      if (bound.sessionId !== frame.session_id || !(frame.key in bound.values)) return
+      this._bound.value = { sessionId: bound.sessionId, values: { ...bound.values, [frame.key]: frame.value } }
+    })
   }
 
   _values() {

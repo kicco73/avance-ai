@@ -224,6 +224,7 @@ class AutomatonYamlEditor:
             "name": name,
             "type": raw_env_key.get("type") or "",
             "ai_definition": ai_definition.strip() if ai_definition else None,
+            "ui_binding": raw_env_key.get("ui-binding", False) is True,
         }
 
     def _source_payload(self, name: str) -> SourcePayload:
@@ -359,6 +360,8 @@ class AutomatonYamlEditor:
             return self._env_key_payload(name)
         raw_env_key = self._env_key(name)
         raw_env_key[field] = value
+        if field == "ui-binding" and not value:
+            raw_env_key.pop(field)
         return self._env_key_payload(name)
 
     def set_source_field(self, name: str, field: str, value) -> SourcePayload:

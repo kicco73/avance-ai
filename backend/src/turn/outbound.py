@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from system import bus
 from system.bus import (
     OUTPUT_REACTION, OUTPUT_TEXT, OUTPUT_SPEECH, OUTPUT_TEXT_STREAM, OUTPUT_TOOL,
-    STATE_CHANGED, STATE_SIGNALS, ENV_CHANGED, ENV_MEMORY_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES,
+    STATE_CHANGED, STATE_SIGNALS, ENV_BINDINGS, ENV_CHANGED, ENV_MEMORY_CHANGED, OUTPUT_ERROR, STATE_BUTTONS, SESSION_INFO, SESSION_MESSAGES,
     SESSION_EXHAUSTED,
     Message,
 )
@@ -139,6 +139,10 @@ class Outbound(object):
             "project_id": session.get("project_id"),
             "session_type": kind,
         })
+
+    def bound(self, values: dict) -> None:
+        for bound in filter(None, [values]):
+            self.put(ENV_BINDINGS, {"values": bound})
 
     def recalled(self, messages: list[dict]) -> None:
         self.put(SESSION_MESSAGES, {"messages": messages})

@@ -63,7 +63,7 @@ STATE_SUGGESTED_FIELDS = (
 
 SIGNAL_FIELDS = {"ui-label", "ui-description", "definition", "attachments"}
 REACTION_FIELDS = {"ui-label", "ui-description", "definition"}
-ENV_KEY_FIELDS = {"type", "ai-definition"}
+ENV_KEY_FIELDS = {"type", "ai-definition", "ui-binding"}
 SOURCE_FIELDS = {"ui-label", "ui-description", "url", "ai-definition"}
 TOP_LEVEL_FIELDS = {
     "avance-version", "project", "init-action", "states", "signals", "reactions",
@@ -117,11 +117,17 @@ class AutomatonBuilder(object):
             raise ValueError(
                 f"Env key '{name}': 'type' must be one of {ENV_TYPE_NAMES}, got '{env_type}'."
             )
+        ui_binding = raw_env_key.get("ui-binding", False)
+        if not isinstance(ui_binding, bool):
+            raise ValueError(f"Env key '{name}': 'ui-binding' must be true or false, got '{ui_binding}'.")
+        if ui_binding and env_type == "list":
+            raise ValueError(f"Env key '{name}': a list can't be ui-binding.")
         raw_ai_definition = raw_env_key.get("ai-definition")
         return EnvKey(
             name=name,
             type=env_type,
             ai_definition=raw_ai_definition.strip() if isinstance(raw_ai_definition, str) and raw_ai_definition.strip() else None,
+            ui_binding=ui_binding,
         )
 
     def _build_source(self, name: str, raw_source: dict, archives: ProjectArchives) -> Source:
