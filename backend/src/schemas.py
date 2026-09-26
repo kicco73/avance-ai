@@ -47,9 +47,15 @@ class SaveMediaToDriveRequest(BaseModel):
     file_name: str
 
 
+class SessionImportChoiceJson(BaseModel):
+    key: str
+    option: str
+
+
 class SessionImportMessageJson(BaseModel):
     role: str
-    text: str
+    text: str | None = None
+    choice: SessionImportChoiceJson | None = None
     timestamp: str | None = None
     audio_text: str | None = None
     tokens: int | None = None

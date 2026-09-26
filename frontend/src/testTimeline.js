@@ -60,8 +60,23 @@ export function effectiveTimestamp(entry, rawMessages) {
 }
 
 function entryOrderKey(entry) {
+  if (entry.anchor) return orderKey(entry.anchor.timestamp, entry.anchor.id)
   const messageId = entry.kind === 'message' ? entry.message.id : entry.transition.message_id
   return orderKey(entry.timestamp, messageId)
+}
+
+function entryRank(entry) {
+  if (entry.kind === 'transition' && entry.transition.old_state === '') return 0
+  if (entry.anchor) return entry.anchorBefore ? 1 : 3
+  return entry.kind === 'message' ? 2 : 3
+}
+
+function anchored(entry, row, rawMessages) {
+  if (row.position == null || !rawMessages.length) return entry
+  const following = rawMessages[row.position]
+  return following
+    ? { ...entry, anchor: following, anchorBefore: true }
+    : { ...entry, anchor: rawMessages[rawMessages.length - 1], anchorBefore: false }
 }
 
 export function syntheticSessionStartEntry(signalsLog, rawMessages, sessionStartState) {
@@ -97,18 +112,24 @@ export function buildTimeline(rawMessages, signalsLog, sessionStartState, { incl
       const entry = { kind: 'transition', timestamp: s.timestamp, transition, annotationStatus: null }
       entry.timestamp = effectiveTimestamp(entry, rawMessages)
       entry.annotationStatus = transitionAnnotationStatus(transition, { imported })
-      return entry
+      return anchored(entry, s, rawMessages)
     })
   const synthetic = syntheticSessionStartEntry(signalsLog, rawMessages, sessionStartState)
   if (synthetic) transitionEntries.push(synthetic)
+  const indexOf = new Map(rawMessages.map((m, index) => [m.id, index]))
+  const messageIndex = (entry) => {
+    const message = entry.kind === 'message' ? entry.message : entry.anchor
+    const id = message ? message.id : entry.transition.message_id
+    return indexOf.has(id) ? indexOf.get(id) : Infinity
+  }
   return [...messageEntries, ...transitionEntries].sort((a, b) => {
     const ta = entryOrderKey(a)
     const tb = entryOrderKey(b)
     if (ta !== tb) return ta.localeCompare(tb)
-    const aIsInit = a.kind === 'transition' && a.transition.old_state === ''
-    const bIsInit = b.kind === 'transition' && b.transition.old_state === ''
-    if (aIsInit !== bIsInit) return aIsInit ? -1 : 1
-    return (a.kind === 'message' ? 0 : 1) - (b.kind === 'message' ? 0 : 1)
+    const ia = messageIndex(a)
+    const ib = messageIndex(b)
+    if (ia !== ib && ia !== Infinity && ib !== Infinity) return ia - ib
+    return entryRank(a) - entryRank(b)
   })
 }
 

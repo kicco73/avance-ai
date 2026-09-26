@@ -92,17 +92,39 @@ class SessionImportManager:
                 self._db.set_session_labeled(session_id, True)
             if session_data.get('comment'):
                 self._db.set_session_comment(session_id, session_data['comment'])
+            imported = 0
             for message in messages:
+                if message.get('role') == 'action':
+                    self._import_action(session_id, message, imported)
+                    continue
                 self._import_message(session_id, message)
+                imported += 1
         except (KeyError, TypeError, ValueError):
             self._db.delete_chat_session(session_id)
             raise
         return session_id
+    def _import_action(self, session_id: int, entry: dict, position: int) -> None:
+        action, choice = entry.get('action'), entry.get('choice')
+        if (action is None) == (choice is None):
+            raise ValueError("An 'action' entry names exactly one of 'action' or 'choice'.")
+        if choice is not None and not (isinstance(choice, dict) and choice.get('key') and choice.get('option') is not None):
+            raise ValueError("An 'action' entry's 'choice' is {'key': ..., 'option': ...}.")
+        self._db.import_tracking_row(
+            session_id,
+            old_state=entry.get('old_state'), action=action, new_state=entry.get('new_state'),
+            values=entry.get('values'), expected_state=entry.get('expected_state'), expected_values=None,
+            comment=entry.get('comment'), message_id=None, timestamp=_parse_iso(entry.get('timestamp')),
+            origin='manual', position=position,
+            choice={'key': choice['key'], 'option': choice['option']} if choice is not None else None,
+        )
+
     _TRACKING_FIELDS = ('old_state', 'action', 'new_state', 'values', 'expected_state', 'expected_values', 'comment', 'origin')
 
     def _import_message(self, session_id: int, message: dict) -> None:
         role = validated_role(message['role'])
-        text = message['text']
+        text = message.get('text')
+        if text is None:
+            raise ValueError(f"A '{role}' message needs its 'text'.")
         if role == 'assistant' and not text:
             text = '…'
         message_id = self._db.save_message(

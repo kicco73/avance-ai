@@ -9,7 +9,7 @@ from peewee import Expression
 from system.logging_factory import LoggerFactory
 
 from .instrumentation import instrument_queries, write
-from .models import TRACKING_ORIGINS, CoreSession, Tracking
+from .models import TRACKING_ORIGINS, CoreSession, Message, Tracking
 from .utils import _utc_iso
 
 logger = LoggerFactory.get_logger(__name__)
@@ -48,12 +48,27 @@ class TrackingMixin:
         )
 
     @staticmethod
-    def _evaluation_point_payload(row) -> dict:
-        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'output': row.output, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin}
+    def _evaluation_point_payload(row, position: int | None = None) -> dict:
+        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'output': row.output, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id, 'origin': row.origin, 'position': position, 'choice': json.loads(row.choice) if row.choice else None}
 
     def get_signals(self, session_id: int) -> list[dict]:
-        rows = Tracking.select().where((Tracking.session == session_id) & self._evaluation_point_rows()).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
-        return [self._evaluation_point_payload(row) for row in rows]
+        rows = list(Tracking.select().where((Tracking.session == session_id) & self._evaluation_point_rows()).order_by(Tracking.timestamp.asc(), Tracking.id.asc()))
+        message_times = [
+            message.timestamp for message in Message.select(Message.timestamp).where(Message.session == session_id)
+        ] if any(self._is_action_entry(row) and row.position is None for row in rows) else []
+        return [self._evaluation_point_payload(row, self._position_of(row, message_times)) for row in rows]
+
+    @staticmethod
+    def _is_action_entry(row) -> bool:
+        return row.origin == 'manual' and row.message_id is None
+
+    @classmethod
+    def _position_of(cls, row, message_times: list[datetime]) -> int | None:
+        if not cls._is_action_entry(row):
+            return None
+        if row.position is not None:
+            return row.position
+        return sum(1 for timestamp in message_times if timestamp is not None and timestamp <= row.timestamp)
 
     def get_timeline(self, project_id: str, username: str) -> dict:
         rows = (
@@ -98,6 +113,7 @@ class TrackingMixin:
         self, session_id: int, *, old_state: str | None, action: str | None, new_state: str | None,
         values: dict | None, expected_state: str | None, expected_values: dict | None, comment: str | None,
         message_id: int | None, timestamp: datetime | None, origin: str | None = None,
+        position: int | None = None, choice: dict | None = None,
     ) -> int:
         """Restores one exported Tracking row exactly — unlike
         save_transition (a live turn's logging-focused write, always
@@ -110,6 +126,7 @@ class TrackingMixin:
             expected_state=expected_state,
             expected_values=json.dumps(expected_values) if expected_values else None,
             comment=comment, message=message_id, origin=origin,
+            position=position, choice=json.dumps(choice) if choice is not None else None,
             **({'timestamp': timestamp} if timestamp is not None else {}),
         )
         return row.id
@@ -119,6 +136,7 @@ class TrackingMixin:
         self, old_state: str | None, action: str | None, new_state: str | None, session_id: int,
         transition_log_level: str, signal_values: dict | None=None, message_id: int | None=None,
         origin: str | None=None, output_values: dict | None = None, timestamp: datetime | None = None,
+        position: int | None = None, choice: dict | None = None,
     ) -> int:
         if origin is not None and origin not in TRACKING_ORIGINS:
             raise ValueError(f"Unknown origin '{origin}' — expected one of {TRACKING_ORIGINS}.")
@@ -126,6 +144,7 @@ class TrackingMixin:
             session=session_id, old_state=old_state, action=action, new_state=new_state,
             values=json.dumps(signal_values) if signal_values is not None else None, message=message_id,
             origin=origin, output=json.dumps(output_values) if output_values else None,
+            position=position, choice=json.dumps(choice) if choice is not None else None,
             **({'timestamp': timestamp} if timestamp is not None else {}),
         )
         trigger_type = 'auto' if signal_values is not None else 'manual'
@@ -135,6 +154,12 @@ class TrackingMixin:
             message += f' signals={signal_values}'
         logger.log(level, message)
         return row.id
+
+    @write
+    def place_action_entry(self, row_id: int, position: int, choice: dict | None) -> None:
+        Tracking.update(
+            position=position, choice=json.dumps(choice) if choice is not None else None,
+        ).where(Tracking.id == row_id).execute()
 
     @write
     def link_signal_to_message(self, signal_row_id: int, message_id: int) -> None:

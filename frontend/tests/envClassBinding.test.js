@@ -3,11 +3,11 @@ import { ref } from 'vue'
 
 const { handlers } = vi.hoisted(() => ({ handlers: new Map() }))
 
-vi.mock('./busChannel.js', () => ({
+vi.mock('../src/busChannel.js', () => ({
   busChannel: { subscribe: (type, handler) => { handlers.set(type, handler) } }
 }))
 
-const { EnvClassBinding } = await import('./envClassBinding.js')
+const { EnvClassBinding } = await import('../src/envClassBinding.js')
 
 function frame(type, body) {
   handlers.get(type)({ type, ...body })

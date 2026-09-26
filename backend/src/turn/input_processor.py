@@ -107,10 +107,11 @@ class InputProcessor(object):
             tracking_engine, _ = self._turns.tracking_engine_for(session["id"], transaction)
             signals = transaction.get_latest_session_signal_snapshot(session["id"])
             async with transaction:
-                _, env_changed = tracking_engine.apply_transition(
+                row, env_changed = tracking_engine.apply_transition(
                     automaton, source_state, action, signals, ChoiceSelection.NONE, session["id"],
                     origin='manual', username=WebSession().user, project_id=project_id,
                 )
+                self._place(transaction, session["id"], row, None)
                 turn_result = await self.turn_after(
                     self._answering(automaton, source_state, action), session["id"], on_metadata, transaction,
                 )
@@ -138,10 +139,11 @@ class InputProcessor(object):
             if action is None:
                 return None
             async with transaction:
-                _, env_changed = tracking_engine.apply_transition(
+                row, env_changed = tracking_engine.apply_transition(
                     automaton, source_state, action, signals, selection, session["id"],
                     origin='manual', username=WebSession().user, project_id=project_id,
                 )
+                self._place(transaction, session["id"], row, {"key": selection.key, "option": selection.option})
                 turn_result = await self.turn_after(
                     self._answering(automaton, source_state, action), session["id"], on_metadata, transaction,
                 )
@@ -149,6 +151,10 @@ class InputProcessor(object):
                 session["id"], source_state.key, action.name, env_changed, committed(transaction, turn_result),
                 signals,
             )
+
+    @staticmethod
+    def _place(transaction: TurnTransaction, session_id: int, row: RowHandle, choice: dict | None) -> None:
+        transaction.place_action_entry(row, len(transaction.get_messages(session_id)), choice)
 
     def _answering(self, automaton: Automaton, source_state: State, action: Action) -> "InputProcessor":
         quiet = action.target == source_state.key or action.override_target_processor == "system"

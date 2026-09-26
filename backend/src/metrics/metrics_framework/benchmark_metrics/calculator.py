@@ -18,6 +18,7 @@ from .metrics import (
     TransitionResponsivenessMetric,
 )
 from .observations import BenchmarkData, BenchmarkObservationBuilder
+from .steps import SessionSteps
 from ..timeline import records_frame
 
 
@@ -100,8 +101,9 @@ class BenchmarkCalculator(object):
         sessions = self._load_sessions()
         session_ids = [int(row["id"]) for row in sessions]
         signal_rows_by_session = {session_id: self._db.get_signals(session_id) for session_id in session_ids}
-        messages = self._load_messages(session_ids, signal_rows_by_session)
-        signals = self._load_signals(session_ids, signal_rows_by_session)
+        steps = self.load_steps(session_ids, signal_rows_by_session)
+        messages = steps.messages_frame()
+        signals = self._load_signals(steps, session_ids, signal_rows_by_session)
         data = BenchmarkData(
             messages=messages,
             sessions=records_frame(sessions, [
@@ -119,38 +121,21 @@ class BenchmarkCalculator(object):
             return sessions
         return [row for row in sessions if int(row["id"]) == self._session_id]
 
-    def _load_messages(
-        self, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]]
-    ) -> pd.DataFrame:
-        columns = ["id", "role", "content", "audio_text", "timestamp", "expected_state", "session_id"]
-        rows: list[dict[str, Any]] = []
+    def load_steps(self, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]]) -> SessionSteps:
+        steps = SessionSteps()
         for session_id in session_ids:
-            expected_state_by_message = {
-                row["message_id"]: row["expected_state"]
-                for row in signal_rows_by_session[session_id]
-                if row["message_id"] is not None
-            }
-            for message in self._db.get_messages(session_id):
-                rows.append({**message, "expected_state": expected_state_by_message.get(message["id"])})
-        if not rows:
-            return pd.DataFrame(columns=columns)
-        frame = pd.DataFrame.from_records(rows)
-        frame["session_id"] = [int(row.get("session_id", 0)) for row in rows]
-        for column in columns:
-            if column not in frame.columns:
-                frame[column] = None
-        frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
-        return frame[columns].sort_values(["session_id", "timestamp", "id"], kind="stable")
+            steps.add_session(session_id, self._db.get_messages(session_id), signal_rows_by_session[session_id])
+        return steps
 
+    @staticmethod
     def _load_signals(
-        self, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]]
+        steps: SessionSteps, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]]
     ) -> pd.DataFrame:
-        rows: list[dict[str, Any]] = []
-        for session_id in session_ids:
-            for row in signal_rows_by_session[session_id]:
-                copied = dict(row)
-                copied["session_id"] = session_id
-                rows.append(copied)
+        rows: list[dict[str, Any]] = [
+            {**steps.rekeyed(row, row["id"] if row.get("position") is not None else None), "session_id": session_id}
+            for session_id in session_ids
+            for row in signal_rows_by_session[session_id]
+        ]
         columns = ["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"]
         if not rows:
             return pd.DataFrame(columns=columns)
@@ -160,7 +145,6 @@ class BenchmarkCalculator(object):
                 frame[column] = None
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
         return frame[columns].sort_values(["session_id", "id"], kind="stable")
-
 
     @staticmethod
     def _empty_signals() -> pd.DataFrame:

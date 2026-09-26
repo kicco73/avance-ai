@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class PendingTracking(RowHandle):
     __slots__ = (
         "session_id", "timestamp", "values", "env", "action_env", "local_memory", "output", "tool_calls",
-        "old_state", "action", "new_state", "message", "origin",
+        "old_state", "action", "new_state", "message", "origin", "position", "choice",
     )
 
     def __init__(self, session_id: int) -> None:
@@ -33,6 +33,8 @@ class PendingTracking(RowHandle):
         self.new_state: str | None = None
         self.message: RowHandle | None = None
         self.origin: str | None = None
+        self.position: int | None = None
+        self.choice: dict | None = None
 
     def insert(self, db: Db) -> None:
         raise NotImplementedError
@@ -51,6 +53,7 @@ class PendingTracking(RowHandle):
             'expected_values': None, 'expected_state': None, 'comment': None,
             'old_state': self.old_state, 'action': self.action, 'new_state': self.new_state,
             'message_id': row_id(self.message), 'origin': self.origin,
+            'position': self.position, 'choice': self.choice,
         }
 
 
@@ -72,6 +75,7 @@ class PendingTransition(PendingTracking):
             self.old_state, self.action, self.new_state, self.session_id,
             transition_log_level=self.transition_log_level, signal_values=self.values, message_id=row_id(self.message),
             origin=self.origin, output_values=self.output, timestamp=self.timestamp,
+            position=self.position, choice=self.choice,
         )
 
 
@@ -264,6 +268,10 @@ class AtomicTurnTransaction(TurnTransaction):
 
     def link_signal_to_message(self, signal_row: RowHandle, message: RowHandle) -> None:
         _pending_row(signal_row).message = message
+
+    def place_action_entry(self, row: RowHandle, position: int, choice: dict | None) -> None:
+        pending = _pending_row(row)
+        pending.position, pending.choice = position, choice
 
     def get_signals(self, session_id: int) -> list[dict]:
         pending = [row.as_signal() for row in self._rows if row.is_evaluation_point()]

@@ -9,6 +9,7 @@ from db import Db
 from metrics.metrics_framework.timeline import records_frame
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkData
+from metrics.metrics_framework.benchmark_metrics.steps import SessionSteps
 
 
 class TestDataBuilder:
@@ -25,11 +26,12 @@ class TestDataBuilder:
         session_ids = [int(row['id']) for row in sessions_rows]
         signal_rows_by_session = {session_id: db.get_signals(session_id) for session_id in session_ids}
 
-        messages = calculator._load_messages(session_ids, signal_rows_by_session)
+        steps = calculator.load_steps(session_ids, signal_rows_by_session)
+        messages = steps.messages_frame()
         sessions = records_frame(sessions_rows, [
             "id", "username", "project_id", "datetime_start", "datetime_end", "start_state", "end_state"
         ])
-        signals = cls._load_run_signals(db, run['id'], session_ids, signal_rows_by_session)
+        signals = cls._load_run_signals(db, run['id'], session_ids, signal_rows_by_session, steps)
         transitions = signals.loc[signals["new_state"].notna()].copy() if not signals.empty else cls._empty_signals()
 
         return BenchmarkData(
@@ -44,14 +46,15 @@ class TestDataBuilder:
     @classmethod
     def _load_run_signals(
         cls, db: Db, run_id: int, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]],
+        steps: SessionSteps,
     ) -> pd.DataFrame:
-        rows = db.get_test_observations(run_id, session_ids)
+        rows = [steps.rekeyed(row, row['tracking_id']) for row in db.get_test_observations(run_id, session_ids)]
         if not rows:
             return cls._empty_signals()
 
         annotations = [
             {
-                'id': row['id'], 'message_id': row['message_id'], 'timestamp': row['timestamp'],
+                'id': row['id'], 'message_id': steps.rekeyed(row, None)['message_id'], 'timestamp': row['timestamp'],
                 'expected_values': row['expected_values'], 'session_id': session_id,
             }
             for session_id, session_rows in signal_rows_by_session.items()

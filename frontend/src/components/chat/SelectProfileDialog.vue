@@ -75,9 +75,9 @@ watch(index, (shown, hidden) => {
       <span v-for="(profile, i) in profiles" :key="profile.name" class="profile-dot" :class="{ 'is-current': i === index }"></span>
     </div>
     <div class="profile-controls">
-      <button type="button" class="profile-arrow" aria-label="Previous" :disabled="!canBrowse || busy" @click="show(-1)">‹</button>
+      <button v-if="canBrowse" type="button" class="profile-arrow" aria-label="Previous" :disabled="busy" @click="show(-1)">‹</button>
       <button type="button" class="profile-select" :disabled="!current || busy" @click="select">{{ current?.key }}</button>
-      <button type="button" class="profile-arrow" aria-label="Next" :disabled="!canBrowse || busy" @click="show(1)">›</button>
+      <button v-if="canBrowse" type="button" class="profile-arrow" aria-label="Next" :disabled="busy" @click="show(1)">›</button>
     </div>
   </div>
 </template>

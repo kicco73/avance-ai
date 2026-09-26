@@ -66,6 +66,21 @@ annotated `expected_state` only when there is none, since that is the state
 expected *after* its message. All of it is written to the replay's own env
 and observations, never to the session's.
 
+**Manual actions are replayed.** A button pressed or a choice picked in
+the session (an action entry, SESSION_SPECS.md) is fired again by the
+replay at its own place in the session, between the same messages, the way
+the live press fired it: from the replay's current state, with the last
+signals the replay measured, `on-exit` included. If the replay has drifted
+and that action is not available in its current state — or the choice
+finds no trigger answering — nothing fires, and the replay stays where it
+is. Either way the entry is an evaluation point of its own: an
+`expected_state` on it is compared with the replay's state right after it,
+so a drift scores as a mismatch there, and it counts for expected
+transitions and transition responsiveness like any other point. It has no
+signal values to score. An action entry asks the model for nothing: the
+strategies below number and group user turns exactly as they would without
+it.
+
 **What each strategy shows the model.** `turn_by_turn` makes one call per
 turn, with the history up to that turn, as live tracking does, and asks
 for exactly the signals the replay's current state tracks — never those of

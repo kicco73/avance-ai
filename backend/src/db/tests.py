@@ -98,6 +98,7 @@ class TestMixin:
             'action': row.action,
             'new_state': row.new_state,
             'session_id': row.session_id,
+            'tracking_id': row.tracking_id,
         } for row in query]
 
     @staticmethod

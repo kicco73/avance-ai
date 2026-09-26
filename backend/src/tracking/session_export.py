@@ -1,7 +1,9 @@
 """Exports a project's sessions as one JSON array (inverse of
 session_import.py's import_session_json). Each message carries its
-linked Tracking row inlined; standalone Tracking rows with no
-message_id are dropped — the frontend synthesizes the opening transition."""
+linked Tracking row inlined; a manual action or choice becomes an
+`action` entry at its own position among the messages; every other
+Tracking row with no message_id is dropped — the frontend synthesizes
+the opening transition."""
 from __future__ import annotations
 
 import json
@@ -35,12 +37,16 @@ class SessionExportManager:
 
     def _export_session(self, session: dict) -> dict:
         session_id = session['id']
-        tracking_by_message = {
-            row['message_id']: row
-            for row in self._db.get_signals(session_id)
-            if row['message_id'] is not None
-        }
+        rows = self._db.get_signals(session_id)
+        tracking_by_message = {row['message_id']: row for row in rows if row['message_id'] is not None}
+        action_entries = sorted((row for row in rows if row['position'] is not None), key=lambda row: (row['position'], row['id']))
         tool_calls_by_message = self._db.get_tool_calls_by_message(session_id)
+        messages = [
+            self._export_message(
+                message, tracking_by_message.get(message['id']), tool_calls_by_message.get(message['id']),
+            )
+            for message in self._db.get_messages(session_id)
+        ]
         return {
             'name': session['title'],
             'username': session['username'],
@@ -53,12 +59,32 @@ class SessionExportManager:
             'comment': session['comment'],
             'closed_at': _utc_iso(session['closed_at']),
             'close_reason': session['close_reason'],
-            'messages': [
-                self._export_message(
-                    message, tracking_by_message.get(message['id']), tool_calls_by_message.get(message['id']),
-                )
-                for message in self._db.get_messages(session_id)
-            ],
+            'messages': self._interleaved(messages, action_entries),
+        }
+
+    @classmethod
+    def _interleaved(cls, messages: list[dict], action_entries: list[dict]) -> list[dict]:
+        entries: list[dict] = []
+        pending = list(action_entries)
+        for index, message in enumerate(messages):
+            while pending and pending[0]['position'] <= index:
+                entries.append(cls._export_action(pending.pop(0)))
+            entries.append(message)
+        return entries + [cls._export_action(row) for row in pending]
+
+    @staticmethod
+    def _export_action(row: dict) -> dict:
+        named = {'choice': row['choice']} if row['choice'] is not None else {'action': row['action']}
+        return {
+            'role': 'action',
+            **named,
+            'timestamp': row['timestamp'],
+            'old_state': row['old_state'],
+            'new_state': row['new_state'],
+            'values': json.loads(row['values']) if row['values'] else None,
+            'origin': row['origin'],
+            'expected_state': row['expected_state'],
+            'comment': row['comment'],
         }
 
     @staticmethod

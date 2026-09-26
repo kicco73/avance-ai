@@ -8,7 +8,7 @@ from automaton.choice import ChoiceSelection
 from datetime import datetime
 from typing import Protocol
 
-from automaton.automaton import Automaton
+from automaton.automaton import Action, Automaton, State
 from automaton.model import env_defaults_action
 from db import Db
 from tracking.env import Env
@@ -69,6 +69,8 @@ class TestProcessor(object):
         self._current_state: str | None = None
         self._ordered_ids: list[int] = []
         self._by_id: dict[int, dict] = {}
+        self._pending_actions: list[dict] = []
+        self._last_signals: dict = {}
 
     def prepare(self, session_id: int) -> tuple[list[int], str | None]:
         session = self._db.get_chat_session(session_id)
@@ -86,9 +88,14 @@ class TestProcessor(object):
         self._by_id = {m['id']: m for m in self._messages}
         self._ordered_ids = sorted(self._by_id.keys())
         self._current_state = current_state
+        self._pending_actions = sorted(
+            (row for row in self._db.get_signals(session_id) if row['position'] is not None),
+            key=lambda row: (row['position'], row['id']),
+        )
         return [mid for mid in self._ordered_ids if self._by_id[mid]['role'] == 'user'], None
 
     async def process_message(self, session_id: int, message_id: int) -> None:
+        self._fire_actions_up_to(session_id, self._ordered_ids.index(message_id))
         real_timestamp = _parse_utc(self._by_id[message_id]['timestamp'])
         self._session_facts.set_replay_instant(real_timestamp)
         self._metrics.advance_to(message_id, real_timestamp)
@@ -96,6 +103,7 @@ class TestProcessor(object):
         signal_values, stored_memory, output_values = await self._signal_source.get_turn_data(
             message_id, self._current_state,
         )
+        self._last_signals = signal_values
         self._env.update(stored_memory, declared_keys=self._automaton.declared_env_key_names())
 
         state = self._automaton.get_state(self._current_state)
@@ -122,6 +130,45 @@ class TestProcessor(object):
 
         if action is not None:
             self._current_state = action.target
+
+    def finish(self, session_id: int) -> None:
+        self._fire_actions_up_to(session_id, len(self._ordered_ids))
+
+    def _fire_actions_up_to(self, session_id: int, position: int) -> None:
+        while self._pending_actions and self._pending_actions[0]['position'] <= position:
+            self._fire(session_id, self._pending_actions.pop(0))
+
+    def _fire(self, session_id: int, entry: dict) -> None:
+        real_timestamp = _parse_utc(entry['timestamp'])
+        self._session_facts.set_replay_instant(real_timestamp)
+        preceding = self._ordered_ids[:entry['position']]
+        self._metrics.advance_to(preceding[-1] if preceding else 0, real_timestamp)
+        state = self._automaton.get_state(self._current_state)
+        selection = (
+            ChoiceSelection(key=entry['choice']['key'], option=entry['choice']['option'])
+            if entry['choice'] is not None else ChoiceSelection.NONE
+        )
+        action = self._available(state, entry, selection, session_id)
+        if action is not None:
+            self._session_facts.set_last_transition_instant(real_timestamp)
+        row, _ = self._tracking_engine.apply_transition(
+            self._automaton, state, action, self._last_signals, selection, session_id, origin='manual',
+        )
+        self._sink.replaying(row, entry['id'])
+        if action is not None:
+            self._current_state = action.target
+
+    def _available(self, state: State, entry: dict, selection: ChoiceSelection, session_id: int) -> Action | None:
+        if entry['choice'] is not None:
+            if selection.key not in state.choice_keys:
+                return None
+            return self._tracking_engine.evaluate_choice(
+                self._automaton, state.key, selection, session_id, self._last_signals,
+            )
+        try:
+            return self._automaton.move(state.key, entry['action'])
+        except ValueError:
+            return None
 
     def _fired_init_action(self, session: dict) -> bool:
         earlier = self._db.list_chat_sessions(session['username'], session['project_id'], type=session['type'])

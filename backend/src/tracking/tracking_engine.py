@@ -116,6 +116,9 @@ class TestObservationSink:
     def clear_local_memory(self, session_id: int) -> None:
         return None
 
+    def replaying(self, row: RowHandle, tracking_id: int) -> None:
+        TestObservation.update(tracking=tracking_id).where(TestObservation.id == row_id(row)).execute()
+
 
 class TrackingEngine:
     """Trigger evaluation + transition/env application. No temporal ("as

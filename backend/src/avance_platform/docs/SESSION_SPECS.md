@@ -70,6 +70,45 @@ no linked transition — don't assume they're present with `null` values:
 | `comment`         | `string \| null`                         | Reviewer's note on this specific message/transition.                                                                                        |
 | `origin`          | `string \| null`                         | Why this transition was written — one of `"trigger"`, `"manual"`, `"system"`, `"init-action"`, or `null` for a row with no recorded origin. |
 
+## Action entry
+
+A button pressed or a choice picked — a manual action, which is not a
+message — is an entry of its own in `messages`, with `role: "action"`, at
+the place where it happened: after every message that came before it, before
+every one after it. The assistant message the action produced, if any (an
+`ai` state that answers right away, the `chat.write` of a `system` state),
+follows it as a normal `assistant` entry.
+
+| Field            | Type                                     | Meaning                                                                                  |
+|------------------|------------------------------------------|------------------------------------------------------------------------------------------|
+| `role`           | `"action"`                               | Marks the entry as a manual action.                                                       |
+| `action`         | `string`                                 | The pressed action's name. Exactly one of `action` and `choice`.                          |
+| `choice`         | `{"key": string, "option": string}`      | The picked choice: its `list` env key and the option. Exactly one of `action` and `choice`. |
+| `timestamp`      | `string \| null`                         | When it was pressed, ISO 8601.                                                            |
+| `old_state`      | `string \| null`                         | State it was pressed in.                                                                  |
+| `new_state`      | `string \| null`                         | State it led to.                                                                          |
+| `values`         | `object<string, number \| null> \| null` | The last signal values measured when it was pressed.                                     |
+| `origin`         | `"manual"`                               | Always `"manual"`.                                                                        |
+| `expected_state` | `string \| null`                         | Reviewer-annotated "should have been" state after it.                                    |
+| `comment`        | `string \| null`                         | Reviewer's note on it.                                                                    |
+
+Export writes every field. A hand-written file needs only `role` and one of
+`action`/`choice`; an entry with neither or both fails its session. It has
+no `text` and no `expected_values`: an action asks the model for nothing.
+Its position is kept exactly — by how many messages came before it, not by
+its timestamp — so export → import → export gives the same file back.
+
+```json
+{ "role": "action", "action": "start", "timestamp": "2026-09-26T09:00:10+00:00",
+  "old_state": "welcome", "new_state": "opening", "values": null, "origin": "manual",
+  "expected_state": "opening", "comment": null }
+```
+
+```json
+{ "role": "action", "choice": { "key": "level", "option": "hard" },
+  "timestamp": "2026-09-26T09:00:12+00:00", "expected_state": "opening", "comment": null }
+```
+
 ## Example
 
 ```json
@@ -87,6 +126,17 @@ no linked transition — don't assume they're present with `null` values:
     "closed_at": "2026-08-20T12:40:03+00:00",
     "close_reason": "manual-user",
     "messages": [
+      {
+        "role": "action",
+        "action": "start",
+        "timestamp": "2026-08-20T12:34:50+00:00",
+        "old_state": "welcome",
+        "new_state": "greeting",
+        "values": null,
+        "origin": "manual",
+        "expected_state": "greeting",
+        "comment": null
+      },
       {
         "role": "user",
         "text": "Hi, I'd like to buy the blue jacket.",
@@ -121,13 +171,15 @@ no linked transition — don't assume they're present with `null` values:
   `audio_text`, and optionally `tokens`.
 - **The opening transition is never exported.** A Tracking row with no
   linked message (the session's very first, implicit transition into
-  `start_state`) is dropped on export; the importing side reconstructs it
+  `start_state`) is dropped on export — a manual action is the one row with
+  no message that is exported, as an action entry; the importing side reconstructs it
   from `start_state` instead of expecting it in `messages`.
 - **Round-tripping preserves the original `type`.** A live session reimports
   as `"live"` again, not force-converted to `"imported"` — `username` is
   preserved the same way. Only a file with no `type` at all (an export
   produced before this field existed) falls back to `"imported"`.
-- **Every field except `role`/`text` is optional.** A hand-written or
+- **Every field except `role`/`text` is optional** (`role` and
+  `action`/`choice` for an action entry). A hand-written or
   externally generated file can omit any other key — `SessionImportJsonRequest`
   defaults everything else to `null`/`false`/`[]`.
 - **Malformed input fails the whole session, not the whole file.** Each

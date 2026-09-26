@@ -90,6 +90,8 @@ class TestReplayJob(CancelableJob):
             self._pending_batches.pop(0)
 
     def _close_current_session(self) -> None:
+        if self._processor is not None and self._current_session_id is not None:
+            self._processor.finish(self._current_session_id)
         if isinstance(self._signal_source, BatchSignalSource):
             self._service._db.add_test_batch_segments(self._run['id'], self._signal_source.calls_made)
         self._current_session_id = None

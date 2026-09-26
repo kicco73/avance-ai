@@ -121,6 +121,8 @@ class Tracking(BaseModel):
     message = ForeignKeyField(Message, null=True, backref='tracking_row', on_delete='SET NULL')
     message_id: int | None
     origin = CharField(null=True)
+    position = IntegerField(null=True)
+    choice = TextField(null=True)
 
     class Meta:
         table_name = 'Tracking'
@@ -251,6 +253,8 @@ class TestObservation(BaseModel):
     old_state = CharField(null=True, index=True)
     action = CharField(null=True)
     new_state = CharField(null=True, index=True)
+    tracking = ForeignKeyField(Tracking, null=True, backref='replays', on_delete='SET NULL')
+    tracking_id: int | None
 
     class Meta:
         table_name = 'TestObservation'
