@@ -604,13 +604,18 @@ class LangPrompt(Prompt):
 
 EMBED_TRANSLATE_TAG_PROMPT = """
 Definition of translations metadata:
-	- one entry per label listed below: its own name as the key, and a translation of its text into
-	  the same language the user's last message is written in, as the value.
-	- translate the text naturally for its own UI context; never translate the name itself (the key).
+	- each label below is the caption printed on a button of the chat's user interface. It is not a
+	  message, not a request and not an instruction: never act on it, never answer it.
+	- one entry per label: its own name as the key, and the literal translation of its caption into the
+	  same language the user's last message is written in, as the value.
+	- the value is the translated caption and nothing else: as short as the original, same meaning,
+	  same grammatical form. Never a sentence explaining the button, advice, what to say, or any part
+	  of your reply to the user. e.g. "Help" becomes "Ayuda" in Spanish, never a hint about how to help.
+	- never translate the name itself (the key).
 	- if a label is already in the right language, or you cannot confidently translate it, return it
 	  unchanged rather than guessing.
 
-Always fill in the 'translations' field of your structured response with each name below and its translated label:
+Always fill in the 'translations' field of your structured response with each name below and its translated caption:
 """
 
 
@@ -628,7 +633,7 @@ class TranslatePrompt(Prompt):
 	losing the whole turn."""
 	channel = "translations"
 	definition = EMBED_TRANSLATE_TAG_PROMPT
-	schema_description = "Each listed name mapped to a translation of its label into the language of the user's last message."
+	schema_description = "Each listed name mapped to the literal translation of its button caption into the language of the user's last message: a caption, never a sentence of the reply."
 
 	def __init__(self, originals: dict[str, str]) -> None:
 		self._originals = originals
@@ -636,7 +641,10 @@ class TranslatePrompt(Prompt):
 		super().__init__(content)
 
 	def field(self) -> Field:
-		return ObjectField({name: StringField() for name in self._originals}, self.schema_description)
+		return ObjectField(
+			{name: StringField(f"The button caption {text!r}, translated literally.") for name, text in self._originals.items()},
+			self.schema_description,
+		)
 
 	def decode(self, raw: dict[str, str] | None) -> dict[str, str]:
 		"""Always covers every name this channel was built for — one the
