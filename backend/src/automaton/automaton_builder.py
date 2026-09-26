@@ -24,7 +24,7 @@ from ruamel.yaml.error import YAMLError
 logger = LoggerFactory.get_logger(__name__)
 
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-VALID_SIGNAL_TRACKING_STRATEGIES = {"relevant", "all"}
+VALID_SIGNAL_TRACKING_STRATEGIES = {"relevant", "all", "read-only"}
 VALID_AI_MEMORY_SCOPES = {"none", "local", "global"}
 VALID_TARGET_PROCESSOR_OVERRIDES = {"none", "system"}
 

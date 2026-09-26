@@ -53,14 +53,19 @@ describe('the design Signals tab', () => {
     )
 
     expect(host.firstElementChild.firstElementChild.className).toBe('design-signals-strategy')
-    expect(segments(host)).toEqual([{ label: 'Relevant', active: true }, { label: 'All signals', active: false }])
+    expect(segments(host)).toEqual([
+      { label: 'Relevant', active: true }, { label: 'All signals', active: false }, { label: 'Read-only', active: false },
+    ])
 
     host.querySelectorAll('.segmented-control-option')[1].click()
     expect(setStateField).toHaveBeenCalledWith('signal-tracking-strategy', 'all')
 
     current.value = { stateKey: 's1', stateData: { inputProcessor: 'ai', signalTrackingStrategy: 'all' }, editableFiles: [] }
     await nextTick()
-    expect(segments(host).map((s) => s.active)).toEqual([false, true])
+    expect(segments(host).map((s) => s.active)).toEqual([false, true, false])
+
+    host.querySelectorAll('.segmented-control-option')[2].click()
+    expect(setStateField).toHaveBeenCalledWith('signal-tracking-strategy', 'read-only')
 
     current.value = { stateKey: null, stateData: null, editableFiles: [] }
     await nextTick()

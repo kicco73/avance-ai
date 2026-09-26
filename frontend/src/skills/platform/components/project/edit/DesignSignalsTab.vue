@@ -16,7 +16,8 @@ const emit = defineEmits(['set-state-field', 'add-signal'])
 
 const SIGNAL_TRACKING_STRATEGIES = [
   { id: 'relevant', label: 'Relevant', title: "Only the signals this state's own actions read" },
-  { id: 'all', label: 'All signals', title: 'Every declared signal, whether or not this state reads it' }
+  { id: 'all', label: 'All signals', title: 'Every declared signal, whether or not this state reads it' },
+  { id: 'read-only', label: 'Read-only', title: 'Measures nothing: every signal is written into the prompt with its last value and its definition' }
 ]
 
 const { signals, signalsLoading, loadSignals, refresh, removeSignal } = useProjectSignals(props)

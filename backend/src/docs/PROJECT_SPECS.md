@@ -214,7 +214,7 @@ signals:
 **3.1 Computation.** Signals are requested inline, as part of the same
 structured reply a normal chat turn already produces — there is no
 separate model call for them. Which signals a turn requests is the
-current state's `signal-tracking-strategy` (§4): with `relevant`, every
+current state's `signal-tracking-strategy` (§4): with `read-only`, none (§4); with `relevant`, every
 `signal.<name>` its own actions cite anywhere in their scripts — `trigger`,
 `on-exit` (the whole script, `if`/`elif` conditions and bare `chat.*` calls
 included) and `task` (`task.defer` lambda bodies included); a state whose
@@ -266,7 +266,7 @@ states:
 | `chat-enabled` | no | boolean | `true` | `false`: a chat message here is rejected outright — only `actions` can proceed the conversation, and the chat shows no text input line. Independent of `final`. Always `false` in a `system` state, whatever is declared. An `ai` state that takes no messages (this `false`, or `final`) reached by a trigger that fired after the reply (`signal-tracking-on-ai-message: true`) takes its turn right away, as its own message — the same as when a manual action reaches it; nothing else could ever prompt it. |
 | `history-cutoff` | no | boolean | `false` | `true`: excludes every message from before the most recent transition into this state, both from the model's view and from auto-tracking. Combines (doesn't replace) the server-wide token-budget cutoff in `.config.yml`. |
 | `transition-log-level` | no | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level when a transition **lands on** this state (property of the destination). Operational only. |
-| `signal-tracking-strategy` | no | `relevant` \| `all` | `relevant` | Which signals a turn in this state computes (§3.1). `relevant`: every signal this state's own actions cite in a `trigger`, `on-exit` or `task`. `all`: every declared signal, whether or not an action here cites it — for a state whose signals feed a later state, a metric, or a report rather than its own actions. |
+| `signal-tracking-strategy` | no | `relevant` \| `all` \| `read-only` | `relevant` | Which signals a turn in this state computes (§3.1). `relevant`: every signal this state's own actions cite in a `trigger`, `on-exit` or `task`. `all`: every declared signal, whether or not an action here cites it — for a state whose signals feed a later state, a metric, or a report rather than its own actions. `read-only`: computes none; every declared signal is written into the prompt instead, like an `input` (§4.3), in a "Current signals" block — `name: value` with its `definition` beneath, the value the session last measured, `None` when never measured. A trigger here that cites a signal sees nothing measured. |
 | `ai-memory-scope` | no | `none` \| `local` \| `global` | `none` | Which memory a turn in this state reads and writes (§5.3) — a property of *this* state, not of the transition landing on it. `none`: the memory channel isn't even offered to the model — nothing shown, nothing parsed back, nothing kept. `global`: the shared, project+user-persistent store every session of that pair sees, unaffected by which states came before it. `local`: a fresh, empty memory that starts the moment a transition lands here (a self-loop counts as landing again, as for `history-cutoff`) and is destroyed the moment the session leaves this state — isolated from `global`, which a `local` visit never reads from or writes into. The automaton's `env:` keys are untouched by any of the three. |
 | `attachments` | no | list of filenames | `[]` | Sent with every normal reply this state is "current" for. Not sent to a `task.prompt(...)` call (§5.4), which is fully isolated. |
 | `ai-may-read-sources` | no | list of source names | `[]` | Sources whose `select_rows_*` reads the model may call, at its own discretion, while replying in this state — §4.2. |
@@ -1321,7 +1321,7 @@ of how you're likely to hit them:
 - Every `ai` state has a `contextual-prompt`.
 - No state declares `fixed-message` — refused naming its replacement.
 - Every state's `transition-log-level`, if given, is a valid level.
-- Every state's `signal-tracking-strategy`, if given, is `relevant` or `all`.
+- Every state's `signal-tracking-strategy`, if given, is `relevant`, `all` or `read-only`.
 - Every state's `ai-memory-scope`, if given, is `none`, `local`, or `global`.
 - Every action's `target` (incl. `init-action`'s) names a real state (or is a self-loop).
 - Every action's `trigger`, if given: syntactically valid and every

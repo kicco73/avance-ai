@@ -313,6 +313,9 @@ class CoreAutomaton(object):
             self._tracked_signal_names[state_key] = cached
         return set(cached)
 
+    def read_signal_names(self, state_key: str) -> set[str]:
+        return analysis.read_signal_names(self.states[state_key], {signal.name for signal in self.signals})
+
     def evaluate_triggers_action(self, state_key: str, scope: dict[str, Any]) -> Action | None:
         """Returns the first action (YAML order) whose trigger evaluates
         true — FIFO priority — or None. Actions without `trigger` stay

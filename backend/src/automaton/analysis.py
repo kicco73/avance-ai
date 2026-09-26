@@ -68,13 +68,29 @@ class RelevantSignalsTracking:
     def tracked_signal_names(self, state: "State", declared_signal_names: set[str]) -> set[str]:
         return referenced_signal_names(state, declared_signal_names)
 
+    def read_signal_names(self, declared_signal_names: set[str]) -> set[str]:
+        return set()
+
 
 class AllSignalsTracking:
     def tracked_signal_names(self, state: "State", declared_signal_names: set[str]) -> set[str]:
         return set(declared_signal_names)
 
+    def read_signal_names(self, declared_signal_names: set[str]) -> set[str]:
+        return set()
 
-SIGNAL_TRACKING_STRATEGIES = {"relevant": RelevantSignalsTracking(), "all": AllSignalsTracking()}
+
+class ReadOnlySignalsTracking:
+    def tracked_signal_names(self, state: "State", declared_signal_names: set[str]) -> set[str]:
+        return set()
+
+    def read_signal_names(self, declared_signal_names: set[str]) -> set[str]:
+        return set(declared_signal_names)
+
+
+SIGNAL_TRACKING_STRATEGIES = {
+    "relevant": RelevantSignalsTracking(), "all": AllSignalsTracking(), "read-only": ReadOnlySignalsTracking(),
+}
 
 
 def tracked_signal_names(state: "State", declared_signal_names: set[str]) -> set[str]:
@@ -82,6 +98,10 @@ def tracked_signal_names(state: "State", declared_signal_names: set[str]) -> set
     what its `signal-tracking-strategy` says — every declared signal, or only the
     ones referenced_signal_names finds."""
     return SIGNAL_TRACKING_STRATEGIES[state.signal_tracking_strategy].tracked_signal_names(state, declared_signal_names)
+
+
+def read_signal_names(state: "State", declared_signal_names: set[str]) -> set[str]:
+    return SIGNAL_TRACKING_STRATEGIES[state.signal_tracking_strategy].read_signal_names(declared_signal_names)
 
 
 def referenced_signal_names(state: "State", declared_signal_names: set[str]) -> set[str]:

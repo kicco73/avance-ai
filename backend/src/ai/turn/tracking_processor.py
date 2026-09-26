@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 from tracking.env import Env, LocalMemoryEnv
 from .env_prompt_block import EnvPromptBlock
+from .signals_prompt_block import InputBlocks, SignalsPromptBlock
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from .prompt import (
 	AudioPrompt, LangPrompt, MemoryPrompt, OutputPrompt, Prompt, ReactionPrompt, SignalsPrompt, TextPrompt,
@@ -385,7 +386,7 @@ class TrackingProcessor(object):
 			self.user.automaton, state, self._evaluate_signals_for(state),
 		)
 		prompt = self.build_turn_prompt(state, base_prompt, output_definition, signal_definition, reaction_definition)
-		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
+		env_block = self._input_blocks(state)
 		remaining_history_budget = self._enforce_input_budget(
 			base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
 			memory_env=self._memory_store_for(state),
@@ -398,10 +399,18 @@ class TrackingProcessor(object):
 			env_block=env_block.text() if env_block else None,
 		)
 
+	def _input_blocks(self, state: State) -> InputBlocks | None:
+		return InputBlocks.of(
+			EnvPromptBlock.for_state(self.env, self.user.automaton, state),
+			SignalsPromptBlock.for_state(
+				self.user.automaton, state, self.transaction.get_latest_session_signal_snapshot(self.user.session_id),
+			),
+		)
+
 	def _enforce_input_budget(
 		self, base_prompt: str, output_definition: str | None, signal_definition: str | None, reaction_definition: str | None,
 		turn_attachments: list, prompt: Prompt | None = None,
-		env_block: "EnvPromptBlock | None" = None,
+		env_block: "InputBlocks | None" = None,
 		memory_env: "Env | None" = None,
 	) -> int | None:
 		budget = self.input_token_budget_per_turn
@@ -462,7 +471,7 @@ class TrackingProcessor(object):
 			return True
 		return not self.transaction.has_assistant_message_since(self.user.session_id, since)
 
-	def _build_base_prompt_and_history(self, state: State) -> tuple[Prompt, list[dict], "EnvPromptBlock | None"]:
+	def _build_base_prompt_and_history(self, state: State) -> tuple[Prompt, list[dict], "InputBlocks | None"]:
 		"""The same (prompt, chat_history, env_block) the transition-
 		regeneration path (TrackingProcessorAfterUserMessage) actually
 		sends for `state` — exposed single-underscore (rather than
@@ -479,7 +488,7 @@ class TrackingProcessor(object):
 			self.user.automaton, state, False,
 		)
 		prompt = self.build_regeneration_prompt(state, base_prompt, output_definition)
-		env_block = EnvPromptBlock.for_state(self.env, self.user.automaton, state)
+		env_block = self._input_blocks(state)
 		remaining_history_budget = self._enforce_input_budget(
 			base_prompt, output_definition, signal_definition, reaction_definition, turn_attachments, prompt, env_block,
 			memory_env=self._memory_store_for(state),
@@ -753,7 +762,7 @@ def estimate_state_prompt(
 		prompt = prompt.compose(TranslatePrompt(originals))
 
 	system_prompt = prompt.render_text()
-	env_block = EnvPromptBlock.for_state(env, automaton, state)
+	env_block = InputBlocks.of(EnvPromptBlock.for_state(env, automaton, state), SignalsPromptBlock.for_state(automaton, state, None))
 	if env_block is not None:
 		system_prompt = f"{system_prompt}\n\n{env_block.text()}"
 

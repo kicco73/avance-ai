@@ -6,6 +6,7 @@ from automaton.automaton import MemoryArchive
 from token_estimate import estimate_tokens
 from tracking.env import Env
 from .env_prompt_block import EnvPromptBlock
+from .signals_prompt_block import InputBlocks
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,7 @@ class TurnSizeEstimate:
 def estimate_turn_request(
     base_prompt: str, signal_definition: str | None, reaction_definition: str | None,
     memory_env: Env | None, attachments: list[MemoryArchive], schema_overhead: str = "",
-    env_block: EnvPromptBlock | None = None,
+    env_block: EnvPromptBlock | InputBlocks | None = None,
 ) -> TurnSizeEstimate:
     """`schema_overhead`: Prompt.schema_overhead_text() — the fixed
     channel definitions and SCHEMA_ORDER_PROMPT text the protocol itself
