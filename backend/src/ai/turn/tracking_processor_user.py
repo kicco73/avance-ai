@@ -14,10 +14,10 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		self.out = OutVariables("", [], None, self.user.state, None)
 		if not self._evaluate_signals_for(self.user.state):
 			if self.user.has_ai_started_conversation:
-				self.metadata.signals = {}
+				self.metadata.signals = None
 				self.out.signals_resolved = True
 			else:
-				self._resolve_signals({})
+				self._resolve_signals(None)
 
 		buffered_text_before_signals_resolved = ""
 		if self.user.state == self.out.state:
@@ -42,7 +42,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 
 			self.out.reply = ""
 			self.out.env_changed.update(self._tracking_engine.apply_action_env(
-				self.user.automaton, self.out.action, self.metadata.signals, ChoiceSelection.NONE, self.user.state.key,
+				self.user.automaton, self.out.action, self._signal_scope(), ChoiceSelection.NONE, self.user.state.key,
 				username=WebSession().user, project_id=self.user.project_id, session_id=self.user.session_id,
 				output_values=self.metadata.output,
 			))
@@ -66,7 +66,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 					self.user.session_id,
 					message_id=self.user.message_id if has_real_user_message else None,
 					origin='trigger', username=WebSession().user, project_id=self.user.project_id,
-					output_values=self.metadata.output,
+					output_values=self.metadata.output, scope_signals=self._signal_scope(),
 				)
 				self.out.env_changed.update(written)
 			self.out.tracking_linked_to_message = has_real_user_message

@@ -20,7 +20,7 @@ class TrackingSink(Protocol):
     while a test-replay sink can satisfy this independently."""
 
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
+        self, values: dict | None, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
     ) -> RowHandle:
         ...
 
@@ -49,7 +49,7 @@ class DbTrackingSink:
         self._db = db
 
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
+        self, values: dict | None, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
     ) -> RowHandle:
         return self._db.save_signal_snapshot(values, session_id, message_id, output_values=output_values)
 
@@ -87,10 +87,11 @@ class TestObservationSink:
         self._run_id = run_id
 
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
+        self, values: dict | None, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
     ) -> RowHandle:
         row = TestObservation.create(
-            run=self._run_id, session=session_id, message=row_id(message_id), values=json.dumps(values),
+            run=self._run_id, session=session_id, message=row_id(message_id),
+            values=json.dumps(values) if values is not None else None,
         )
         return RowHandle(row.id)
 
@@ -170,6 +171,7 @@ class TrackingEngine:
         username: str | None = None,
         project_id: str | None = None,
         output_values: dict | None = None,
+        scope_signals: dict | None = None,
     ) -> tuple[RowHandle, dict]:
         """Returns the tracking row id and the env keys the fired action
         wrote — the second so whoever ran the turn can say so on the way
@@ -183,8 +185,8 @@ class TrackingEngine:
             ), {}
 
         written = self.apply_action_env(
-            automaton, action, signal_values, selection, state.key, username=username, project_id=project_id,
-            session_id=session_id, output_values=output_values,
+            automaton, action, signal_values if scope_signals is None else scope_signals, selection, state.key,
+            username=username, project_id=project_id, session_id=session_id, output_values=output_values,
         )
         return self.record_transition(
             automaton, state, action, signal_values, session_id, message_id,

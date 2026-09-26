@@ -124,12 +124,15 @@ class EventService:
             )
             tracking_engine = TrackingEngine(DbTrackingSink(TurnTransaction(self._db, session["id"], [])), env, scope_builder)
 
-            scope = scope_builder.build(automaton, state.key, {}, ChoiceSelection.NONE)
+            signals = automaton.signals_in_scope(
+                state.key, None, TurnTransaction(self._db, session["id"], []).get_latest_session_signal_snapshot(session["id"]),
+            )
+            scope = scope_builder.build(automaton, state.key, signals, ChoiceSelection.NONE)
             action = automaton.evaluate_triggers_action(state.key, scope)
             if action is not None and action.target == state.key:
                 tracking_engine.apply_transition(
-                    automaton, state, action, {}, ChoiceSelection.NONE, session["id"],
-                    origin='system', username=username, project_id=observer_project_id,
+                    automaton, state, action, None, ChoiceSelection.NONE, session["id"],
+                    origin='system', username=username, project_id=observer_project_id, scope_signals=signals,
                 )
                 state_payload = automaton.get_state_payload(state)
                 await bus.publish(Message(type=UI_NOTIFICATION, username=username, body={

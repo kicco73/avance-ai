@@ -131,7 +131,7 @@ class TurnDbInterface(Protocol):
         origin: str | None = None, output_values: dict | None = None,
     ) -> RowHandle: ...
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
+        self, values: dict | None, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
     ) -> RowHandle: ...
     def link_signal_to_message(self, signal_row: RowHandle, message: RowHandle) -> None: ...
     def place_action_entry(self, row: RowHandle, position: int, choice: dict | None) -> None: ...
@@ -268,7 +268,7 @@ class TurnTransaction(object):
         ))
 
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
+        self, values: dict | None, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
     ) -> RowHandle:
         return RowHandle(self._db.save_signal_snapshot(values, session_id, row_id(message_id), output_values=output_values))
 

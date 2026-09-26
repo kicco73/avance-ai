@@ -82,13 +82,13 @@ class PendingTransition(PendingTracking):
 class PendingSnapshot(PendingTracking):
     __slots__ = ()
 
-    def __init__(self, session_id: int, values: dict, message: RowHandle | None, output_values: dict | None) -> None:
+    def __init__(self, session_id: int, values: dict | None, message: RowHandle | None, output_values: dict | None) -> None:
         super().__init__(session_id)
         self.values, self.message, self.output = values, message, output_values
 
     def insert(self, db: Db) -> None:
         self.id = db.save_signal_snapshot(
-            self.values or {}, self.session_id, row_id(self.message), output_values=self.output, timestamp=self.timestamp,
+            self.values, self.session_id, row_id(self.message), output_values=self.output, timestamp=self.timestamp,
         )
 
 
@@ -260,7 +260,7 @@ class AtomicTurnTransaction(TurnTransaction):
         return row
 
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
+        self, values: dict | None, session_id: int, message_id: RowHandle | None = None, output_values: dict | None = None,
     ) -> PendingSnapshot:
         row = PendingSnapshot(session_id, values, message_id, output_values)
         self._rows.append(row)
@@ -282,12 +282,12 @@ class AtomicTurnTransaction(TurnTransaction):
         return dict(latest.values or {}) if latest is not None else None
 
     def get_latest_signal_snapshot(self, project_id: str) -> dict | None:
-        pending = self._pending_signal_values([row for row in self._rows if row.values is not None])
+        pending = self._pending_signal_values([row for row in self._rows if row.values])
         return pending if pending is not None else self._db.get_latest_signal_snapshot(project_id)
 
     def get_latest_session_signal_snapshot(self, session_id: int) -> dict | None:
         pending = self._pending_signal_values(
-            [row for row in self._rows if row.values is not None and row.session_id == session_id]
+            [row for row in self._rows if row.values and row.session_id == session_id]
         )
         return pending if pending is not None else self._db.get_latest_session_signal_snapshot(session_id)
 

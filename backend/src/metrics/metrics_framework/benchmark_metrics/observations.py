@@ -215,8 +215,9 @@ class BenchmarkObservationBuilder(object):
     def _evaluations(signals: pd.DataFrame) -> pd.DataFrame:
         if signals.empty:
             return signals
+        triggered = signals["origin"].eq("trigger") if "origin" in signals.columns else False
         return signals.loc[
-            signals["message_id"].notna() & (signals["values"].notna() | signals["new_state"].notna())
+            signals["message_id"].notna() & (signals["values"].notna() | signals["new_state"].notna() | triggered)
         ]
 
     @staticmethod

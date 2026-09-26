@@ -73,7 +73,7 @@ def _turn_attachment_paths(automaton: Automaton, state: State, include_signal_at
 class Metadata:
 	on_metadata: MetadataCallback
 	memory: dict[str, str]
-	signals: dict[str, float]
+	signals: dict[str, float] | None
 	output: dict[str, Any] = field(default_factory=dict)
 	audio: str | None = None
 	chunk: str | None = None
@@ -249,7 +249,7 @@ class TrackingProcessor(object):
 
 		self._open_turn(fragments, user_messages)
 
-		self.metadata = Metadata(on_metadata or (lambda key, value: None), {}, {})
+		self.metadata = Metadata(on_metadata or (lambda key, value: None), {}, None)
 		self.metadata.on_metadata("typing", None)
 		self.keep_written_before_reply()
 		self.out = await self._get_ai_reply()
@@ -348,25 +348,29 @@ class TrackingProcessor(object):
 			})
 		self.metadata.on_metadata(key, rv)
 
-	def _resolve_signals(self, signal_values: dict[str, float]) -> None:
+	def _resolve_signals(self, signal_values: dict[str, float] | None) -> None:
 		"""The one trigger-evaluation pass of a turn: `signal_values` are
-		the model's own reported signals when they were requested, or the
-		empty set when they weren't (see _evaluate_signals_for) — a state
-		whose triggers reference only metric.*/env.*/tool.* is evaluated
-		every chat turn all the same, exactly as one with signal-backed
-		triggers; a signal-backed trigger evaluated against the empty set
-		simply short-circuits to false (see Automaton._eval_trigger). At this
+		the model's own reported signals when they were requested, or None
+		when they weren't (see _evaluate_signals_for) — a state whose
+		triggers reference only metric.*/env.*/tool.* is evaluated every
+		chat turn all the same. What the triggers read is _signal_scope. At this
 		point (when signals arrive in streaming), self.metadata.output is
 		already populated from the earlier 'output' field arrival (see
 		on_receiving_metadata's ordering)."""
 		self.metadata.signals = signal_values
 		self.out.action = self._tracking_engine.evaluate_triggered_action(
-			self.user.automaton, self.user.state, self.metadata.signals, ChoiceSelection.NONE,
+			self.user.automaton, self.user.state, self._signal_scope(), ChoiceSelection.NONE,
 			session_id=self.user.session_id, output_values=self.metadata.output,
 		)
 		if self.out.action:
 			self.out.state = self.user.automaton.get_state(self.out.action.target)
 		self.out.signals_resolved = True
+
+	def _signal_scope(self) -> dict:
+		return self.user.automaton.signals_in_scope(
+			self.user.state.key, self.metadata.signals,
+			self.transaction.get_latest_session_signal_snapshot(self.user.session_id),
+		)
 
 	def _records_evaluation(self) -> bool:
 		"""Whether this turn's trigger evaluation leaves a Tracking row: a

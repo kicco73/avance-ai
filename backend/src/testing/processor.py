@@ -103,12 +103,14 @@ class TestProcessor(object):
         signal_values, stored_memory, output_values = await self._signal_source.get_turn_data(
             message_id, self._current_state,
         )
-        self._last_signals = signal_values
         self._env.update(stored_memory, declared_keys=self._automaton.declared_env_key_names())
 
         state = self._automaton.get_state(self._current_state)
+        scope = self._automaton.signals_in_scope(state.key, signal_values, self._last_signals)
+        if signal_values and not self._automaton.read_signal_names(state.key):
+            self._last_signals = signal_values
         action = self._tracking_engine.evaluate_triggered_action(
-            self._automaton, state, signal_values, ChoiceSelection.NONE, output_values=output_values,
+            self._automaton, state, scope, ChoiceSelection.NONE, output_values=output_values,
         )
 
         if action is not None:
@@ -125,7 +127,7 @@ class TestProcessor(object):
             self._automaton, state, action, signal_values, ChoiceSelection.NONE, session_id,
             message_id=RowHandle(observation_message_id),
             origin='trigger',
-            output_values=output_values,
+            output_values=output_values, scope_signals=scope,
         )
 
         if action is not None:

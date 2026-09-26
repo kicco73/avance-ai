@@ -16,7 +16,7 @@ class TestDataBuilder:
     """Assembles one test run's BenchmarkData from the real session/message
     rows plus that run's own TestObservation rows."""
 
-    _SIGNALS_COLUMNS = ["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"]
+    _SIGNALS_COLUMNS = ["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "origin", "session_id"]
 
     @classmethod
     def build(cls, db: Db, run: dict, automaton: Automaton) -> BenchmarkData:

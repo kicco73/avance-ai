@@ -317,6 +317,9 @@ class CoreAutomaton(object):
     def read_signal_names(self, state_key: str) -> set[str]:
         return analysis.read_signal_names(self.states[state_key], {signal.name for signal in self.signals})
 
+    def signals_in_scope(self, state_key: str, measured: dict | None, last_measured: dict | None) -> dict:
+        return analysis.signals_in_scope(self.states[state_key], measured, last_measured)
+
     def evaluate_triggers_action(self, state_key: str, scope: dict[str, Any]) -> Action | None:
         """Returns the first action (YAML order) whose trigger evaluates
         true — FIFO priority — or None. Actions without `trigger` stay

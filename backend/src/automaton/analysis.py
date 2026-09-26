@@ -71,6 +71,9 @@ class RelevantSignalsTracking:
     def read_signal_names(self, declared_signal_names: set[str]) -> set[str]:
         return set()
 
+    def signals_in_scope(self, measured: dict | None, last_measured: dict | None) -> dict:
+        return measured or {}
+
 
 class AllSignalsTracking:
     def tracked_signal_names(self, state: "State", declared_signal_names: set[str]) -> set[str]:
@@ -79,6 +82,9 @@ class AllSignalsTracking:
     def read_signal_names(self, declared_signal_names: set[str]) -> set[str]:
         return set()
 
+    def signals_in_scope(self, measured: dict | None, last_measured: dict | None) -> dict:
+        return measured or {}
+
 
 class ReadOnlySignalsTracking:
     def tracked_signal_names(self, state: "State", declared_signal_names: set[str]) -> set[str]:
@@ -86,6 +92,9 @@ class ReadOnlySignalsTracking:
 
     def read_signal_names(self, declared_signal_names: set[str]) -> set[str]:
         return set(declared_signal_names)
+
+    def signals_in_scope(self, measured: dict | None, last_measured: dict | None) -> dict:
+        return last_measured or {}
 
 
 SIGNAL_TRACKING_STRATEGIES = {
@@ -102,6 +111,10 @@ def tracked_signal_names(state: "State", declared_signal_names: set[str]) -> set
 
 def read_signal_names(state: "State", declared_signal_names: set[str]) -> set[str]:
     return SIGNAL_TRACKING_STRATEGIES[state.signal_tracking_strategy].read_signal_names(declared_signal_names)
+
+
+def signals_in_scope(state: "State", measured: dict | None, last_measured: dict | None) -> dict:
+    return SIGNAL_TRACKING_STRATEGIES[state.signal_tracking_strategy].signals_in_scope(measured, last_measured)
 
 
 def referenced_signal_names(state: "State", declared_signal_names: set[str]) -> set[str]:

@@ -136,7 +136,7 @@ class BenchmarkCalculator(object):
             for session_id in session_ids
             for row in signal_rows_by_session[session_id]
         ]
-        columns = ["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"]
+        columns = ["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "origin", "session_id"]
         if not rows:
             return pd.DataFrame(columns=columns)
         frame = pd.DataFrame.from_records(rows)
@@ -148,4 +148,4 @@ class BenchmarkCalculator(object):
 
     @staticmethod
     def _empty_signals() -> pd.DataFrame:
-        return pd.DataFrame(columns=["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"])
+        return pd.DataFrame(columns=["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "origin", "session_id"])

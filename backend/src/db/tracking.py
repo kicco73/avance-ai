@@ -20,11 +20,11 @@ class TrackingMixin:
 
     @write
     def save_signal_snapshot(
-        self, values: dict, session_id: int, message_id: int | None=None, output_values: dict | None = None,
+        self, values: dict | None, session_id: int, message_id: int | None=None, output_values: dict | None = None,
         timestamp: datetime | None = None,
     ) -> int:
         row = Tracking.create(
-            session=session_id, values=json.dumps(values), message=message_id,
+            session=session_id, values=json.dumps(values) if values is not None else None, message=message_id,
             output=json.dumps(output_values) if output_values else None,
             **({'timestamp': timestamp} if timestamp is not None else {}),
         )
@@ -32,7 +32,7 @@ class TrackingMixin:
 
     @staticmethod
     def _latest_signal_values(scope: Expression) -> dict | None:
-        row = Tracking.select().join(CoreSession, on=Tracking.session == CoreSession.id).where(scope & Tracking.values.is_null(False)).order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
+        row = Tracking.select().join(CoreSession, on=Tracking.session == CoreSession.id).where(scope & Tracking.values.is_null(False) & (Tracking.values != '{}')).order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.values) if row is not None else None
 
     def get_latest_signal_snapshot(self, project_id: str) -> dict | None:

@@ -15,7 +15,7 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			self.metadata.on_metadata('chunk', chunk)
 
 		if not self.out.signals_resolved:
-			self._resolve_signals({})
+			self._resolve_signals(None)
 		self._apply_output_to_env(self.user.state)
 
 		if self._records_evaluation():
@@ -23,7 +23,7 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, ChoiceSelection.NONE,
 				self.user.session_id,
 				origin='trigger', username=WebSession().user, project_id=self.user.project_id,
-				output_values=self.metadata.output,
+				output_values=self.metadata.output, scope_signals=self._signal_scope(),
 			)
 			self.out.env_changed.update(written)
 			async for paragraph in self.reply_after_answer(self.out.state, self.on_receiving_metadata):
