@@ -33,7 +33,7 @@ async function refresh() {
   }
 }
 
-defineExpose({ refresh })
+defineExpose({ refresh, resync: refresh })
 
 onMounted(refresh)
 watch(() => props.projectId, refresh)
