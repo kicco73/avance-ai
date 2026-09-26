@@ -1,7 +1,8 @@
 import { ref } from 'vue'
-import { AUTO_DISMISS_MS } from '../../toastStore.js'
 
 export const chatNotifications = ref([])
+
+const AUTO_DISMISS_MS = 8000
 
 let nextId = 0
 

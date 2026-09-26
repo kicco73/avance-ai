@@ -32,7 +32,7 @@ class TrackingMixin:
 
     @staticmethod
     def _latest_signal_values(scope: Expression) -> dict | None:
-        row = Tracking.select().join(CoreSession, on=Tracking.session == CoreSession.id).where(scope & Tracking.values.is_null(False) & (Tracking.values != '{}')).order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
+        row = Tracking.select().join(CoreSession, on=Tracking.session == CoreSession.id).where(scope & Tracking.values.is_null(False)).order_by(Tracking.timestamp.desc(), Tracking.id.desc()).first()
         return json.loads(row.values) if row is not None else None
 
     def get_latest_signal_snapshot(self, project_id: str) -> dict | None:

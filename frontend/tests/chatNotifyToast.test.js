@@ -13,6 +13,19 @@ describe('chat.notify', () => {
     for (const notification of chatNotifications.value) dismissChatNotification(notification.id)
   })
 
+  it('goes away on its own after 8 seconds', () => {
+    vi.useFakeTimers()
+    try {
+      runTaskScript("notify('Well done', 'Bye.')")
+      vi.advanceTimersByTime(7999)
+      expect(chatNotifications.value).toHaveLength(1)
+      vi.advanceTimersByTime(1)
+      expect(chatNotifications.value).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('lands in the chat, with the progress toast\'s card, and never among the platform toasts', async () => {
     runTaskScript("notify('Well done', 'You finished **step 2**.')")
 

@@ -9,6 +9,7 @@ pytestmark = pytest.mark.contract
 
 
 class _FakeState:
+    key = "s"
     output: tuple = ()
 
 
@@ -25,6 +26,12 @@ class _FakeAutomaton:
     def declared_env_key_names(self):
         return set()
 
+    def read_signal_names(self, state_key):
+        return set()
+
+    def signals_in_scope(self, state_key, measured, last_measured):
+        return measured or {}
+
 
 class _FakeTrackingEngine:
     def __init__(self):
@@ -36,7 +43,7 @@ class _FakeTrackingEngine:
 
     def apply_transition(
         self, automaton, state, action, signal_values, selection, session_id, message_id=None, origin=None,
-        output_values=None,
+        output_values=None, scope_signals=None,
     ):
         self.apply_transition_message_ids.append(row_id(message_id))
         self.apply_transition_origins.append(origin)

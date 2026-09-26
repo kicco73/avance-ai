@@ -282,12 +282,12 @@ class AtomicTurnTransaction(TurnTransaction):
         return dict(latest.values or {}) if latest is not None else None
 
     def get_latest_signal_snapshot(self, project_id: str) -> dict | None:
-        pending = self._pending_signal_values([row for row in self._rows if row.values])
+        pending = self._pending_signal_values([row for row in self._rows if row.values is not None])
         return pending if pending is not None else self._db.get_latest_signal_snapshot(project_id)
 
     def get_latest_session_signal_snapshot(self, session_id: int) -> dict | None:
         pending = self._pending_signal_values(
-            [row for row in self._rows if row.values and row.session_id == session_id]
+            [row for row in self._rows if row.values is not None and row.session_id == session_id]
         )
         return pending if pending is not None else self._db.get_latest_session_signal_snapshot(session_id)
 
