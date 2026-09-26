@@ -194,6 +194,9 @@ class _FakeTurns:
     def services_for(self, session_id):
         return {}
 
+    def ui_bindings_for(self, session_id):
+        return {}
+
     def buttons_for(self, session_id, state_payload):
         return self.buttons
 
